@@ -1,3 +1,4 @@
+import 'package:delivery_project/page/home.dart';
 import 'package:delivery_project/page/register.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get_core/src/get_main.dart';
@@ -47,25 +48,24 @@ class LoginPage extends StatelessWidget {
             ),
           ),
         ),
+        // แก้ไข: ย้าย ClipPath ออก และวางข้อความให้อยู่ใน Stack โดยตรง
         Positioned(
           bottom: 0,
           left: 0,
           right: 0,
           child: ClipPath(
             clipper: CustomClipperWhite(),
-            child: Container(
-              height: 100,
-              color: Colors.white,
-              child: const Center(
-                child: Text(
-                  'เข้าสู่ระบบ',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFFC70808),
-                  ),
-                ),
-              ),
+            child: Container(height: 100, color: Colors.white),
+          ),
+        ),
+        Positioned(
+          bottom: 50, // ปรับตำแหน่งให้ข้อความอยู่กึ่งกลางโค้งมน
+          child: const Text(
+            'เข้าสู่ระบบ',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFFC70808),
             ),
           ),
         ),
@@ -120,7 +120,8 @@ class LoginPage extends StatelessWidget {
       width: double.infinity,
       child: ElevatedButton(
         onPressed: () {
-          // Add your login logic here
+          // Navigate to the HomeScreen and remove all previous routes
+          Get.offAll(() => const HomeScreen());
         },
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFC70808),
@@ -152,7 +153,7 @@ class LoginPage extends StatelessWidget {
           ),
           TextButton(
             onPressed: () {
-              Get.to(() => RegisterPage(), transition: Transition.fadeIn);
+              Get.to(() => const RegisterPage(), transition: Transition.fadeIn);
             },
             child: const Text(
               'สมัครสมาชิก',
