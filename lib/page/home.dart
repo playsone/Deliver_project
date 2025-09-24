@@ -1,4 +1,8 @@
+import 'package:delivery_project/page/edit_profile.dart';
+import 'package:delivery_project/page/index.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get_core/src/get_main.dart';
+import 'package:get/get_navigation/get_navigation.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -193,8 +197,7 @@ class HomeScreen extends StatelessWidget {
                 'แก้ไขข้อมูลส่วนตัว',
                 Icons.person_outline,
                 () {
-                  // TODO: ใส่โค้ดสำหรับนำทางไปยังหน้าแก้ไขข้อมูลส่วนตัว
-                  Navigator.pop(context); // ปิด modal
+                  Get.to(() => const EditProfilePage());
                 },
               ),
               _buildOptionButton(
@@ -207,8 +210,7 @@ class HomeScreen extends StatelessWidget {
                 },
               ),
               _buildOptionButton(context, 'ออกจากระบบ', Icons.logout, () {
-                // TODO: ใส่โค้ดสำหรับการออกจากระบบ
-                Navigator.pop(context); // ปิด modal
+                Get.to(() => const SpeedDerApp());
               }),
             ],
           ),
