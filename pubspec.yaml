@@ -13,6 +13,12 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  google_maps_flutter: ^2.5.0 
+  geolocator: ^9.0.2
+  geocoding: ^2.0.5
+  image_picker: ^1.1.2 # หรือเวอร์ชันล่าสุด
+
+
 
   # State management + routing (GetX)
   get: ^4.6.6

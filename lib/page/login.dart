@@ -78,7 +78,7 @@ class LoginPage extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
       child: Column(
         children: [
-          _buildTextField('ชื่อผู้ใช้', false),
+          _buildTextField('เบอร์โทรศัพท์', false),
           const SizedBox(height: 20),
           _buildTextField('รหัสผ่าน', true),
           const SizedBox(height: 10),
