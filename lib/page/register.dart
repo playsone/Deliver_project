@@ -10,9 +10,12 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
+  // ImagePicker instance สำหรับใช้ในการเลือก/ถ่ายรูป
+  final ImagePicker _picker = ImagePicker();
+
   // ตัวแปรควบคุมการแสดงผลฟอร์ม
   bool _isRider = false;
-  // ตัวแปรสำหรับเก็บไฟล์รูปภาพ (เปลี่ยนจาก File? เป็น XFile?)
+  // ตัวแปรสำหรับเก็บไฟล์รูปภาพ
   XFile? _profileImage;
   XFile? _vehicleImage;
 
@@ -41,10 +44,52 @@ class _RegisterPageState extends State<RegisterPage> {
     super.dispose();
   }
 
-  // ฟังก์ชันสำหรับเลือกรูปภาพจาก Gallery (เปลี่ยนให้รับ XFile โดยตรง)
-  Future<void> _pickImage(bool isProfile) async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+  /// 1. ฟังก์ชันแสดง Modal ให้ผู้ใช้เลือกว่าจะใช้ Camera หรือ Gallery
+  Future<void> _selectImageSource(bool isProfile) async {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text(
+                  'เลือกแหล่งที่มาของรูปภาพ',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFFC70808)),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: Color(0xFFC70808)),
+                title: const Text('เลือกจากแกลเลอรี'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImage(isProfile, ImageSource.gallery);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera, color: Color(0xFFC70808)),
+                title: const Text('ถ่ายรูปด้วยกล้อง'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImage(isProfile, ImageSource.camera);
+                },
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// 2. ฟังก์ชันจริงสำหรับการเลือกรูปภาพ โดยรับ ImageSource เข้ามา
+  Future<void> _pickImage(bool isProfile, ImageSource source) async {
+    final pickedFile = await _picker.pickImage(source: source);
     if (pickedFile != null) {
       setState(() {
         if (isProfile) {
@@ -69,6 +114,7 @@ class _RegisterPageState extends State<RegisterPage> {
             _buildUserTypeSelector(),
             const SizedBox(height: 20),
             // User Profile Image
+            // อัปเดต: เรียกใช้ _selectImageSource() แทน _pickImage() โดยตรง
             _buildProfileImage(),
             // Registration Form Section with Animation
             AnimatedCrossFade(
@@ -128,7 +174,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // User Type Selector
+  // User Type Selector (ไม่มีการเปลี่ยนแปลง)
   Widget _buildUserTypeSelector() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
@@ -176,8 +222,9 @@ class _RegisterPageState extends State<RegisterPage> {
 
   // Profile Image Section
   Widget _buildProfileImage() {
+    // อัปเดต: เปลี่ยนไปเรียก _selectImageSource(true)
     return GestureDetector(
-      onTap: () => _pickImage(true), // isProfile = true
+      onTap: () => _selectImageSource(true), // isProfile = true
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -218,8 +265,9 @@ class _RegisterPageState extends State<RegisterPage> {
 
   // Vehicle Image Section (เฉพาะไรเดอร์)
   Widget _buildVehicleImage() {
+    // อัปเดต: เปลี่ยนไปเรียก _selectImageSource(false)
     return GestureDetector(
-      onTap: () => _pickImage(false), // isProfile = false
+      onTap: () => _selectImageSource(false), // isProfile = false
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -258,7 +306,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // User Registration Form
+  // User Registration Form (ไม่มีการเปลี่ยนแปลง)
   Widget _buildUserForm() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
@@ -304,7 +352,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Rider Registration Form
+  // Rider Registration Form (ไม่มีการเปลี่ยนแปลง)
   Widget _buildRiderForm() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
@@ -344,7 +392,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Generic TextField
+  // Generic TextField (ไม่มีการเปลี่ยนแปลง)
   Widget _buildTextField(
     String label, {
     TextEditingController? controller,
@@ -368,7 +416,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // TextField with icon
+  // TextField with icon (ไม่มีการเปลี่ยนแปลง)
   Widget _buildTextFieldWithIcon(
     String label,
     IconData icon, {
@@ -390,7 +438,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Submit Button
+  // Submit Button (ไม่มีการเปลี่ยนแปลง)
   Widget _buildSubmitButton(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40),
@@ -421,7 +469,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Success Dialog
+  // Success Dialog (ไม่มีการเปลี่ยนแปลง)
   void _showSuccessDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -470,7 +518,7 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 }
 
-// Custom Clipper for the red background shape (same as previous example)
+// Custom Clipper for the red background shape (ไม่มีการเปลี่ยนแปลง)
 class CustomClipperRed extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
