@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:geocoding/geocoding.dart'; // สำหรับ Geocoding
+
 class EditProfilePage extends StatefulWidget {
   const EditProfilePage({super.key});
 
@@ -7,12 +11,101 @@ class EditProfilePage extends StatefulWidget {
 }
 
 class _EditProfilePageState extends State<EditProfilePage> {
-  // Mock data to simulate user information from a database
-  final String _profileImageUrl = 'https://picsum.photos/200'; // Placeholder image
-  final String _defaultName = 'ชื่อ-สกุล';
-  final String _defaultPhone = 'หมายเลขโทรศัพท์';
-  final String _defaultAddress = 'ที่อยู่หรือสถานที่พิกัด';
-  final String _defaultGps = 'พิกัดรับสินค้า';
+  // Mock data to simulate user information
+  final String _profileImageUrl = 'https://picsum.photos/200';
+  final LatLng _defaultLocation = const LatLng(13.7563, 100.5018); // Bangkok
+  LatLng _currentMarkerPos = const LatLng(13.7563, 100.5018); // Marker initial position
+
+  // Controllers for form fields
+  final _nameController = TextEditingController(text: 'สมชาย รักชาติ');
+  final _phoneController = TextEditingController(text: '081-234-5678');
+  final _addressController = TextEditingController(text: 'ตึกใบหยก 2, กรุงเทพมหานคร');
+  final _gpsController = TextEditingController(text: '13.7563, 100.5018');
+
+  // Map Controller
+  final MapController _mapController = MapController();
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    _addressController.dispose();
+    _gpsController.dispose();
+    _mapController.dispose();
+    super.dispose();
+  }
+
+  /// 1. ฟังก์ชันค้นหาพิกัดจากชื่อสถานที่ (Geocoding)
+  Future<void> _geocodeAddress() async {
+    final address = _addressController.text;
+    if (address.isEmpty) return;
+
+    try {
+      // ใช้ Geocoding package เพื่อแปลงที่อยู่เป็นพิกัด
+      List<Location> locations = await locationFromAddress(address);
+
+      if (locations.isNotEmpty) {
+        final newLat = locations.first.latitude;
+        final newLng = locations.first.longitude;
+        final newPos = LatLng(newLat, newLng);
+
+        setState(() {
+          _currentMarkerPos = newPos;
+          _gpsController.text =
+              "${newLat.toStringAsFixed(6)}, ${newLng.toStringAsFixed(6)}";
+        });
+
+        // เลื่อน Map ไปยังพิกัดที่พบ
+        _mapController.move(newPos, 15.0);
+      } else {
+        // แสดงข้อความเมื่อไม่พบที่อยู่
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('ไม่พบสถานที่ตามที่อยู่ กรุณาลองใหม่อีกครั้ง'),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Handle error, e.g., network issue or service error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('เกิดข้อผิดพลาดในการค้นหาพิกัด: $e'),
+          ),
+        );
+      }
+    }
+  }
+
+  /// 2. ฟังก์ชันอัปเดตพิกัดเมื่อผู้ใช้แตะบนแผนที่ (Reverse Geocoding)
+  void _onMapTap(TapPosition tapPosition, LatLng point) async {
+    setState(() {
+      _currentMarkerPos = point;
+      _gpsController.text =
+          "${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}";
+    });
+
+    try {
+      // ใช้ Reverse Geocoding เพื่อหาชื่อสถานที่จากพิกัด
+      List<Placemark> placemarks =
+          await placemarkFromCoordinates(point.latitude, point.longitude);
+      
+      if (placemarks.isNotEmpty) {
+        final placemark = placemarks.first;
+        // สร้างที่อยู่ที่อ่านง่าย
+        final addressLine = "${placemark.subThoroughfare} ${placemark.thoroughfare}, "
+                            "${placemark.subLocality}, ${placemark.locality}, "
+                            "${placemark.administrativeArea}";
+
+        _addressController.text = addressLine.trim();
+      }
+    } catch (e) {
+      // Reverse Geocoding error
+      debugPrint("Reverse Geocoding Error: $e");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +122,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
         centerTitle: true,
         backgroundColor: const Color(0xFFC70808),
         elevation: 0,
-        shape: const ContinuousRectangleBorder(
+        // ใช้ shape เดียวกันกับ Header
+        shape: const ContinuousRectangleBorder( 
           borderRadius: BorderRadius.only(
             bottomLeft: Radius.circular(50),
             bottomRight: Radius.circular(50),
@@ -39,9 +133,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            _buildHeaderBackground(),
+            // _buildHeaderBackground() ถูกรวมอยู่ใน AppBar และ _buildProfileSection แล้ว
             _buildProfileSection(),
             _buildFormSection(),
+            _buildMapSection(), // เพิ่มส่วนแผนที่
           ],
         ),
       ),
@@ -49,18 +144,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     );
   }
 
-  Widget _buildHeaderBackground() {
-    return Container(
-      height: 120,
-      decoration: const BoxDecoration(
-        color: Color(0xFFC70808),
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(50),
-          bottomRight: Radius.circular(50),
-        ),
-      ),
-    );
-  }
+  // ลบ _buildHeaderBackground() ออกไปแล้วเพราะ AppBar มี shape อยู่แล้ว
 
   Widget _buildProfileSection() {
     return Transform.translate(
@@ -71,7 +155,19 @@ class _EditProfilePageState extends State<EditProfilePage> {
             radius: 60,
             backgroundColor: Colors.grey.shade200,
             backgroundImage: NetworkImage(_profileImageUrl),
+            child: Align(
+              alignment: Alignment.bottomRight,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: const BoxDecoration(
+                  color: Colors.green,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.edit, color: Colors.white, size: 20),
+              ),
+            ),
           ),
+          const SizedBox(height: 10), // เพิ่มระยะห่างให้ฟอร์มขึ้นมา
         ],
       ),
     );
@@ -83,21 +179,103 @@ class _EditProfilePageState extends State<EditProfilePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildTextFieldWithLabel('ชื่อ-สกุล', _defaultName),
+          _buildTextFieldWithLabel('ชื่อ-สกุล', _nameController, TextInputType.name),
           const SizedBox(height: 20),
-          _buildTextFieldWithLabel('หมายเลขโทรศัพท์', _defaultPhone),
+          _buildTextFieldWithLabel('หมายเลขโทรศัพท์', _phoneController, TextInputType.phone),
           const SizedBox(height: 20),
-          _buildTextFieldWithLabel('ที่อยู่หรือสถานที่พิกัด', _defaultAddress),
+          // *** แก้ไข: เพิ่มปุ่มค้นหาให้กับช่องที่อยู่ ***
+          _buildTextFieldWithLabel(
+            'ที่อยู่หรือสถานที่พิกัด',
+            _addressController,
+            TextInputType.text,
+            suffixIcon: Icons.search,
+            onIconTap: _geocodeAddress,
+          ),
           const SizedBox(height: 20),
-          _buildTextFieldWithLabel('พิกัด GPS หรือสถานที่รับสินค้า', _defaultGps),
+          _buildTextFieldWithLabel(
+            'พิกัด GPS (Lat, Lng)',
+            _gpsController,
+            TextInputType.text,
+            isReadOnly: true, // กำหนดให้ช่อง GPS เป็นแบบอ่านอย่างเดียว
+          ),
           const SizedBox(height: 40),
           _buildSaveButton(),
+          const SizedBox(height: 30),
         ],
       ),
     );
   }
 
-  Widget _buildTextFieldWithLabel(String label, String hint) {
+  /// 3. สร้างส่วนแผนที่
+  Widget _buildMapSection() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'เลือกพิกัดบนแผนที่ (แตะเพื่อกำหนดจุด)',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.black54,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            height: 300,
+            decoration: BoxDecoration(
+              border: Border.all(color: const Color(0xFFC70808), width: 2),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(13),
+              child: FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: _defaultLocation,
+                  initialZoom: 15.0,
+                  onTap: _onMapTap, // กำหนดฟังก์ชันเมื่อมีการแตะบนแผนที่
+                ),
+                children: [
+                  // Tile Layer (OpenStreetMap)
+                  TileLayer(
+                    urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                    userAgentPackageName: "com.example.app",
+                  ),
+                  // Marker Layer for the selected location
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: _currentMarkerPos,
+                        width: 80,
+                        height: 80,
+                        child: const Icon(
+                          Icons.location_on,
+                          color: Color(0xFFC70808),
+                          size: 40,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 4. ปรับปรุง TextField ให้รองรับ Controller และ Icon Action
+  Widget _buildTextFieldWithLabel(
+    String label,
+    TextEditingController controller,
+    TextInputType keyboardType, {
+    IconData? suffixIcon,
+    VoidCallback? onIconTap,
+    bool isReadOnly = false,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -111,8 +289,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
         ),
         const SizedBox(height: 8),
         TextField(
+          controller: controller,
+          keyboardType: keyboardType,
+          readOnly: isReadOnly,
           decoration: InputDecoration(
-            hintText: hint,
+            hintText: label,
             hintStyle: const TextStyle(color: Colors.black38),
             fillColor: Colors.grey.shade200,
             filled: true,
@@ -120,6 +301,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
               borderRadius: BorderRadius.circular(10),
               borderSide: BorderSide.none,
             ),
+            suffixIcon: suffixIcon != null
+                ? IconButton(
+                    icon: Icon(suffixIcon, color: const Color(0xFFC70808)),
+                    onPressed: onIconTap, // ผูกฟังก์ชันค้นหาพิกัด
+                  )
+                : null,
           ),
         ),
       ],
@@ -131,8 +318,16 @@ class _EditProfilePageState extends State<EditProfilePage> {
       width: double.infinity,
       child: ElevatedButton(
         onPressed: () {
-          // Add save data logic here
-          // Example: print('Saving data...');
+          // เพิ่ม Logic บันทึกข้อมูลที่นี่
+          debugPrint('Saving Name: ${_nameController.text}');
+          debugPrint('Saving GPS: ${_gpsController.text}');
+          // แสดงข้อความแจ้งเตือนเมื่อบันทึกสำเร็จ
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('บันทึกข้อมูลส่วนตัวเรียบร้อยแล้ว'),
+              backgroundColor: Colors.green,
+            ),
+          );
         },
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFC70808),
@@ -163,18 +358,32 @@ class _EditProfilePageState extends State<EditProfilePage> {
           topRight: Radius.circular(30),
         ),
       ),
-      child: Row(
+      child: const Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildNavItem(Icons.home, 'หน้าแรก', true),
-          _buildNavItem(Icons.history, 'ประวัติการส่งสินค้า', false),
-          _buildNavItem(Icons.more_horiz, 'อื่นๆ', false),
+          // แก้ isSelected เป็นค่าคงที่สำหรับแสดงผลเท่านั้น
+          _NavItem(icon: Icons.home, label: 'หน้าแรก', isSelected: false),
+          _NavItem(icon: Icons.history, label: 'ประวัติการส่งสินค้า', isSelected: false),
+          _NavItem(icon: Icons.logout, label: 'ออกจากระบบ', isSelected: true), 
         ],
       ),
     );
   }
+}
 
-  Widget _buildNavItem(IconData icon, String label, bool isSelected) {
+// Widget แยกสำหรับ Nav Item เพื่อให้โค้ดสะอาดขึ้น
+class _NavItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isSelected;
+  const _NavItem({
+    required this.icon,
+    required this.label,
+    required this.isSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [

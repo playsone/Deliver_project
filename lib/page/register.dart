@@ -1,6 +1,12 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'dart:ui' as ui; // <--- FIX 1: Import dart:ui with a prefix
 import 'package:image_picker/image_picker.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:geocoding/geocoding.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -10,12 +16,8 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
-  // ImagePicker instance สำหรับใช้ในการเลือก/ถ่ายรูป
   final ImagePicker _picker = ImagePicker();
-
-  // ตัวแปรควบคุมการแสดงผลฟอร์ม
   bool _isRider = false;
-  // ตัวแปรสำหรับเก็บไฟล์รูปภาพ
   XFile? _profileImage;
   XFile? _vehicleImage;
 
@@ -29,6 +31,8 @@ class _RegisterPageState extends State<RegisterPage> {
   final _address2Controller = TextEditingController();
   final _gpsController = TextEditingController();
   final _vehicleRegController = TextEditingController();
+
+  final LatLng _defaultLocation = const LatLng(13.7367, 100.5231);
 
   @override
   void dispose() {
@@ -60,11 +64,15 @@ class _RegisterPageState extends State<RegisterPage> {
                 padding: EdgeInsets.all(16.0),
                 child: Text(
                   'เลือกแหล่งที่มาของรูปภาพ',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFFC70808)),
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFFC70808)),
                 ),
               ),
               ListTile(
-                leading: const Icon(Icons.photo_library, color: Color(0xFFC70808)),
+                leading:
+                    const Icon(Icons.photo_library, color: Color(0xFFC70808)),
                 title: const Text('เลือกจากแกลเลอรี'),
                 onTap: () {
                   Navigator.pop(context);
@@ -72,7 +80,8 @@ class _RegisterPageState extends State<RegisterPage> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.photo_camera, color: Color(0xFFC70808)),
+                leading:
+                    const Icon(Icons.photo_camera, color: Color(0xFFC70808)),
                 title: const Text('ถ่ายรูปด้วยกล้อง'),
                 onTap: () {
                   Navigator.pop(context);
@@ -101,6 +110,125 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
+  /// 3. ฟังก์ชันดึงตำแหน่ง GPS ปัจจุบัน (สำหรับปุ่ม "พิกัด GPS")
+  Future<void> _getCurrentGPS() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('กรุณาเปิด Location Service')),
+          );
+        }
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('ไม่ได้รับอนุญาตให้เข้าถึง Location')),
+            );
+          }
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Location permissions ถูกปฏิเสธถาวร.'),
+            ),
+          );
+        }
+        return;
+      }
+
+      Position pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      // 4. อัปเดต Controller
+      setState(() {
+        _gpsController.text =
+            "${pos.latitude.toStringAsFixed(6)}, ${pos.longitude.toStringAsFixed(6)}";
+        // ทำ Reverse Geocoding เพื่ออัปเดตช่องที่อยู่ด้วย
+        _reverseGeocodeAndUpdateAddress(LatLng(pos.latitude, pos.longitude));
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error getting location: $e")),
+        );
+      }
+    }
+  }
+
+  // ฟังก์ชัน Reverse Geocoding เพื่ออัปเดตช่องที่อยู่จากพิกัด
+  Future<void> _reverseGeocodeAndUpdateAddress(LatLng point) async {
+    try {
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+          point.latitude, point.longitude,
+          localeIdentifier: 'th');
+
+      if (placemarks.isNotEmpty) {
+        final placemark = placemarks.first;
+        final addressLine = "${placemark.thoroughfare}, "
+            "${placemark.subLocality}, ${placemark.locality}, "
+            "${placemark.administrativeArea}, ${placemark.country}";
+
+        // อัปเดตช่องที่อยู่หลัก
+        _addressController.text = addressLine.replaceAll(', ,', ',').trim();
+      }
+    } catch (e) {
+      debugPrint("Reverse Geocoding Error: $e");
+    }
+  }
+
+  /// 5. Modal สำหรับเลือกพิกัดบนแผนที่ (Geocoding & Map Tap)
+  Future<void> _openMapPicker() async {
+    final currentGpsText = _gpsController.text;
+    LatLng startPos = _defaultLocation;
+    if (currentGpsText.isNotEmpty) {
+      try {
+        final parts =
+            currentGpsText.split(',').map((s) => double.parse(s.trim())).toList();
+        if (parts.length == 2) {
+          startPos = LatLng(parts[0], parts[1]);
+        }
+      } catch (_) {
+        // ใช้ค่าเริ่มต้น ถ้า parse ไม่ได้
+      }
+    }
+
+    final LatLng? result = await showModalBottomSheet<LatLng>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25.0)),
+      ),
+      builder: (context) {
+        return MapPickerModal(
+          initialLocation: startPos,
+          initialAddress: _addressController.text,
+        );
+      },
+    );
+
+    // อัปเดต Controller เมื่อผู้ใช้เลือกพิกัดแล้วกด Save
+    if (result != null) {
+      setState(() {
+        _gpsController.text =
+            "${result.latitude.toStringAsFixed(6)}, ${result.longitude.toStringAsFixed(6)}";
+        // อัปเดต Address Controller ผ่าน Reverse Geocoding
+        _reverseGeocodeAndUpdateAddress(result);
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -114,7 +242,6 @@ class _RegisterPageState extends State<RegisterPage> {
             _buildUserTypeSelector(),
             const SizedBox(height: 20),
             // User Profile Image
-            // อัปเดต: เรียกใช้ _selectImageSource() แทน _pickImage() โดยตรง
             _buildProfileImage(),
             // Registration Form Section with Animation
             AnimatedCrossFade(
@@ -134,7 +261,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Header Section
+  // Header Section (ปรับปรุง)
   Widget _buildHeader(BuildContext context) {
     return Column(
       children: [
@@ -156,16 +283,15 @@ class _RegisterPageState extends State<RegisterPage> {
             ),
           ),
         ),
-        Container(
-          height: 100,
-          color: Colors.black,
-          child: const Center(
+        const Padding(
+          padding: EdgeInsets.only(top: 10, bottom: 20),
+          child: Center(
             child: Text(
               'สมัครสมาชิก',
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
-                color: Colors.white,
+                color: Color(0xFFC70808), // ใช้สีหลักของธีม
               ),
             ),
           ),
@@ -199,6 +325,11 @@ class _RegisterPageState extends State<RegisterPage> {
         onTap: () {
           setState(() {
             _isRider = title == 'ไรเดอร์';
+            // Clear vehicle image when switching back to user
+            if (!_isRider) {
+              _vehicleImage = null;
+              _vehicleRegController.clear();
+            }
           });
         },
         child: Container(
@@ -220,9 +351,8 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Profile Image Section
+  // Profile Image Section (ไม่มีการเปลี่ยนแปลง)
   Widget _buildProfileImage() {
-    // อัปเดต: เปลี่ยนไปเรียก _selectImageSource(true)
     return GestureDetector(
       onTap: () => _selectImageSource(true), // isProfile = true
       child: Stack(
@@ -234,7 +364,6 @@ class _RegisterPageState extends State<RegisterPage> {
             decoration: BoxDecoration(
               color: const Color(0xFFE0E0E0),
               shape: BoxShape.circle,
-              // อัปเดตการแสดงผลรูปภาพ โดยใช้ FileImage จาก path ของ XFile
               image: _profileImage != null
                   ? DecorationImage(
                       image: FileImage(File(_profileImage!.path)),
@@ -263,9 +392,8 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Vehicle Image Section (เฉพาะไรเดอร์)
+  // Vehicle Image Section (เฉพาะไรเดอร์) (ไม่มีการเปลี่ยนแปลง)
   Widget _buildVehicleImage() {
-    // อัปเดต: เปลี่ยนไปเรียก _selectImageSource(false)
     return GestureDetector(
       onTap: () => _selectImageSource(false), // isProfile = false
       child: Stack(
@@ -277,7 +405,6 @@ class _RegisterPageState extends State<RegisterPage> {
             decoration: BoxDecoration(
               color: const Color(0xFFE0E0E0),
               shape: BoxShape.circle,
-              // อัปเดตการแสดงผลรูปภาพ โดยใช้ FileImage จาก path ของ XFile
               image: _vehicleImage != null
                   ? DecorationImage(
                       image: FileImage(File(_vehicleImage!.path)),
@@ -306,7 +433,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // User Registration Form (ไม่มีการเปลี่ยนแปลง)
+  // User Registration Form (ปรับปรุงช่อง Address และ GPS)
   Widget _buildUserForm() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
@@ -338,14 +465,22 @@ class _RegisterPageState extends State<RegisterPage> {
             isPassword: true,
           ),
           const SizedBox(height: 20),
-          _buildTextField('ที่อยู่', controller: _addressController),
-          const SizedBox(height: 20),
-          _buildTextField('ที่อยู่ 2', controller: _address2Controller),
-          const SizedBox(height: 20),
+          // ช่องที่อยู่ (ผูกกับ Map Picker)
           _buildTextFieldWithIcon(
-            'พิกัด GPS',
+            'ที่อยู่ (แตะเพื่อเลือกบนแผนที่)',
+            Icons.map,
+            controller: _addressController,
+            onIconTap: _openMapPicker, // เปิด Modal แผนที่
+          ),
+          const SizedBox(height: 20),
+          _buildTextField('ที่อยู่ 2 (ไม่บังคับ)', controller: _address2Controller),
+          const SizedBox(height: 20),
+          // ช่องพิกัด GPS (ดึงตำแหน่งปัจจุบัน)
+          _buildTextFieldWithIcon(
+            'พิกัด GPS (แตะเพื่อดึงตำแหน่งปัจจุบัน)',
             Icons.location_on,
             controller: _gpsController,
+            onIconTap: _getCurrentGPS, // ดึง GPS ปัจจุบัน
           ),
         ],
       ),
@@ -421,9 +556,12 @@ class _RegisterPageState extends State<RegisterPage> {
     String label,
     IconData icon, {
     TextEditingController? controller,
+    VoidCallback? onIconTap,
   }) {
     return TextField(
       controller: controller,
+      // ตั้งเป็นอ่านอย่างเดียว เนื่องจากข้อมูลจะถูกอัปเดตผ่าน MapPicker หรือ GPS
+      readOnly: onIconTap != null, 
       decoration: InputDecoration(
         labelText: label,
         labelStyle: const TextStyle(color: Colors.black54),
@@ -433,7 +571,10 @@ class _RegisterPageState extends State<RegisterPage> {
           borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide.none,
         ),
-        suffixIcon: Icon(icon, color: Colors.black54),
+        suffixIcon: IconButton(
+          icon: Icon(icon, color: Colors.black54),
+          onPressed: onIconTap,
+        ),
       ),
     );
   }
@@ -446,7 +587,6 @@ class _RegisterPageState extends State<RegisterPage> {
         width: double.infinity,
         child: ElevatedButton(
           onPressed: () {
-            // Show success dialog
             _showSuccessDialog(context);
           },
           style: ElevatedButton.styleFrom(
@@ -518,11 +658,11 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 }
 
-// Custom Clipper for the red background shape (ไม่มีการเปลี่ยนแปลง)
-class CustomClipperRed extends CustomClipper<Path> {
+// Custom Clipper for the red background shape (แก้ไข: ใช้ ui.Path)
+class CustomClipperRed extends CustomClipper<ui.Path> { // <--- FIX 2: เปลี่ยนเป็น ui.Path
   @override
-  Path getClip(Size size) {
-    var path = Path();
+  ui.Path getClip(Size size) { // <--- FIX 2: เปลี่ยนเป็น ui.Path
+    var path = ui.Path(); // <--- FIX 2: เปลี่ยนเป็น ui.Path
     path.lineTo(0, size.height - 100);
     path.quadraticBezierTo(
       size.width / 2,
@@ -536,7 +676,197 @@ class CustomClipperRed extends CustomClipper<Path> {
   }
 
   @override
-  bool shouldReclip(CustomClipper<Path> oldClipper) {
+  bool shouldReclip(CustomClipper<ui.Path> oldClipper) { // <--- FIX 2: เปลี่ยนเป็น ui.Path
     return false;
+  }
+}
+
+// ******************************************************************
+// Widget ใหม่: MapPickerModal สำหรับค้นหาและเลือกพิกัด (ไม่มีการเปลี่ยนแปลง)
+// ******************************************************************
+class MapPickerModal extends StatefulWidget {
+  final LatLng initialLocation;
+  final String initialAddress;
+
+  const MapPickerModal({
+    super.key,
+    required this.initialLocation,
+    required this.initialAddress,
+  });
+
+  @override
+  State<MapPickerModal> createState() => _MapPickerModalState();
+}
+
+class _MapPickerModalState extends State<MapPickerModal> {
+  final MapController _mapController = MapController();
+  final TextEditingController _searchController = TextEditingController();
+  LatLng? _selectedPos;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedPos = widget.initialLocation;
+    _searchController.text = widget.initialAddress;
+  }
+
+  // 4.1 ฟังก์ชัน Geocoding (ค้นหาชื่อสถานที่)
+  Future<void> _geocodeAddress() async {
+    final address = _searchController.text;
+    if (address.isEmpty) return;
+
+    try {
+      List<Location> locations = await locationFromAddress(address);
+
+      if (locations.isNotEmpty) {
+        final newLat = locations.first.latitude;
+        final newLng = locations.first.longitude;
+        final newPos = LatLng(newLat, newLng);
+
+        setState(() {
+          _selectedPos = newPos;
+        });
+
+        // เลื่อน Map ไปยังพิกัดที่พบ
+        _mapController.move(newPos, 16.0);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('ไม่พบสถานที่ตามที่อยู่ กรุณาลองใหม่อีกครั้ง'),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('เกิดข้อผิดพลาดในการค้นหาพิกัด: $e'),
+          ),
+        );
+      }
+    }
+  }
+
+  // 4.2 ฟังก์ชัน Reverse Geocoding (แตะบนแผนที่)
+  void _onMapTap(TapPosition tapPosition, LatLng point) async {
+    setState(() {
+      _selectedPos = point;
+    });
+
+    try {
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+          point.latitude, point.longitude,
+          localeIdentifier: 'th');
+
+      if (placemarks.isNotEmpty) {
+        final placemark = placemarks.first;
+        final addressLine = "${placemark.thoroughfare}, "
+            "${placemark.subLocality}, ${placemark.locality}, "
+            "${placemark.administrativeArea}, ${placemark.country}";
+
+        // อัปเดตช่องค้นหาด้วยที่อยู่ใหม่
+        _searchController.text = addressLine.replaceAll(', ,', ',').trim();
+      }
+    } catch (e) {
+      debugPrint("Reverse Geocoding Error: $e");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        children: [
+          const Text(
+            'ค้นหาและเลือกพิกัดที่อยู่',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFFC70808),
+            ),
+          ),
+          const SizedBox(height: 15),
+          // 4.3 Search Bar
+          TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'พิมพ์ชื่อสถานที่หรือที่อยู่ เช่น "มหาวิทยาลัยมหาสารคาม"',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.search, color: Color(0xFFC70808)),
+                onPressed: _geocodeAddress, // ผูกกับฟังก์ชันค้นหา
+              ),
+            ),
+            onSubmitted: (_) => _geocodeAddress(),
+          ),
+          const SizedBox(height: 15),
+          // 4.4 Map Widget
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(15),
+              child: FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: widget.initialLocation,
+                  initialZoom: 14.0,
+                  onTap: _onMapTap, // ผูกกับฟังก์ชันแตะแผนที่
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                    userAgentPackageName: "com.example.app",
+                  ),
+                  if (_selectedPos != null)
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: _selectedPos!,
+                          width: 80,
+                          height: 80,
+                          child: const Icon(
+                            Icons.location_on,
+                            color: Color(0xFFC70808),
+                            size: 40,
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 15),
+          // 4.5 Save Button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {
+                if (_selectedPos != null) {
+                  // ส่ง LatLng กลับไปยังหน้า RegisterPage
+                  Navigator.pop(context, _selectedPos);
+                } else {
+                  Navigator.pop(context);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text(
+                'ยืนยันพิกัดนี้',
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
