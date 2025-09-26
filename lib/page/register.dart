@@ -424,11 +424,7 @@ class _RegisterPageState extends State<RegisterPage> {
         children: [
           _buildTextField('ชื่อ-สกุล', controller: _fullNameController),
           const SizedBox(height: 20),
-          _buildTextField(
-            'อีเมล',
-            controller: _emailController,
-            keyboardType: TextInputType.emailAddress,
-          ),
+       
           const SizedBox(height: 20),
           _buildTextField(
             'เบอร์โทรศัพท์',
@@ -450,6 +446,14 @@ class _RegisterPageState extends State<RegisterPage> {
           const SizedBox(height: 20),
           // ช่องที่อยู่ (กรอกเอง)
           _buildTextField('ที่อยู่หลัก', controller: _addressController),
+          _buildTextFieldWithIcon(
+            'พิกัด GPS (แตะที่ช่องเพื่อเลือกบนแผนที่)',
+            Icons.my_location, // Icon สำหรับดึงตำแหน่งปัจจุบัน
+            controller: _gpsController,
+            onIconTap: _getCurrentGPS, // แตะ Icon: ดึง GPS ปัจจุบัน
+            onFieldTap: _openMapPicker, // แตะ Field: เปิด Map Picker
+            readOnly: true, // ช่องนี้เป็นแบบอ่านอย่างเดียว
+          ),
           const SizedBox(height: 20),
           _buildTextField('ที่อยู่ 2 (ไม่บังคับ)', controller: _address2Controller),
           const SizedBox(height: 20),
@@ -475,11 +479,6 @@ class _RegisterPageState extends State<RegisterPage> {
         children: [
           _buildTextField('ชื่อ-สกุล', controller: _fullNameController),
           const SizedBox(height: 20),
-          _buildTextField(
-            'อีเมล',
-            controller: _emailController,
-            keyboardType: TextInputType.emailAddress,
-          ),
           const SizedBox(height: 20),
           _buildTextField(
             'เบอร์โทรศัพท์',
