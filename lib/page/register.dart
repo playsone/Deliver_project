@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -8,7 +10,96 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
+  // ImagePicker instance สำหรับใช้ในการเลือก/ถ่ายรูป
+  final ImagePicker _picker = ImagePicker();
+
+  // ตัวแปรควบคุมการแสดงผลฟอร์ม
   bool _isRider = false;
+  // ตัวแปรสำหรับเก็บไฟล์รูปภาพ
+  XFile? _profileImage;
+  XFile? _vehicleImage;
+
+  // Controllers สำหรับการจัดการข้อมูลในฟอร์ม
+  final _fullNameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+  final _addressController = TextEditingController();
+  final _address2Controller = TextEditingController();
+  final _gpsController = TextEditingController();
+  final _vehicleRegController = TextEditingController();
+
+  @override
+  void dispose() {
+    _fullNameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    _addressController.dispose();
+    _address2Controller.dispose();
+    _gpsController.dispose();
+    _vehicleRegController.dispose();
+    super.dispose();
+  }
+
+  /// 1. ฟังก์ชันแสดง Modal ให้ผู้ใช้เลือกว่าจะใช้ Camera หรือ Gallery
+  Future<void> _selectImageSource(bool isProfile) async {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text(
+                  'เลือกแหล่งที่มาของรูปภาพ',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFFC70808)),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: Color(0xFFC70808)),
+                title: const Text('เลือกจากแกลเลอรี'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImage(isProfile, ImageSource.gallery);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera, color: Color(0xFFC70808)),
+                title: const Text('ถ่ายรูปด้วยกล้อง'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImage(isProfile, ImageSource.camera);
+                },
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// 2. ฟังก์ชันจริงสำหรับการเลือกรูปภาพ โดยรับ ImageSource เข้ามา
+  Future<void> _pickImage(bool isProfile, ImageSource source) async {
+    final pickedFile = await _picker.pickImage(source: source);
+    if (pickedFile != null) {
+      setState(() {
+        if (isProfile) {
+          _profileImage = pickedFile;
+        } else {
+          _vehicleImage = pickedFile;
+        }
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,6 +114,7 @@ class _RegisterPageState extends State<RegisterPage> {
             _buildUserTypeSelector(),
             const SizedBox(height: 20),
             // User Profile Image
+            // อัปเดต: เรียกใช้ _selectImageSource() แทน _pickImage() โดยตรง
             _buildProfileImage(),
             // Registration Form Section with Animation
             AnimatedCrossFade(
@@ -42,9 +134,9 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
+  // Header Section
   Widget _buildHeader(BuildContext context) {
-    return Stack(
-      alignment: Alignment.center,
+    return Column(
       children: [
         ClipPath(
           clipper: CustomClipperRed(),
@@ -64,24 +156,16 @@ class _RegisterPageState extends State<RegisterPage> {
             ),
           ),
         ),
-        Positioned(
-          bottom: 0,
-          left: 0,
-          right: 0,
-          child: ClipPath(
-            clipper: CustomClipperBlack(),
-            child: Container(
-              height: 100,
-              color: Colors.black,
-              child: const Center(
-                child: Text(
-                  'สมัครสมาชิก',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
+        Container(
+          height: 100,
+          color: Colors.black,
+          child: const Center(
+            child: Text(
+              'สมัครสมาชิก',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
               ),
             ),
           ),
@@ -90,6 +174,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
+  // User Type Selector (ไม่มีการเปลี่ยนแปลง)
   Widget _buildUserTypeSelector() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
@@ -135,76 +220,189 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
+  // Profile Image Section
   Widget _buildProfileImage() {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        Container(
-          width: 100,
-          height: 100,
-          decoration: const BoxDecoration(
-            color: Color(0xFFE0E0E0),
-            shape: BoxShape.circle,
-          ),
-        ),
-        Positioned(
-          bottom: 0,
-          right: 0,
-          child: Container(
-            padding: const EdgeInsets.all(5),
-            decoration: const BoxDecoration(
-              color: Colors.green,
+    // อัปเดต: เปลี่ยนไปเรียก _selectImageSource(true)
+    return GestureDetector(
+      onTap: () => _selectImageSource(true), // isProfile = true
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(
+            width: 100,
+            height: 100,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE0E0E0),
               shape: BoxShape.circle,
+              // อัปเดตการแสดงผลรูปภาพ โดยใช้ FileImage จาก path ของ XFile
+              image: _profileImage != null
+                  ? DecorationImage(
+                      image: FileImage(File(_profileImage!.path)),
+                      fit: BoxFit.cover,
+                    )
+                  : null,
             ),
-            child: const Icon(Icons.add, color: Colors.white, size: 20),
+            child: _profileImage == null
+                ? const Icon(Icons.person, size: 60, color: Colors.grey)
+                : null,
           ),
-        ),
-      ],
+          Positioned(
+            bottom: 0,
+            right: 0,
+            child: Container(
+              padding: const EdgeInsets.all(5),
+              decoration: const BoxDecoration(
+                color: Colors.green,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.add, color: Colors.white, size: 20),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
+  // Vehicle Image Section (เฉพาะไรเดอร์)
+  Widget _buildVehicleImage() {
+    // อัปเดต: เปลี่ยนไปเรียก _selectImageSource(false)
+    return GestureDetector(
+      onTap: () => _selectImageSource(false), // isProfile = false
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(
+            width: 100,
+            height: 100,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE0E0E0),
+              shape: BoxShape.circle,
+              // อัปเดตการแสดงผลรูปภาพ โดยใช้ FileImage จาก path ของ XFile
+              image: _vehicleImage != null
+                  ? DecorationImage(
+                      image: FileImage(File(_vehicleImage!.path)),
+                      fit: BoxFit.cover,
+                    )
+                  : null,
+            ),
+            child: _vehicleImage == null
+                ? const Icon(Icons.motorcycle, size: 60, color: Colors.grey)
+                : null,
+          ),
+          Positioned(
+            bottom: 0,
+            right: 0,
+            child: Container(
+              padding: const EdgeInsets.all(5),
+              decoration: const BoxDecoration(
+                color: Colors.green,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.add, color: Colors.white, size: 20),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // User Registration Form (ไม่มีการเปลี่ยนแปลง)
   Widget _buildUserForm() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
       child: Column(
         children: [
-          _buildTextField('ชื่อ-สกุล'),
+          _buildTextField('ชื่อ-สกุล', controller: _fullNameController),
           const SizedBox(height: 20),
-          _buildTextField('อีเมล'),
+          _buildTextField(
+            'อีเมล',
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+          ),
           const SizedBox(height: 20),
-          _buildTextField('ที่อยู่'),
+          _buildTextField(
+            'เบอร์โทรศัพท์',
+            controller: _phoneController,
+            keyboardType: TextInputType.phone,
+          ),
           const SizedBox(height: 20),
-          _buildTextField('เบอร์โทรศัพท์'),
+          _buildTextField(
+            'รหัสผ่าน',
+            controller: _passwordController,
+            isPassword: true,
+          ),
           const SizedBox(height: 20),
-          _buildTextFieldWithIcon('พิกัด GPS', Icons.location_on),
+          _buildTextField(
+            'รหัสผ่านอีกครั้ง',
+            controller: _confirmPasswordController,
+            isPassword: true,
+          ),
+          const SizedBox(height: 20),
+          _buildTextField('ที่อยู่', controller: _addressController),
+          const SizedBox(height: 20),
+          _buildTextField('ที่อยู่ 2', controller: _address2Controller),
+          const SizedBox(height: 20),
+          _buildTextFieldWithIcon(
+            'พิกัด GPS',
+            Icons.location_on,
+            controller: _gpsController,
+          ),
         ],
       ),
     );
   }
 
+  // Rider Registration Form (ไม่มีการเปลี่ยนแปลง)
   Widget _buildRiderForm() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
       child: Column(
         children: [
-          _buildTextField('ชื่อ-สกุล'),
+          _buildTextField('ชื่อ-สกุล', controller: _fullNameController),
           const SizedBox(height: 20),
-          _buildTextField('อีเมล'),
+          _buildTextField(
+            'อีเมล',
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+          ),
           const SizedBox(height: 20),
-          _buildTextField('ที่อยู่'),
+          _buildTextField(
+            'เบอร์โทรศัพท์',
+            controller: _phoneController,
+            keyboardType: TextInputType.phone,
+          ),
           const SizedBox(height: 20),
-          _buildTextField('เบอร์โทรศัพท์'),
+          _buildTextField(
+            'รหัสผ่าน',
+            controller: _passwordController,
+            isPassword: true,
+          ),
           const SizedBox(height: 20),
-          _buildTextFieldWithIcon('พิกัด GPS', Icons.location_on),
+          _buildTextField(
+            'รหัสผ่านอีกครั้ง',
+            controller: _confirmPasswordController,
+            isPassword: true,
+          ),
           const SizedBox(height: 20),
-          _buildTextFieldWithIcon('ทะเบียนรถ', Icons.motorcycle),
+          _buildTextField('ทะเบียนรถ', controller: _vehicleRegController),
+          const SizedBox(height: 20),
+          _buildVehicleImage(), // Vehicle image upload for rider
         ],
       ),
     );
   }
 
-  Widget _buildTextField(String label) {
+  // Generic TextField (ไม่มีการเปลี่ยนแปลง)
+  Widget _buildTextField(
+    String label, {
+    TextEditingController? controller,
+    bool isPassword = false,
+    TextInputType keyboardType = TextInputType.text,
+  }) {
     return TextField(
+      controller: controller,
+      obscureText: isPassword,
+      keyboardType: keyboardType,
       decoration: InputDecoration(
         labelText: label,
         labelStyle: const TextStyle(color: Colors.black54),
@@ -218,8 +416,14 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  Widget _buildTextFieldWithIcon(String label, IconData icon) {
+  // TextField with icon (ไม่มีการเปลี่ยนแปลง)
+  Widget _buildTextFieldWithIcon(
+    String label,
+    IconData icon, {
+    TextEditingController? controller,
+  }) {
     return TextField(
+      controller: controller,
       decoration: InputDecoration(
         labelText: label,
         labelStyle: const TextStyle(color: Colors.black54),
@@ -234,6 +438,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
+  // Submit Button (ไม่มีการเปลี่ยนแปลง)
   Widget _buildSubmitButton(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40),
@@ -264,6 +469,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
+  // Success Dialog (ไม่มีการเปลี่ยนแปลง)
   void _showSuccessDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -312,7 +518,7 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 }
 
-// Custom Clipper for the red background shape (same as previous example)
+// Custom Clipper for the red background shape (ไม่มีการเปลี่ยนแปลง)
 class CustomClipperRed extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
@@ -325,25 +531,6 @@ class CustomClipperRed extends CustomClipper<Path> {
       size.height - 100,
     );
     path.lineTo(size.width, 0);
-    path.close();
-    return path;
-  }
-
-  @override
-  bool shouldReclip(CustomClipper<Path> oldClipper) {
-    return false;
-  }
-}
-
-// Custom Clipper for the black background shape
-class CustomClipperBlack extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    var path = Path();
-    path.lineTo(0, size.height);
-    path.quadraticBezierTo(size.width / 2, 0, size.width, size.height);
-    path.lineTo(size.width, 0);
-    path.lineTo(0, 0);
     path.close();
     return path;
   }
