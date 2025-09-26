@@ -19,6 +19,7 @@ dependencies:
 
   # iOS style icons
   cupertino_icons: ^1.0.8
+  firebase_core: ^4.1.1
 
 dev_dependencies:
   flutter_test:
