@@ -11,20 +11,14 @@ class EditProfilePage extends StatefulWidget {
 }
 
 class _EditProfilePageState extends State<EditProfilePage> {
-  // Mock data to simulate user information
   final String _profileImageUrl = 'https://picsum.photos/200';
-  final LatLng _defaultLocation = const LatLng(13.7563, 100.5018); // Bangkok
-  LatLng _currentMarkerPos =
-      const LatLng(13.7563, 100.5018); // Marker initial position
-
-  // Controllers for form fields
+  final LatLng _defaultLocation = const LatLng(13.7563, 100.5018);
+  LatLng _currentMarkerPos = const LatLng(13.7563, 100.5018);
   final _nameController = TextEditingController(text: 'สมชาย รักชาติ');
   final _phoneController = TextEditingController(text: '081-234-5678');
   final _addressController =
       TextEditingController(text: 'ตึกใบหยก 2, กรุงเทพมหานคร');
   final _gpsController = TextEditingController(text: '13.7563, 100.5018');
-
-  // Map Controller
   final MapController _mapController = MapController();
 
   @override
@@ -170,7 +164,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
               ),
             ),
           ),
-          const SizedBox(height: 10), // เพิ่มระยะห่างให้ฟอร์มขึ้นมา
+          const SizedBox(height: 10),
         ],
       ),
     );
@@ -188,7 +182,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
           _buildTextFieldWithLabel(
               'หมายเลขโทรศัพท์', _phoneController, TextInputType.phone),
           const SizedBox(height: 20),
-          // *** แก้ไข: เพิ่มปุ่มค้นหาให้กับช่องที่อยู่ ***
           _buildTextFieldWithLabel(
             'ที่อยู่หรือสถานที่พิกัด',
             _addressController,
@@ -201,7 +194,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
             'พิกัด GPS (Lat, Lng)',
             _gpsController,
             TextInputType.text,
-            isReadOnly: true, // กำหนดให้ช่อง GPS เป็นแบบอ่านอย่างเดียว
+            isReadOnly: true,
           ),
           const SizedBox(height: 40),
           _buildSaveButton(),

@@ -53,11 +53,11 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyCWOOKpYPNvCWL6-nHMx3Y2LOe7gDhLUUU',
-    appId: '1:211024952783:android:8d18047747ed13922ae6ba',
-    messagingSenderId: '211024952783',
-    projectId: 'speedder-delivery',
-    databaseURL: 'https://speedder-delivery-default-rtdb.asia-southeast1.firebasedatabase.app',
-    storageBucket: 'speedder-delivery.firebasestorage.app',
+    apiKey: 'AIzaSyC1eaao3HiWm6e1AQ3QcJ0WravJaIrgaw0',
+    appId: '1:320345112481:android:25db56caecb80a8d48d5e0',
+    messagingSenderId: '320345112481',
+    projectId: 'derivery-7a618',
+    storageBucket: 'derivery-7a618.firebasestorage.app',
   );
+
 }

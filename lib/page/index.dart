@@ -3,7 +3,7 @@ import 'package:delivery_project/page/register.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get_core/src/get_main.dart';
 import 'package:get/get_navigation/get_navigation.dart';
-import 'package:delivery_project/page/login.dart'; // หรือเส้นทางที่ถูกต้องของไฟล์ login.dart
+import 'package:delivery_project/page/login.dart';
 
 class SpeedDerApp extends StatelessWidget {
   const SpeedDerApp({super.key});

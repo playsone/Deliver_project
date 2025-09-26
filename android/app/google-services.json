@@ -1,14 +1,13 @@
 {
   "project_info": {
-    "project_number": "211024952783",
-    "firebase_url": "https://speedder-delivery-default-rtdb.asia-southeast1.firebasedatabase.app",
-    "project_id": "speedder-delivery",
-    "storage_bucket": "speedder-delivery.firebasestorage.app"
+    "project_number": "320345112481",
+    "project_id": "derivery-7a618",
+    "storage_bucket": "derivery-7a618.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:211024952783:android:8d18047747ed13922ae6ba",
+        "mobilesdk_app_id": "1:320345112481:android:25db56caecb80a8d48d5e0",
         "android_client_info": {
           "package_name": "com.example.delivery_project"
         }
@@ -16,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyCWOOKpYPNvCWL6-nHMx3Y2LOe7gDhLUUU"
+          "current_key": "AIzaSyC1eaao3HiWm6e1AQ3QcJ0WravJaIrgaw0"
         }
       ],
       "services": {
