@@ -1,21 +1,20 @@
 import 'package:delivery_project/page/home.dart';
+import 'package:delivery_project/page/register.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Import Firebase Auth
 
-class RegisterPage extends StatefulWidget {
-  const RegisterPage({super.key});
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
 
   @override
-  State<RegisterPage> createState() => _RegisterPageState();
+  State<LoginPage> createState() => _LoginPageState();
 }
 
-class _RegisterPageState extends State<RegisterPage> {
-  // 1. Controllers
+class _LoginPageState extends State<LoginPage> {
+  // 1. Controllers สำหรับรับค่าจากผู้ใช้ (Phone Number และ Password)
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
-  final TextEditingController confirmPasswordController =
-      TextEditingController();
 
   // 2. สถานะสำหรับ Loading
   bool _isLoading = false;
@@ -24,23 +23,22 @@ class _RegisterPageState extends State<RegisterPage> {
   void dispose() {
     phoneController.dispose();
     passwordController.dispose();
-    confirmPasswordController.dispose();
     super.dispose();
   }
 
   // 3. ฟังก์ชันสำหรับแสดงข้อความแจ้งเตือน
-  void _showSnackBar(String message, {bool success = false}) {
+  void _showSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: success ? Colors.green : const Color(0xFFC70808),
+        backgroundColor: const Color(0xFFC70808),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 3),
       ),
     );
   }
 
-  // 4. ฟังก์ชันแปลงเบอร์โทรศัพท์เป็น Email (ต้องเหมือนกับหน้า Login)
+  // 4. ฟังก์ชันแปลงเบอร์โทรศัพท์เป็น Email สำหรับ Firebase (ใช้เป็น Username)
   String _constructEmailFromPhone(String phoneNumber) {
     // ลบอักขระที่ไม่ใช่ตัวเลขออก แล้วต่อท้ายด้วยโดเมนที่กำหนด
     final cleanPhone = phoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
@@ -48,23 +46,14 @@ class _RegisterPageState extends State<RegisterPage> {
     return "$cleanPhone@speedder.com";
   }
 
-  // 5. ฟังก์ชันสมัครสมาชิก
-  Future<void> register() async {
+  // 5. ฟังก์ชันหลักสำหรับจัดการการ Login ด้วยเบอร์โทรศัพท์และรหัสผ่าน
+  Future<void> login() async {
     final phoneNumber = phoneController.text.trim();
     final password = passwordController.text.trim();
-    final confirmPassword = confirmPasswordController.text.trim();
 
-    // ตรวจสอบความถูกต้อง
-    if (phoneNumber.isEmpty || password.isEmpty || confirmPassword.isEmpty) {
-      _showSnackBar("กรุณากรอกข้อมูลให้ครบถ้วน");
-      return;
-    }
-    if (password != confirmPassword) {
-      _showSnackBar("รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน");
-      return;
-    }
-    if (password.length < 6) {
-      _showSnackBar("รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร");
+    // ตรวจสอบความถูกต้องเบื้องต้น
+    if (phoneNumber.isEmpty || password.isEmpty) {
+      _showSnackBar("กรุณากรอกเบอร์โทรศัพท์และรหัสผ่านให้ครบถ้วน");
       return;
     }
 
@@ -73,25 +62,27 @@ class _RegisterPageState extends State<RegisterPage> {
     });
 
     try {
-      // แปลงเบอร์โทรศัพท์เป็น Email สำหรับการสมัครสมาชิก
+      // แปลงเบอร์โทรศัพท์เป็น Email สำหรับการ Login ใน Firebase
       final email = _constructEmailFromPhone(phoneNumber);
 
-      // สร้างบัญชีผู้ใช้ใน Firebase ด้วย Email ปลอมและรหัสผ่านจริง
-      await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      _showSnackBar("สมัครสมาชิกสำเร็จ! กำลังเข้าสู่ระบบ...", success: true);
-
-      // เมื่อสมัครสำเร็จ ให้ไปยังหน้าหลัก
+      // ถ้า Login สำเร็จ ให้ไปยังหน้าหลัก (HomeScreen) และลบ Route ก่อนหน้าทั้งหมด
       Get.offAll(() => const HomeScreen());
     } on FirebaseAuthException catch (e) {
-      String errorMessage = "การสมัครสมาชิกไม่สำเร็จ";
-      if (e.code == 'email-already-in-use') {
-        errorMessage = "เบอร์โทรศัพท์นี้ถูกใช้สมัครสมาชิกแล้ว";
-      } else if (e.code == 'weak-password') {
-        errorMessage = "รหัสผ่านอ่อนแอเกินไป กรุณาตั้งรหัสที่ซับซ้อนกว่านี้";
+      // จัดการข้อผิดพลาดจาก Firebase
+      String errorMessage =
+          "การเข้าสู่ระบบล้มเหลว กรุณาตรวจสอบเบอร์โทรศัพท์และรหัสผ่าน";
+      if (e.code == 'user-not-found') {
+        errorMessage = "ไม่พบผู้ใช้งานด้วยเบอร์โทรศัพท์นี้";
+      } else if (e.code == 'wrong-password') {
+        errorMessage = "รหัสผ่านไม่ถูกต้อง";
+      } else if (e.code == 'invalid-email') {
+        // อาจเกิดขึ้นถ้าเบอร์โทรศัพท์ที่แปลงแล้วไม่ตรงตามรูปแบบ email
+        errorMessage = "เบอร์โทรศัพท์ที่ใช้ไม่ถูกต้อง";
       }
       _showSnackBar(errorMessage);
     } finally {
@@ -104,13 +95,16 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFDE9E9),
+      backgroundColor: const Color(0xFFFDE9E9), // Background color
       body: SingleChildScrollView(
         child: Column(
           children: [
+            // Header Section
             _buildHeader(context),
-            _buildRegisterForm(context),
-            _buildFooter(),
+            // Login Form Section
+            _buildLoginForm(context),
+            // Footer Section
+            _buildFooter(context),
           ],
         ),
       ),
@@ -125,7 +119,7 @@ class _RegisterPageState extends State<RegisterPage> {
           clipper: CustomClipperRed(),
           child: Container(
             height: MediaQuery.of(context).size.height * 0.35,
-            color: const Color(0xFFC70808),
+            color: const Color(0xFFC70808), // Red color
             child: const Center(
               child: Text(
                 'SPEED - DER',
@@ -149,9 +143,9 @@ class _RegisterPageState extends State<RegisterPage> {
           ),
         ),
         Positioned(
-          bottom: 50,
+          bottom: 50, // ปรับตำแหน่งให้ข้อความอยู่กึ่งกลางโค้งมน
           child: const Text(
-            'สมัครสมาชิก',
+            'เข้าสู่ระบบ',
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
@@ -163,7 +157,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  Widget _buildRegisterForm(BuildContext context) {
+  Widget _buildLoginForm(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
       child: Column(
@@ -171,36 +165,45 @@ class _RegisterPageState extends State<RegisterPage> {
           // ช่องกรอกเบอร์โทรศัพท์
           _buildTextField(
             label: 'เบอร์โทรศัพท์',
+            isPassword: false,
             controller: phoneController,
             keyboardType: TextInputType.phone,
           ),
           const SizedBox(height: 20),
           // ช่องกรอกรหัสผ่าน
           _buildTextField(
-            label: 'รหัสผ่าน (อย่างน้อย 6 ตัว)',
-            controller: passwordController,
+            label: 'รหัสผ่าน',
             isPassword: true,
+            controller: passwordController,
             keyboardType: TextInputType.text,
+          ),
+          const SizedBox(height: 10),
+
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () {
+                // TODO: Implement forgot password logic
+                _showSnackBar("ฟังก์ชันรีเซ็ตรหัสผ่านยังไม่พร้อมใช้งาน");
+              },
+              child: const Text(
+                'รีเซ็ตรหัสผ่าน',
+                style: TextStyle(color: Color(0xFFC70808), fontSize: 14),
+              ),
+            ),
           ),
           const SizedBox(height: 20),
-          // ช่องยืนยันรหัสผ่าน
-          _buildTextField(
-            label: 'ยืนยันรหัสผ่าน',
-            controller: confirmPasswordController,
-            isPassword: true,
-            keyboardType: TextInputType.text,
-          ),
-          const SizedBox(height: 30),
-          _buildRegisterButton(),
+          _buildLoginButton(context),
         ],
       ),
     );
   }
 
+  // อัปเดต _buildTextField ให้รับ TextEditingController
   Widget _buildTextField({
     required String label,
+    required bool isPassword,
     required TextEditingController controller,
-    bool isPassword = false,
     required TextInputType keyboardType,
   }) {
     return TextField(
@@ -220,11 +223,12 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  Widget _buildRegisterButton() {
+  Widget _buildLoginButton(BuildContext context) {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: _isLoading ? null : register,
+        // เชื่อมปุ่มกับฟังก์ชัน Login
+        onPressed: _isLoading ? null : login,
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFC70808),
           padding: const EdgeInsets.symmetric(vertical: 15),
@@ -242,7 +246,8 @@ class _RegisterPageState extends State<RegisterPage> {
                 ),
               )
             : const Text(
-                'ลงทะเบียน',
+                // ข้อความเป็น "เข้าสู่ระบบ" ตามที่ผู้ใช้ต้องการ
+                'เข้าสู่ระบบ',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 18,
@@ -253,23 +258,22 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  Widget _buildFooter() {
+  Widget _buildFooter(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 20),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Column(
         children: [
           const Text(
-            'มีบัญชีอยู่แล้ว?',
+            'ถ้าคุณยังไม่ได้เป็นสมาชิก?',
             style: TextStyle(color: Colors.black54, fontSize: 14),
           ),
           TextButton(
             onPressed: () {
-              // ย้อนกลับไปหน้า Login
-              Get.back();
+              // ใช้ GetX สำหรับการนำทางไปยังหน้า RegisterPage
+              Get.to(() => const RegisterPage(), transition: Transition.fadeIn);
             },
             child: const Text(
-              'เข้าสู่ระบบ',
+              'สมัครสมาชิก',
               style: TextStyle(
                 color: Color(0xFFC70808),
                 fontSize: 16,
@@ -283,7 +287,7 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 }
 
-// Custom Clipper for the red background shape (คัดลอกจาก LoginPage)
+// Custom Clipper for the red background shape
 class CustomClipperRed extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
@@ -306,7 +310,7 @@ class CustomClipperRed extends CustomClipper<Path> {
   }
 }
 
-// Custom Clipper for the white background shape (คัดลอกจาก LoginPage)
+// Custom Clipper for the white background shape
 class CustomClipperWhite extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
