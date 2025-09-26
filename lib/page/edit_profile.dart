@@ -14,12 +14,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
   // Mock data to simulate user information
   final String _profileImageUrl = 'https://picsum.photos/200';
   final LatLng _defaultLocation = const LatLng(13.7563, 100.5018); // Bangkok
-  LatLng _currentMarkerPos = const LatLng(13.7563, 100.5018); // Marker initial position
+  LatLng _currentMarkerPos =
+      const LatLng(13.7563, 100.5018); // Marker initial position
 
   // Controllers for form fields
   final _nameController = TextEditingController(text: 'สมชาย รักชาติ');
   final _phoneController = TextEditingController(text: '081-234-5678');
-  final _addressController = TextEditingController(text: 'ตึกใบหยก 2, กรุงเทพมหานคร');
+  final _addressController =
+      TextEditingController(text: 'ตึกใบหยก 2, กรุงเทพมหานคร');
   final _gpsController = TextEditingController(text: '13.7563, 100.5018');
 
   // Map Controller
@@ -91,13 +93,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
       // ใช้ Reverse Geocoding เพื่อหาชื่อสถานที่จากพิกัด
       List<Placemark> placemarks =
           await placemarkFromCoordinates(point.latitude, point.longitude);
-      
+
       if (placemarks.isNotEmpty) {
         final placemark = placemarks.first;
         // สร้างที่อยู่ที่อ่านง่าย
-        final addressLine = "${placemark.subThoroughfare} ${placemark.thoroughfare}, "
-                            "${placemark.subLocality}, ${placemark.locality}, "
-                            "${placemark.administrativeArea}";
+        final addressLine =
+            "${placemark.subThoroughfare} ${placemark.thoroughfare}, "
+            "${placemark.subLocality}, ${placemark.locality}, "
+            "${placemark.administrativeArea}";
 
         _addressController.text = addressLine.trim();
       }
@@ -123,7 +126,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         backgroundColor: const Color(0xFFC70808),
         elevation: 0,
         // ใช้ shape เดียวกันกับ Header
-        shape: const ContinuousRectangleBorder( 
+        shape: const ContinuousRectangleBorder(
           borderRadius: BorderRadius.only(
             bottomLeft: Radius.circular(50),
             bottomRight: Radius.circular(50),
@@ -179,9 +182,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildTextFieldWithLabel('ชื่อ-สกุล', _nameController, TextInputType.name),
+          _buildTextFieldWithLabel(
+              'ชื่อ-สกุล', _nameController, TextInputType.name),
           const SizedBox(height: 20),
-          _buildTextFieldWithLabel('หมายเลขโทรศัพท์', _phoneController, TextInputType.phone),
+          _buildTextFieldWithLabel(
+              'หมายเลขโทรศัพท์', _phoneController, TextInputType.phone),
           const SizedBox(height: 20),
           // *** แก้ไข: เพิ่มปุ่มค้นหาให้กับช่องที่อยู่ ***
           _buildTextFieldWithLabel(
@@ -240,7 +245,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 children: [
                   // Tile Layer (OpenStreetMap)
                   TileLayer(
-                    urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                    urlTemplate:
+                        'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=cb153d15cb4e41f59e25cfda6468f1a0',
                     userAgentPackageName: "com.example.app",
                   ),
                   // Marker Layer for the selected location
@@ -363,8 +369,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
         children: [
           // แก้ isSelected เป็นค่าคงที่สำหรับแสดงผลเท่านั้น
           _NavItem(icon: Icons.home, label: 'หน้าแรก', isSelected: false),
-          _NavItem(icon: Icons.history, label: 'ประวัติการส่งสินค้า', isSelected: false),
-          _NavItem(icon: Icons.logout, label: 'ออกจากระบบ', isSelected: true), 
+          _NavItem(
+              icon: Icons.history,
+              label: 'ประวัติการส่งสินค้า',
+              isSelected: false),
+          _NavItem(icon: Icons.logout, label: 'ออกจากระบบ', isSelected: true),
         ],
       ),
     );

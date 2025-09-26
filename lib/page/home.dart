@@ -386,7 +386,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   // 6. ใช้ TileLayer สำหรับโหลดแผนที่ (ใช้ OpenStreetMap เหมือนใน gps.dart)
                   TileLayer(
                     urlTemplate:
-                        "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                        'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=cb153d15cb4e41f59e25cfda6468f1a0',
                     userAgentPackageName: "com.example.delivery_project",
                   ),
                   // 7. ใช้ MarkerLayer สำหรับแสดงหมุด

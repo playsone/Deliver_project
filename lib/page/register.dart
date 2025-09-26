@@ -27,11 +27,9 @@ class _RegisterPageState extends State<RegisterPage> {
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  final _addressController =
-      TextEditingController(); // ช่องที่อยู่หลัก (กรอกเอง)
+  final _addressController = TextEditingController(); // ช่องที่อยู่หลัก (กรอกเอง)
   final _address2Controller = TextEditingController();
-  final _gpsController =
-      TextEditingController(); // ช่องพิกัด GPS (อ่านอย่างเดียว)
+  final _gpsController = TextEditingController(); // ช่องพิกัด GPS (อ่านอย่างเดียว)
   final _vehicleRegController = TextEditingController();
 
   final LatLng _defaultLocation = const LatLng(13.7367, 100.5231);
@@ -168,8 +166,6 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
-  // NOTE: ฟังก์ชัน _reverseGeocodeAndUpdateAddress ถูกลบทิ้งตามความต้องการของท่าน
-
   /// 5. Modal สำหรับเลือกพิกัดบนแผนที่ (Geocoding & Map Tap)
   Future<void> _openMapPicker() async {
     final currentGpsText = _gpsController.text;
@@ -234,9 +230,8 @@ class _RegisterPageState extends State<RegisterPage> {
             // Registration Form Section with Animation
             AnimatedCrossFade(
               duration: const Duration(milliseconds: 300),
-              crossFadeState: _isRider
-                  ? CrossFadeState.showSecond
-                  : CrossFadeState.showFirst,
+              crossFadeState:
+                  _isRider ? CrossFadeState.showSecond : CrossFadeState.showFirst,
               firstChild: _buildUserForm(),
               secondChild: _buildRiderForm(),
             ),
@@ -249,7 +244,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Header Section (ปรับปรุง)
+  // Header Section
   Widget _buildHeader(BuildContext context) {
     return Column(
       children: [
@@ -288,7 +283,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // User Type Selector (ไม่มีการเปลี่ยนแปลง)
+  // User Type Selector
   Widget _buildUserTypeSelector() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
@@ -339,7 +334,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Profile Image Section (ไม่มีการเปลี่ยนแปลง)
+  // Profile Image Section
   Widget _buildProfileImage() {
     return GestureDetector(
       onTap: () => _selectImageSource(true), // isProfile = true
@@ -380,7 +375,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Vehicle Image Section (เฉพาะไรเดอร์) (ไม่มีการเปลี่ยนแปลง)
+  // Vehicle Image Section (เฉพาะไรเดอร์)
   Widget _buildVehicleImage() {
     return GestureDetector(
       onTap: () => _selectImageSource(false), // isProfile = false
@@ -421,7 +416,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // User Registration Form (ปรับปรุงช่อง Address และ GPS)
+  // User Registration Form
   Widget _buildUserForm() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
@@ -456,8 +451,7 @@ class _RegisterPageState extends State<RegisterPage> {
           // ช่องที่อยู่ (กรอกเอง)
           _buildTextField('ที่อยู่หลัก', controller: _addressController),
           const SizedBox(height: 20),
-          _buildTextField('ที่อยู่ 2 (ไม่บังคับ)',
-              controller: _address2Controller),
+          _buildTextField('ที่อยู่ 2 (ไม่บังคับ)', controller: _address2Controller),
           const SizedBox(height: 20),
           // ช่องพิกัด GPS (อ่านอย่างเดียว แตะเพื่อเปิดแผนที่ หรือดึงตำแหน่งปัจจุบัน)
           _buildTextFieldWithIcon(
@@ -473,7 +467,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Rider Registration Form (ไม่มีการเปลี่ยนแปลง)
+  // Rider Registration Form
   Widget _buildRiderForm() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
@@ -513,7 +507,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Generic TextField (ไม่มีการเปลี่ยนแปลง)
+  // Generic TextField
   Widget _buildTextField(
     String label, {
     TextEditingController? controller,
@@ -537,7 +531,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // TextField with icon (ถูกปรับปรุง)
+  // TextField with icon
   Widget _buildTextFieldWithIcon(
     String label,
     IconData icon, {
@@ -567,7 +561,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Submit Button (ไม่มีการเปลี่ยนแปลง)
+  // Submit Button
   Widget _buildSubmitButton(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40),
@@ -597,7 +591,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Success Dialog (ไม่มีการเปลี่ยนแปลง)
+  // Success Dialog
   void _showSuccessDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -646,7 +640,7 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 }
 
-// Custom Clipper for the red background shape (ไม่มีการเปลี่ยนแปลง)
+// Custom Clipper for the red background shape
 class CustomClipperRed extends CustomClipper<ui.Path> {
   @override
   ui.Path getClip(Size size) {
@@ -691,12 +685,17 @@ class _MapPickerModalState extends State<MapPickerModal> {
   final TextEditingController _searchController = TextEditingController();
   LatLng? _selectedPos;
 
+  // *** API KEY ที่ท่านระบุ ***
+  static const String thunderforestApiKey = 'cb153d15cb4e41f59e25cfda6468f1a0'; 
+  static const String thunderforestUrl = 
+      'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=$thunderforestApiKey';
+
   @override
   void initState() {
     super.initState();
     _selectedPos = widget.initialLocation;
     // ใช้ initialAddress จาก RegisterPage เป็นค่าเริ่มต้นในการค้นหา
-    _searchController.text = widget.initialAddress;
+    _searchController.text = widget.initialAddress; 
   }
 
   // 4.1 ฟังก์ชัน Geocoding (ค้นหาชื่อสถานที่)
@@ -783,10 +782,8 @@ class _MapPickerModalState extends State<MapPickerModal> {
           TextField(
             controller: _searchController,
             decoration: InputDecoration(
-              hintText:
-                  'พิมพ์ชื่อสถานที่หรือที่อยู่ เช่น "มหาวิทยาลัยมหาสารคาม"',
-              border:
-                  OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              hintText: 'พิมพ์ชื่อสถานที่หรือที่อยู่ เช่น "มหาวิทยาลัยมหาสารคาม"',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
               suffixIcon: IconButton(
                 icon: const Icon(Icons.search, color: Color(0xFFC70808)),
                 onPressed: _geocodeAddress, // ผูกกับฟังก์ชันค้นหา
@@ -807,9 +804,9 @@ class _MapPickerModalState extends State<MapPickerModal> {
                   onTap: _onMapTap, // ผูกกับฟังก์ชันแตะแผนที่
                 ),
                 children: [
+                  // *** แก้ไข: ใช้ Thunderforest URL ที่ท่านระบุพร้อม API Key ***
                   TileLayer(
-                    urlTemplate:
-                        "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                    urlTemplate: thunderforestUrl,
                     userAgentPackageName: "com.example.app",
                   ),
                   if (_selectedPos != null)
