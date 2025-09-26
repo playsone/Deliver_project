@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'dart:ui' as ui; // <--- FIX 1: Import dart:ui with a prefix
+import 'dart:ui' as ui;
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -27,9 +27,11 @@ class _RegisterPageState extends State<RegisterPage> {
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  final _addressController = TextEditingController();
+  final _addressController =
+      TextEditingController(); // ช่องที่อยู่หลัก (กรอกเอง)
   final _address2Controller = TextEditingController();
-  final _gpsController = TextEditingController();
+  final _gpsController =
+      TextEditingController(); // ช่องพิกัด GPS (อ่านอย่างเดียว)
   final _vehicleRegController = TextEditingController();
 
   final LatLng _defaultLocation = const LatLng(13.7367, 100.5231);
@@ -129,7 +131,8 @@ class _RegisterPageState extends State<RegisterPage> {
         if (permission == LocationPermission.denied) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('ไม่ได้รับอนุญาตให้เข้าถึง Location')),
+              const SnackBar(
+                  content: Text('ไม่ได้รับอนุญาตให้เข้าถึง Location')),
             );
           }
           return;
@@ -151,12 +154,10 @@ class _RegisterPageState extends State<RegisterPage> {
         desiredAccuracy: LocationAccuracy.high,
       );
 
-      // 4. อัปเดต Controller
+      // อัปเดต Controller เฉพาะพิกัด GPS เท่านั้น (ตามความต้องการของท่าน)
       setState(() {
         _gpsController.text =
             "${pos.latitude.toStringAsFixed(6)}, ${pos.longitude.toStringAsFixed(6)}";
-        // ทำ Reverse Geocoding เพื่ออัปเดตช่องที่อยู่ด้วย
-        _reverseGeocodeAndUpdateAddress(LatLng(pos.latitude, pos.longitude));
       });
     } catch (e) {
       if (mounted) {
@@ -167,35 +168,20 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
-  // ฟังก์ชัน Reverse Geocoding เพื่ออัปเดตช่องที่อยู่จากพิกัด
-  Future<void> _reverseGeocodeAndUpdateAddress(LatLng point) async {
-    try {
-      List<Placemark> placemarks = await placemarkFromCoordinates(
-          point.latitude, point.longitude,
-          localeIdentifier: 'th');
-
-      if (placemarks.isNotEmpty) {
-        final placemark = placemarks.first;
-        final addressLine = "${placemark.thoroughfare}, "
-            "${placemark.subLocality}, ${placemark.locality}, "
-            "${placemark.administrativeArea}, ${placemark.country}";
-
-        // อัปเดตช่องที่อยู่หลัก
-        _addressController.text = addressLine.replaceAll(', ,', ',').trim();
-      }
-    } catch (e) {
-      debugPrint("Reverse Geocoding Error: $e");
-    }
-  }
+  // NOTE: ฟังก์ชัน _reverseGeocodeAndUpdateAddress ถูกลบทิ้งตามความต้องการของท่าน
 
   /// 5. Modal สำหรับเลือกพิกัดบนแผนที่ (Geocoding & Map Tap)
   Future<void> _openMapPicker() async {
     final currentGpsText = _gpsController.text;
     LatLng startPos = _defaultLocation;
+
+    // พยายามดึงพิกัดปัจจุบันจากช่อง GPS มาเป็นค่าเริ่มต้น
     if (currentGpsText.isNotEmpty) {
       try {
-        final parts =
-            currentGpsText.split(',').map((s) => double.parse(s.trim())).toList();
+        final parts = currentGpsText
+            .split(',')
+            .map((s) => double.parse(s.trim()))
+            .toList();
         if (parts.length == 2) {
           startPos = LatLng(parts[0], parts[1]);
         }
@@ -203,6 +189,9 @@ class _RegisterPageState extends State<RegisterPage> {
         // ใช้ค่าเริ่มต้น ถ้า parse ไม่ได้
       }
     }
+
+    // ส่งค่าที่อยู่หลัก (ที่ผู้ใช้พิมพ์ไว้) ไปเป็น initialAddress สำหรับการค้นหาเริ่มต้นใน Modal
+    final String initialAddress = _addressController.text;
 
     final LatLng? result = await showModalBottomSheet<LatLng>(
       context: context,
@@ -213,7 +202,7 @@ class _RegisterPageState extends State<RegisterPage> {
       builder: (context) {
         return MapPickerModal(
           initialLocation: startPos,
-          initialAddress: _addressController.text,
+          initialAddress: initialAddress,
         );
       },
     );
@@ -221,10 +210,9 @@ class _RegisterPageState extends State<RegisterPage> {
     // อัปเดต Controller เมื่อผู้ใช้เลือกพิกัดแล้วกด Save
     if (result != null) {
       setState(() {
+        // อัปเดตแค่ช่องพิกัด GPS เท่านั้น (ตามความต้องการของท่าน)
         _gpsController.text =
             "${result.latitude.toStringAsFixed(6)}, ${result.longitude.toStringAsFixed(6)}";
-        // อัปเดต Address Controller ผ่าน Reverse Geocoding
-        _reverseGeocodeAndUpdateAddress(result);
       });
     }
   }
@@ -465,22 +453,20 @@ class _RegisterPageState extends State<RegisterPage> {
             isPassword: true,
           ),
           const SizedBox(height: 20),
-          // ช่องที่อยู่ (ผูกกับ Map Picker)
-          _buildTextFieldWithIcon(
-            'ที่อยู่ (แตะเพื่อเลือกบนแผนที่)',
-            Icons.map,
-            controller: _addressController,
-            onIconTap: _openMapPicker, // เปิด Modal แผนที่
-          ),
+          // ช่องที่อยู่ (กรอกเอง)
+          _buildTextField('ที่อยู่หลัก', controller: _addressController),
           const SizedBox(height: 20),
-          _buildTextField('ที่อยู่ 2 (ไม่บังคับ)', controller: _address2Controller),
+          _buildTextField('ที่อยู่ 2 (ไม่บังคับ)',
+              controller: _address2Controller),
           const SizedBox(height: 20),
-          // ช่องพิกัด GPS (ดึงตำแหน่งปัจจุบัน)
+          // ช่องพิกัด GPS (อ่านอย่างเดียว แตะเพื่อเปิดแผนที่ หรือดึงตำแหน่งปัจจุบัน)
           _buildTextFieldWithIcon(
-            'พิกัด GPS (แตะเพื่อดึงตำแหน่งปัจจุบัน)',
-            Icons.location_on,
+            'พิกัด GPS (แตะที่ช่องเพื่อเลือกบนแผนที่)',
+            Icons.my_location, // Icon สำหรับดึงตำแหน่งปัจจุบัน
             controller: _gpsController,
-            onIconTap: _getCurrentGPS, // ดึง GPS ปัจจุบัน
+            onIconTap: _getCurrentGPS, // แตะ Icon: ดึง GPS ปัจจุบัน
+            onFieldTap: _openMapPicker, // แตะ Field: เปิด Map Picker
+            readOnly: true, // ช่องนี้เป็นแบบอ่านอย่างเดียว
           ),
         ],
       ),
@@ -551,17 +537,19 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // TextField with icon (ไม่มีการเปลี่ยนแปลง)
+  // TextField with icon (ถูกปรับปรุง)
   Widget _buildTextFieldWithIcon(
     String label,
     IconData icon, {
     TextEditingController? controller,
     VoidCallback? onIconTap,
+    VoidCallback? onFieldTap, // เพิ่มสำหรับการแตะที่ช่อง
+    bool readOnly = false, // เพิ่มสำหรับการควบคุมการอ่านอย่างเดียว
   }) {
     return TextField(
       controller: controller,
-      // ตั้งเป็นอ่านอย่างเดียว เนื่องจากข้อมูลจะถูกอัปเดตผ่าน MapPicker หรือ GPS
-      readOnly: onIconTap != null, 
+      readOnly: readOnly, // ใช้พารามิเตอร์ใหม่
+      onTap: onFieldTap, // ผูก onTap กับ onFieldTap
       decoration: InputDecoration(
         labelText: label,
         labelStyle: const TextStyle(color: Colors.black54),
@@ -658,11 +646,11 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 }
 
-// Custom Clipper for the red background shape (แก้ไข: ใช้ ui.Path)
-class CustomClipperRed extends CustomClipper<ui.Path> { // <--- FIX 2: เปลี่ยนเป็น ui.Path
+// Custom Clipper for the red background shape (ไม่มีการเปลี่ยนแปลง)
+class CustomClipperRed extends CustomClipper<ui.Path> {
   @override
-  ui.Path getClip(Size size) { // <--- FIX 2: เปลี่ยนเป็น ui.Path
-    var path = ui.Path(); // <--- FIX 2: เปลี่ยนเป็น ui.Path
+  ui.Path getClip(Size size) {
+    var path = ui.Path();
     path.lineTo(0, size.height - 100);
     path.quadraticBezierTo(
       size.width / 2,
@@ -676,13 +664,13 @@ class CustomClipperRed extends CustomClipper<ui.Path> { // <--- FIX 2: เปล
   }
 
   @override
-  bool shouldReclip(CustomClipper<ui.Path> oldClipper) { // <--- FIX 2: เปลี่ยนเป็น ui.Path
+  bool shouldReclip(CustomClipper<ui.Path> oldClipper) {
     return false;
   }
 }
 
 // ******************************************************************
-// Widget ใหม่: MapPickerModal สำหรับค้นหาและเลือกพิกัด (ไม่มีการเปลี่ยนแปลง)
+// Widget ใหม่: MapPickerModal สำหรับค้นหาและเลือกพิกัด
 // ******************************************************************
 class MapPickerModal extends StatefulWidget {
   final LatLng initialLocation;
@@ -707,6 +695,7 @@ class _MapPickerModalState extends State<MapPickerModal> {
   void initState() {
     super.initState();
     _selectedPos = widget.initialLocation;
+    // ใช้ initialAddress จาก RegisterPage เป็นค่าเริ่มต้นในการค้นหา
     _searchController.text = widget.initialAddress;
   }
 
@@ -794,8 +783,10 @@ class _MapPickerModalState extends State<MapPickerModal> {
           TextField(
             controller: _searchController,
             decoration: InputDecoration(
-              hintText: 'พิมพ์ชื่อสถานที่หรือที่อยู่ เช่น "มหาวิทยาลัยมหาสารคาม"',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              hintText:
+                  'พิมพ์ชื่อสถานที่หรือที่อยู่ เช่น "มหาวิทยาลัยมหาสารคาม"',
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
               suffixIcon: IconButton(
                 icon: const Icon(Icons.search, color: Color(0xFFC70808)),
                 onPressed: _geocodeAddress, // ผูกกับฟังก์ชันค้นหา
@@ -817,7 +808,8 @@ class _MapPickerModalState extends State<MapPickerModal> {
                 ),
                 children: [
                   TileLayer(
-                    urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                    urlTemplate:
+                        "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
                     userAgentPackageName: "com.example.app",
                   ),
                   if (_selectedPos != null)
