@@ -424,8 +424,7 @@ class _RegisterPageState extends State<RegisterPage> {
         children: [
           _buildTextField('ชื่อ-สกุล', controller: _fullNameController),
           const SizedBox(height: 20),
-       
-          const SizedBox(height: 20),
+
           _buildTextField(
             'เบอร์โทรศัพท์',
             controller: _phoneController,
@@ -446,6 +445,8 @@ class _RegisterPageState extends State<RegisterPage> {
           const SizedBox(height: 20),
           // ช่องที่อยู่ (กรอกเอง)
           _buildTextField('ที่อยู่หลัก', controller: _addressController),
+           const SizedBox(height: 20),
+
           _buildTextFieldWithIcon(
             'พิกัด GPS (แตะที่ช่องเพื่อเลือกบนแผนที่)',
             Icons.my_location, // Icon สำหรับดึงตำแหน่งปัจจุบัน
@@ -478,7 +479,6 @@ class _RegisterPageState extends State<RegisterPage> {
       child: Column(
         children: [
           _buildTextField('ชื่อ-สกุล', controller: _fullNameController),
-          const SizedBox(height: 20),
           const SizedBox(height: 20),
           _buildTextField(
             'เบอร์โทรศัพท์',
