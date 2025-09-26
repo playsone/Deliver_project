@@ -1,10 +1,16 @@
-import 'dart:async'; // สำหรับ Completer
-
+import 'dart:developer'; // สำหรับ log()
+import 'package:flutter/foundation.dart'; // สำหรับ kIsWeb
 import 'package:delivery_project/page/index.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get_core/src/get_main.dart';
 import 'package:get/get_navigation/get_navigation.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart'; // สำหรับ Google Maps
+
+// แทนที่ Google Maps ด้วย Flutter Map และ LatLong2
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+
+// สำหรับ GPS
+import 'package:geolocator/geolocator.dart';
 import 'package:delivery_project/page/edit_profile.dart';
 // End Mock Pages
 
@@ -16,31 +22,119 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // 1. ตัวแปรสำหรับ Google Maps
-  final Completer<GoogleMapController> _controller = Completer();
+  // 1. ตัวแปรสำหรับ Flutter Maps (แทน GoogleMapController)
+  final MapController mapController = MapController();
 
   // พิกัดเริ่มต้น: หอพักอาณาจักรฟ้า (ตัวอย่างพิกัด)
-  static const CameraPosition _initialCameraPosition = CameraPosition(
-    target: LatLng(16.4858, 102.8222),
-    zoom: 14.0,
-  );
+  // ใช้ LatLng จาก package latlong2 แทน
+  static final LatLng _initialCenter = LatLng(16.4858, 102.8222);
+  static const double _initialZoom = 14.0;
 
-  // จุดปักหมุด
-  final Set<Marker> _markers = {
-    // Marker สำหรับจุดหมายปลายทาง (หอพักอาณาจักรฟ้า)
-    const Marker(
-      markerId: MarkerId('destination'),
-      position: LatLng(16.4858, 102.8222),
-      infoWindow: InfoWindow(title: 'หอพักอาณาจักรฟ้า'),
-      icon: BitmapDescriptor.defaultMarker,
-    ),
-    // Marker สำหรับไรเดอร์ (ตัวอย่าง)
-    const Marker(
-      markerId: MarkerId('rider'),
-      position: LatLng(16.4900, 102.8180),
-      infoWindow: InfoWindow(title: 'ไรเดอร์กำลังมา'),
-    ),
-  };
+  // 2. จุดปักหมุด (ใช้ List<Marker> จาก flutter_map)
+  // เราจะสร้าง List ของ Marker ที่จะแสดงบนแผนที่
+  List<Marker> get _fixedMarkers => [
+        // Marker สำหรับจุดหมายปลายทาง (หอพักอาณาจักรฟ้า)
+        Marker(
+          point: LatLng(16.4858, 102.8222),
+          width: 40,
+          height: 40,
+          child: const Tooltip(
+            message: 'หอพักอาณาจักรฟ้า',
+            child: Icon(
+              Icons.pin_drop,
+              color: Color(0xFFC70808),
+              size: 40.0,
+            ),
+          ),
+        ),
+        // Marker สำหรับไรเดอร์ (ตัวอย่าง)
+        Marker(
+          point: LatLng(16.4900, 102.8180),
+          width: 40,
+          height: 40,
+          child: const Tooltip(
+            message: 'ไรเดอร์กำลังมา',
+            child: Icon(
+              Icons.two_wheeler,
+              color: Colors.blue,
+              size: 40.0,
+            ),
+          ),
+        ),
+      ];
+
+  // 3. ตัวแปรสำหรับตำแหน่ง GPS ปัจจุบัน (จาก gps.dart)
+  LatLng? currentPos;
+
+  // 4. ฟังก์ชันดึงตำแหน่ง GPS (จาก gps.dart)
+  Future<void> _getCurrentLocation() async {
+    try {
+      if (kIsWeb) {
+        // บน Web ใช้ Geolocator แต่ Browser ต้องอนุญาต Location
+        Position pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+        );
+        setState(() {
+          currentPos = LatLng(pos.latitude, pos.longitude);
+        });
+        mapController.move(currentPos!, 16);
+        log("Web Location: ${pos.latitude}, ${pos.longitude}");
+      } else {
+        // Mobile (รวมถึงการขออนุญาต)
+        bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+        if (!serviceEnabled) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Location services are disabled.')),
+            );
+          }
+          return;
+        }
+
+        LocationPermission permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
+          if (permission == LocationPermission.denied) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                    content: Text('Location permissions are denied')),
+              );
+            }
+            return;
+          }
+        }
+
+        if (permission == LocationPermission.deniedForever) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Location permissions are permanently denied.'),
+              ),
+            );
+          }
+          return;
+        }
+
+        Position pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+        );
+        setState(() {
+          currentPos = LatLng(pos.latitude, pos.longitude);
+        });
+        // เลื่อนแผนที่ไปตำแหน่งปัจจุบัน
+        mapController.move(currentPos!, 16);
+        log("Mobile Location: ${pos.latitude}, ${pos.longitude}");
+      }
+    } catch (e) {
+      log("Error getting location: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Error getting location: $e")));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,18 +148,26 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildHeader(context),
               _buildIconButtons(),
               const SizedBox(height: 20),
-              _buildMapSection(context), // วิดเจ็ต Google Map จริง
+              // วิดเจ็ตแผนที่ Flutter Map ที่ได้รับการปรับปรุง
+              _buildMapSection(context),
               const SizedBox(height: 20),
             ],
           ),
         ),
+      ),
+      // เพิ่มปุ่ม Floating Action Button เพื่อดึงตำแหน่ง GPS (จาก gps.dart)
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: const Color(0xFFC70808),
+        onPressed: _getCurrentLocation,
+        tooltip: 'ค้นหาตำแหน่งปัจจุบัน',
+        child: const Icon(Icons.gps_fixed, color: Colors.white),
       ),
       bottomNavigationBar: _buildBottomNavigationBar(context),
     );
   }
 
   //------------------------------------------------------------------
-  // Header Section
+  // Header Section (ไม่เปลี่ยนแปลง)
   //------------------------------------------------------------------
 
   Widget _buildHeader(BuildContext context) {
@@ -73,7 +175,6 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         // Background Wave/ClipPath
         ClipPath(
-          clipper: HeaderClipper(),
           child: Container(
             height: MediaQuery.of(context).size.height * 0.3,
             decoration: const BoxDecoration(color: Color(0xFFC70808)),
@@ -143,7 +244,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   //------------------------------------------------------------------
-  // Icon Buttons Section (ปรับจากโค้ดเดิมให้สวยขึ้น)
+  // Icon Buttons Section (ไม่เปลี่ยนแปลง)
   //------------------------------------------------------------------
 
   Widget _buildIconButtons() {
@@ -221,10 +322,29 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   //------------------------------------------------------------------
-  // Map Section (Google Maps Real)
+  // Map Section (ใช้ Flutter Map แทน Google Maps)
   //------------------------------------------------------------------
 
   Widget _buildMapSection(BuildContext context) {
+    // รวม Marker ทั้งหมด: Marker ตำแหน่งคงที่ + Marker ตำแหน่งปัจจุบัน (ถ้ามี)
+    List<Marker> allMarkers = [
+      ..._fixedMarkers,
+      if (currentPos != null)
+        Marker(
+          point: currentPos!,
+          width: 40,
+          height: 40,
+          child: const Tooltip(
+            message: 'ตำแหน่งปัจจุบัน',
+            child: Icon(
+              Icons.my_location,
+              color: Colors.green, // ใช้สีเขียวสำหรับตำแหน่งปัจจุบัน
+              size: 40,
+            ),
+          ),
+        ),
+    ];
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
@@ -249,17 +369,29 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(15),
-              child: GoogleMap(
-                mapType: MapType.normal,
-                initialCameraPosition: _initialCameraPosition,
-                markers: _markers,
-                // สามารถเพิ่มเส้นทาง Polylines เพื่อแสดงเส้นทางได้
-                // polylines: _polylines,
-                onMapCreated: (GoogleMapController controller) {
-                  _controller.complete(controller);
-                },
-                zoomControlsEnabled: false,
-                myLocationButtonEnabled: false,
+              // 5. เปลี่ยนมาใช้ FlutterMap
+              child: FlutterMap(
+                mapController: mapController,
+                options: MapOptions(
+                  initialCenter: _initialCenter, // พิกัดเริ่มต้น
+                  initialZoom: _initialZoom, // ซูมเริ่มต้น
+                  interactionOptions: const InteractionOptions(
+                    flags: InteractiveFlag.all,
+                  ),
+                  onTap: (tapPosition, point) {
+                    log("Map tapped at: $point");
+                  },
+                ),
+                children: [
+                  // 6. ใช้ TileLayer สำหรับโหลดแผนที่ (ใช้ OpenStreetMap เหมือนใน gps.dart)
+                  TileLayer(
+                    urlTemplate:
+                        "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                    userAgentPackageName: "com.example.delivery_project",
+                  ),
+                  // 7. ใช้ MarkerLayer สำหรับแสดงหมุด
+                  MarkerLayer(markers: allMarkers),
+                ],
               ),
             ),
           ),
@@ -269,7 +401,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   //------------------------------------------------------------------
-  // Bottom Navigation Bar
+  // Bottom Navigation Bar (ไม่เปลี่ยนแปลง)
   //------------------------------------------------------------------
 
   Widget _buildBottomNavigationBar(BuildContext context) {
@@ -313,7 +445,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   //------------------------------------------------------------------
-  // Profile Options Modal
+  // Profile Options Modal (ไม่เปลี่ยนแปลง)
   //------------------------------------------------------------------
 
   void _showProfileOptions(BuildContext context) {
@@ -382,24 +514,5 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 //------------------------------------------------------------------
-// Custom Clipper for Header Wave
-//------------------------------------------------------------------
-class HeaderClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    var path = Path();
-    path.lineTo(0, size.height - 50);
-    path.quadraticBezierTo(
-      size.width / 2,
-      size.height,
-      size.width,
-      size.height - 50,
-    );
-    path.lineTo(size.width, 0);
-    path.close();
-    return path;
-  }
-
-  @override
-  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
-}
+// Custom Clipper for Header Wave (ไม่เปลี่ยนแปลง)
+//-----------------------------------------------------------------

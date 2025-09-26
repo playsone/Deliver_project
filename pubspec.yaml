@@ -8,18 +8,24 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.8.1
+  # ปรับปรุง SDK ให้มีความยืดหยุ่นมากขึ้น
+  sdk: '>=3.2.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
-  google_maps_flutter: ^2.5.0 
-  geolocator: ^9.0.2
-  geocoding: ^2.0.5
-  image_picker: ^1.1.2 # หรือเวอร์ชันล่าสุด
-
-
-
+  
+  # สำหรับการจัดการแผนที่ (Flutter Map) - แทนที่ Google Maps
+  flutter_map: ^6.1.0 
+  latlong2: ^0.9.1
+  
+  # สำหรับดึงตำแหน่ง GPS และแปลงพิกัด (ใช้ตัวนี้ตัวเดียว)
+  geolocator: ^11.0.0
+  geocoding: ^2.2.0
+  
+  # Packages อื่นๆ
+  image_picker: ^1.1.2 
+  
   # State management + routing (GetX)
   get: ^4.6.6
 
@@ -31,11 +37,12 @@ dev_dependencies:
     sdk: flutter
 
   # Recommended lints
-  flutter_lints: ^5.0.0
+  flutter_lints: ^3.0.0 # ปรับเป็นเวอร์ชันที่ใช้งานร่วมกับ SDK ได้ดีขึ้น
 
 flutter:
   uses-material-design: true
 
   assets:
+    # การประกาศ Assets ของท่านถูกต้อง
     - assets/image/
     - assets/config/
