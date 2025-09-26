@@ -1,4 +1,8 @@
+import 'dart:developer';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/page/home.dart';
+import 'package:delivery_project/page/home_rider.dart';
 import 'package:delivery_project/page/register.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -55,12 +59,36 @@ class _LoginPageState extends State<LoginPage> {
     try {
       final email = _constructEmailFromPhone(phoneNumber);
 
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
+      var result = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      Get.offAll(() => const HomeScreen());
+      var uid = result.user!.uid;
+
+      var db = FirebaseFirestore.instance;
+      var usersCollection = db.collection("users");
+
+      // ดึง user ตาม phone
+      var query = usersCollection.where("phone",
+          isEqualTo: phoneController.text.trim());
+      var data = await query.get();
+
+      log(data.docs.first.data().toString());
+      if (data.docs.isEmpty) {
+        Get.snackbar("Error", "Can't Login");
+      } else {
+        var userData = data.docs.first.data(); // Map<String, dynamic>
+        var role = userData['role']; // ดึงค่า role
+
+        if (role == 0) {
+          Get.to(() => HomeScreen());
+        } else if (role == 1) {
+          Get.to(() => RiderHomeScreen());
+        } else {
+          log("User has other role: $role");
+        }
+      }
     } on FirebaseAuthException catch (e) {
       String errorMessage =
           "การเข้าสู่ระบบล้มเหลว กรุณาตรวจสอบเบอร์โทรศัพท์และรหัสผ่าน";

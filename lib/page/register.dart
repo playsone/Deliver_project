@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:delivery_project/page/index.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
@@ -110,7 +111,6 @@ class _RegisterPageState extends State<RegisterPage> {
         "profile": profileUrl,
         "fullname": _fullNameController.text.trim(),
         "phone": _phoneController.text.trim(),
-        "created_at": FieldValue.serverTimestamp(),
       };
 
       if (_isRider == false) {
@@ -126,6 +126,7 @@ class _RegisterPageState extends State<RegisterPage> {
           memberData = {
             "defaultAddress": _addressController.text.trim(),
             "defaultGPS": GeoPoint(lat, lng),
+            "role": 0
           };
         }
 
@@ -138,6 +139,7 @@ class _RegisterPageState extends State<RegisterPage> {
             ...memberData,
             "secondAddress": _address2Controller.text.trim(),
             "secondGPS": GeoPoint(lat, lng),
+            "role": 0
           };
         }
 
@@ -155,8 +157,9 @@ class _RegisterPageState extends State<RegisterPage> {
 
         var riderData = {
           "vehicle_no": _vehicleRegController.text.trim(),
-          "vehicle_picture": vehicleUrl ?? "",
+          "vehicle_picture": vehicleUrl,
           "gps": GeoPoint(pos.latitude, pos.longitude),
+          "role": 1
         };
 
         user = {...user, ...riderData};
@@ -174,6 +177,7 @@ class _RegisterPageState extends State<RegisterPage> {
       log("Register error: $e");
       _showErrorDialog(title: "Error", message: e.toString());
     }
+    Get.off(() => SpeedDerApp());
   }
 
   void _showErrorDialog({required String title, required String message}) {
