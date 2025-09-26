@@ -28,8 +28,9 @@ class _RegisterPageState extends State<RegisterPage> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _addressController = TextEditingController(); // ช่องที่อยู่หลัก (กรอกเอง)
-  final _address2Controller = TextEditingController();
-  final _gpsController = TextEditingController(); // ช่องพิกัด GPS (อ่านอย่างเดียว)
+  final _address2Controller = TextEditingController(); // ช่องที่อยู่ 2 (กรอกเอง)
+  final _gpsController = TextEditingController(); // ช่องพิกัด GPS หลัก
+  final _gps2Controller = TextEditingController(); // *** เพิ่ม: ช่องพิกัด GPS 2 ***
   final _vehicleRegController = TextEditingController();
 
   final LatLng _defaultLocation = const LatLng(13.7367, 100.5231);
@@ -44,6 +45,7 @@ class _RegisterPageState extends State<RegisterPage> {
     _addressController.dispose();
     _address2Controller.dispose();
     _gpsController.dispose();
+    _gps2Controller.dispose(); // *** เพิ่ม: Dispose Controller ใหม่ ***
     _vehicleRegController.dispose();
     super.dispose();
   }
@@ -111,7 +113,8 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 
   /// 3. ฟังก์ชันดึงตำแหน่ง GPS ปัจจุบัน (สำหรับปุ่ม "พิกัด GPS")
-  Future<void> _getCurrentGPS() async {
+  // *** แก้ไข: รับ targetGpsController เพื่ออัปเดตช่องที่ถูกต้อง ***
+  Future<void> _getCurrentGPS(TextEditingController targetGpsController) async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
@@ -152,11 +155,13 @@ class _RegisterPageState extends State<RegisterPage> {
         desiredAccuracy: LocationAccuracy.high,
       );
 
-      // อัปเดต Controller เฉพาะพิกัด GPS เท่านั้น (ตามความต้องการของท่าน)
-      setState(() {
-        _gpsController.text =
-            "${pos.latitude.toStringAsFixed(6)}, ${pos.longitude.toStringAsFixed(6)}";
-      });
+      // อัปเดต Controller ที่ถูกส่งเข้ามา
+      if (mounted) {
+        setState(() {
+          targetGpsController.text =
+              "${pos.latitude.toStringAsFixed(6)}, ${pos.longitude.toStringAsFixed(6)}";
+        });
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -167,11 +172,15 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 
   /// 5. Modal สำหรับเลือกพิกัดบนแผนที่ (Geocoding & Map Tap)
-  Future<void> _openMapPicker() async {
-    final currentGpsText = _gpsController.text;
+  // *** แก้ไข: รับ targetGpsController และ sourceAddressController เพื่อจัดการข้อมูลที่อยู่/พิกัดแยกกัน ***
+  Future<void> _openMapPicker(
+    TextEditingController targetGpsController,
+    TextEditingController sourceAddressController,
+  ) async {
+    final currentGpsText = targetGpsController.text;
     LatLng startPos = _defaultLocation;
 
-    // พยายามดึงพิกัดปัจจุบันจากช่อง GPS มาเป็นค่าเริ่มต้น
+    // พยายามดึงพิกัดปัจจุบันจากช่อง GPS ที่ต้องการมาเป็นค่าเริ่มต้น
     if (currentGpsText.isNotEmpty) {
       try {
         final parts = currentGpsText
@@ -186,8 +195,8 @@ class _RegisterPageState extends State<RegisterPage> {
       }
     }
 
-    // ส่งค่าที่อยู่หลัก (ที่ผู้ใช้พิมพ์ไว้) ไปเป็น initialAddress สำหรับการค้นหาเริ่มต้นใน Modal
-    final String initialAddress = _addressController.text;
+    // ส่งค่าที่อยู่หลัก/ที่อยู่ 2 (ที่ผู้ใช้พิมพ์ไว้) ไปเป็น initialAddress สำหรับการค้นหาเริ่มต้นใน Modal
+    final String initialAddress = sourceAddressController.text;
 
     final LatLng? result = await showModalBottomSheet<LatLng>(
       context: context,
@@ -206,8 +215,8 @@ class _RegisterPageState extends State<RegisterPage> {
     // อัปเดต Controller เมื่อผู้ใช้เลือกพิกัดแล้วกด Save
     if (result != null) {
       setState(() {
-        // อัปเดตแค่ช่องพิกัด GPS เท่านั้น (ตามความต้องการของท่าน)
-        _gpsController.text =
+        // อัปเดตช่องพิกัด GPS ที่ส่งเข้ามา
+        targetGpsController.text =
             "${result.latitude.toStringAsFixed(6)}, ${result.longitude.toStringAsFixed(6)}";
       });
     }
@@ -443,29 +452,36 @@ class _RegisterPageState extends State<RegisterPage> {
             isPassword: true,
           ),
           const SizedBox(height: 20),
-          // ช่องที่อยู่ (กรอกเอง)
-          _buildTextField('ที่อยู่หลัก', controller: _addressController),
-           const SizedBox(height: 20),
 
+          // 1. ที่อยู่หลัก
+          _buildTextField('ที่อยู่หลัก', controller: _addressController),
+          const SizedBox(height: 20),
+
+          // 1.1 ช่องพิกัด GPS สำหรับที่อยู่หลัก
           _buildTextFieldWithIcon(
-            'พิกัด GPS (แตะที่ช่องเพื่อเลือกบนแผนที่)',
-            Icons.my_location, // Icon สำหรับดึงตำแหน่งปัจจุบัน
+            'พิกัด GPS หลัก (แตะที่ช่องเพื่อเลือกบนแผนที่)',
+            Icons.my_location,
             controller: _gpsController,
-            onIconTap: _getCurrentGPS, // แตะ Icon: ดึง GPS ปัจจุบัน
-            onFieldTap: _openMapPicker, // แตะ Field: เปิด Map Picker
-            readOnly: true, // ช่องนี้เป็นแบบอ่านอย่างเดียว
+            // *** ส่ง controller ที่ถูกต้อง: _gpsController สำหรับพิกัด, _addressController สำหรับที่อยู่ค้นหา ***
+            onIconTap: () => _getCurrentGPS(_gpsController),
+            onFieldTap: () => _openMapPicker(_gpsController, _addressController),
+            readOnly: true,
           ),
           const SizedBox(height: 20),
+
+          // 2. ที่อยู่ 2
           _buildTextField('ที่อยู่ 2 (ไม่บังคับ)', controller: _address2Controller),
           const SizedBox(height: 20),
-          // ช่องพิกัด GPS (อ่านอย่างเดียว แตะเพื่อเปิดแผนที่ หรือดึงตำแหน่งปัจจุบัน)
+          
+          // 2.1 ช่องพิกัด GPS สำหรับที่อยู่ 2
           _buildTextFieldWithIcon(
-            'พิกัด GPS (แตะที่ช่องเพื่อเลือกบนแผนที่)',
-            Icons.my_location, // Icon สำหรับดึงตำแหน่งปัจจุบัน
-            controller: _gpsController,
-            onIconTap: _getCurrentGPS, // แตะ Icon: ดึง GPS ปัจจุบัน
-            onFieldTap: _openMapPicker, // แตะ Field: เปิด Map Picker
-            readOnly: true, // ช่องนี้เป็นแบบอ่านอย่างเดียว
+            'พิกัด GPS 2 (แตะที่ช่องเพื่อเลือกบนแผนที่)',
+            Icons.my_location,
+            controller: _gps2Controller,
+            // *** ส่ง controller ที่ถูกต้อง: _gps2Controller สำหรับพิกัด, _address2Controller สำหรับที่อยู่ค้นหา ***
+            onIconTap: () => _getCurrentGPS(_gps2Controller),
+            onFieldTap: () => _openMapPicker(_gps2Controller, _address2Controller),
+            readOnly: true,
           ),
         ],
       ),
