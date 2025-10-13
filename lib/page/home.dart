@@ -1,18 +1,22 @@
 import 'dart:developer'; // สำหรับ log()
+import 'package:delivery_project/page/history_page.dart';
 import 'package:flutter/foundation.dart'; // สำหรับ kIsWeb
 import 'package:delivery_project/page/index.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get_core/src/get_main.dart';
 import 'package:get/get_navigation/get_navigation.dart';
 
-// แทนที่ Google Maps ด้วย Flutter Map และ LatLong2
+// สำหรับ Flutter Map และ LatLong2
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 // สำหรับ GPS
 import 'package:geolocator/geolocator.dart';
 import 'package:delivery_project/page/edit_profile.dart';
-// End Mock Pages
+
+// **เพิ่ม Import สำหรับหน้าใหม่ (สมมติว่าคุณได้สร้างไฟล์เหล่านี้แล้ว)**
+// import 'package:delivery_project/page/order_status_page.dart';
+// import 'package:delivery_project/page/send_package_page.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -22,16 +26,14 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // 1. ตัวแปรสำหรับ Flutter Maps (แทน GoogleMapController)
+  // 1. ตัวแปรสำหรับ Flutter Maps
   final MapController mapController = MapController();
 
-  // พิกัดเริ่มต้น: หอพักอาณาจักรฟ้า (ตัวอย่างพิกัด)
-  // ใช้ LatLng จาก package latlong2 แทน
+  // พิกัดเริ่มต้น
   static final LatLng _initialCenter = LatLng(16.4858, 102.8222);
   static const double _initialZoom = 14.0;
 
-  // 2. จุดปักหมุด (ใช้ List<Marker> จาก flutter_map)
-  // เราจะสร้าง List ของ Marker ที่จะแสดงบนแผนที่
+  // 2. จุดปักหมุด
   List<Marker> get _fixedMarkers => [
         // Marker สำหรับจุดหมายปลายทาง (หอพักอาณาจักรฟ้า)
         Marker(
@@ -63,14 +65,14 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ];
 
-  // 3. ตัวแปรสำหรับตำแหน่ง GPS ปัจจุบัน (จาก gps.dart)
+  // 3. ตัวแปรสำหรับตำแหน่ง GPS ปัจจุบัน
   LatLng? currentPos;
 
-  // 4. ฟังก์ชันดึงตำแหน่ง GPS (จาก gps.dart)
+  // 4. ฟังก์ชันดึงตำแหน่ง GPS
   Future<void> _getCurrentLocation() async {
     try {
       if (kIsWeb) {
-        // บน Web ใช้ Geolocator แต่ Browser ต้องอนุญาต Location
+        // บน Web
         Position pos = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
         );
@@ -148,14 +150,14 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildHeader(context),
               _buildIconButtons(),
               const SizedBox(height: 20),
-              // วิดเจ็ตแผนที่ Flutter Map ที่ได้รับการปรับปรุง
+              // วิดเจ็ตแผนที่ Flutter Map
               _buildMapSection(context),
               const SizedBox(height: 20),
             ],
           ),
         ),
       ),
-      // เพิ่มปุ่ม Floating Action Button เพื่อดึงตำแหน่ง GPS (จาก gps.dart)
+      // เพิ่มปุ่ม Floating Action Button เพื่อดึงตำแหน่ง GPS
       floatingActionButton: FloatingActionButton(
         backgroundColor: const Color(0xFFC70808),
         onPressed: _getCurrentLocation,
@@ -167,7 +169,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   //------------------------------------------------------------------
-  // Header Section (ไม่เปลี่ยนแปลง)
+  // Header Section
   //------------------------------------------------------------------
 
   Widget _buildHeader(BuildContext context) {
@@ -244,10 +246,23 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   //------------------------------------------------------------------
-  // Icon Buttons Section (ไม่เปลี่ยนแปลง)
+  // Icon Buttons Section
   //------------------------------------------------------------------
 
   Widget _buildIconButtons() {
+    // สมมติว่ามีการ Import OrderStatusPage และ SendPackagePage แล้ว
+    // ถ้ายังไม่มี ให้เปลี่ยน Get.to() เป็น log() หรือสร้างหน้าจำลอง
+
+    // ตัวอย่างการใช้ Get.to() สำหรับหน้าใหม่ (ต้องสร้างไฟล์ Page ก่อน)
+    /*
+    final VoidCallback goToStatus = () => Get.to(() => const OrderStatusPage());
+    final VoidCallback goToSend = () => Get.to(() => const SendPackagePage());
+    */
+
+    // ใช้ log() แทน จนกว่าจะสร้างหน้า OrderStatusPage/SendPackagePage จริง
+    final VoidCallback goToStatus = () => log('Navigate to OrderStatusPage');
+    final VoidCallback goToSend = () => log('Navigate to SendPackagePage');
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       child: Column(
@@ -258,10 +273,16 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildFeatureButton(
                 'พัสดุที่ต้องรับ',
                 'assets/images/package_icon.png',
+                () {
+                  // TODO: action พัสดุที่ต้องรับ
+                },
               ),
               _buildFeatureButton(
                 'ข้อมูลไรเดอร์',
                 'assets/images/rider_icon.png',
+                () {
+                  // TODO: action ข้อมูลไรเดอร์
+                },
               ),
             ],
           ),
@@ -272,8 +293,13 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildFeatureButton(
                 'สถานะสินค้า',
                 'assets/images/status_icon.png',
+                goToStatus, // ใช้ action สำหรับดูสถานะสินค้า
               ),
-              _buildFeatureButton('ส่งสินค้า', 'assets/images/send_icon.png'),
+              _buildFeatureButton(
+                'ส่งสินค้า',
+                'assets/images/send_icon.png',
+                goToSend, // ใช้ action สำหรับส่งสินค้า
+              ),
             ],
           ),
         ],
@@ -281,17 +307,19 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// สร้างปุ่มคุณสมบัติ (ใช้รูปภาพจำลองแทน IconData เพื่อให้ตรงกับรูป)
-  Widget _buildFeatureButton(String text, String imagePath) {
+  /// สร้างปุ่มคุณสมบัติ (ปรับปรุงให้รับ onTap)
+  Widget _buildFeatureButton(
+    String text,
+    String imagePath,
+    VoidCallback onTap, // <--- เพิ่ม VoidCallback สำหรับ Action
+  ) {
     return Expanded(
       child: Card(
         color: Colors.white,
         elevation: 2,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         child: InkWell(
-          onTap: () {
-            // TODO: ใส่ action เมื่อกดปุ่ม
-          },
+          onTap: onTap, // <--- ใช้ onTap ที่นี่
           borderRadius: BorderRadius.circular(15),
           child: Padding(
             padding: const EdgeInsets.all(15.0),
@@ -383,7 +411,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   },
                 ),
                 children: [
-                  // 6. ใช้ TileLayer สำหรับโหลดแผนที่ (ใช้ OpenStreetMap เหมือนใน gps.dart)
+                  // 6. ใช้ TileLayer สำหรับโหลดแผนที่
                   TileLayer(
                     urlTemplate:
                         'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=cb153d15cb4e41f59e25cfda6468f1a0',
@@ -401,7 +429,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   //------------------------------------------------------------------
-  // Bottom Navigation Bar (ไม่เปลี่ยนแปลง)
+  // Bottom Navigation Bar
   //------------------------------------------------------------------
 
   Widget _buildBottomNavigationBar(BuildContext context) {
@@ -433,19 +461,23 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'ออกจากระบบ',
           ),
         ],
-        currentIndex: 0,
+        currentIndex: 0, // หน้าแรกถูกเลือกอยู่
         onTap: (index) {
-          if (index == 2) {
-            Get.offAll(() => const SpeedDerApp());
+          if (index == 0) {
+            // อยู่หน้า Home อยู่แล้ว ไม่ต้องทำอะไร
+          } else if (index == 1) {
+            // 🚀 นำทางไปหน้าประวัติการส่งสินค้า
+            Get.to(() => const HistoryPage());
+          } else if (index == 2) {
+            Get.offAll(() => const SpeedDerApp()); // Log out
           }
-          // TODO: เพิ่มการนำทางสำหรับรายการอื่น ๆ
         },
       ),
     );
   }
 
   //------------------------------------------------------------------
-  // Profile Options Modal (ไม่เปลี่ยนแปลง)
+  // Profile Options Modal
   //------------------------------------------------------------------
 
   void _showProfileOptions(BuildContext context) {
@@ -514,5 +546,16 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 //------------------------------------------------------------------
-// Custom Clipper for Header Wave (ไม่เปลี่ยนแปลง)
+// Custom Clipper for Header Wave (ไม่ได้ใช้งานในโค้ดที่ให้มา แต่เพื่อความสมบูรณ์)
 //-----------------------------------------------------------------
+/*
+class HeaderClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    // ... โค้ดสำหรับวาดคลื่น ...
+    return Path();
+  }
+  @override
+  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
+}
+*/

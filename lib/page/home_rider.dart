@@ -3,6 +3,8 @@ import 'package:get/get_core/src/get_main.dart';
 import 'package:get/get_navigation/get_navigation.dart';
 import 'package:delivery_project/page/edit_profile.dart';
 import 'package:delivery_project/page/index.dart';
+// ***** เพิ่ม Import หน้าขั้นตอนการจัดส่ง (สมมติว่าคุณได้สร้างไฟล์นี้แล้ว) *****
+import 'package_delivery_page.dart';
 
 // ------------------------------------------------------------------
 // Model Data (จำลองโครงสร้างข้อมูลสินค้าที่จะได้จาก API)
@@ -171,7 +173,9 @@ class RiderHomeScreen extends StatelessWidget {
   }
 
   Widget _buildPackageCard(BuildContext context, Package package) {
-    bool isPending = package.status == 'รอรับสินค้า';
+    // กำหนดว่าพัสดุนี้สามารถดำเนินการได้หรือไม่ (ไม่ใช่ 'จัดส่งสำเร็จ' แล้ว)
+    bool isActionable = package.status != 'จัดส่งสำเร็จ';
+    // ใช้ isActionable แทน isPending ในการแสดงผลปุ่ม
 
     return Card(
       margin: const EdgeInsets.only(bottom: 15),
@@ -221,10 +225,16 @@ class RiderHomeScreen extends StatelessWidget {
               alignment: Alignment.bottomRight,
               child: TextButton(
                 onPressed: () {
-                  // TODO: Action เมื่อกดปุ่ม (เช่น นำทาง หรือยืนยัน)
+                  // ***** แก้ไข: Action เมื่อกดปุ่ม (นำทางไปหน้าขั้นตอนการจัดส่ง) *****
+                  if (isActionable) {
+                    Get.to(() => PackageDeliveryPage(package: package));
+                  } else {
+                    // สำหรับสถานะ 'จัดส่งสำเร็จ'
+                    Get.snackbar('ข้อมูล', 'พัสดุนี้จัดส่งสำเร็จแล้ว');
+                  }
                 },
                 style: TextButton.styleFrom(
-                  backgroundColor: isPending
+                  backgroundColor: isActionable
                       ? const Color(0xFF38B000)
                       : Colors.grey, // สีเขียวหรือเทา
                   padding: const EdgeInsets.symmetric(
@@ -239,7 +249,8 @@ class RiderHomeScreen extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      isPending ? 'รับ' : 'เสร็จสิ้น',
+                      // เปลี่ยนข้อความปุ่มตามสถานะที่ดำเนินการได้หรือไม่
+                      isActionable ? 'ดำเนินการ' : 'เสร็จสิ้น',
                       style: const TextStyle(color: Colors.white, fontSize: 14),
                     ),
                     const Icon(
