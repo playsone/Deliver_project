@@ -7,7 +7,8 @@ import 'package:delivery_project/page/index.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart'; // เพิ่ม import สำหรับจัดรูปแบบวันที่
+import 'package:intl/date_symbol_data_local.dart'; // เพิ่ม import สำหรับภาษาไทย
+import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
 // Constants
@@ -34,7 +35,34 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
   final MapController _mapController = MapController();
 
   @override
+  void initState() {
+    super.initState();
+    // ตั้งค่า locale สำหรับการจัดรูปแบบวันที่และเวลาเป็นภาษาไทย
+    initializeDateFormatting('th', null);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // **ส่วนดักบั๊ก: 1. ตรวจสอบว่าได้รับ orderId ที่ถูกต้องหรือไม่**
+    if (widget.orderId.isEmpty) {
+      // ถ้า orderId เป็นค่าว่าง ให้แสดงหน้าจอข้อผิดพลาดทันทีเพื่อป้องกันแอปพัง
+      return Scaffold(
+        appBar: AppBar(
+            title: const Text('เกิดข้อผิดพลาด'),
+            backgroundColor: _primaryColor),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(20.0),
+            child: Text(
+              'ไม่สามารถโหลดข้อมูลได้ เนื่องจากไม่ได้รับ ID ของออเดอร์\nกรุณาลองกลับไปทำรายการใหม่อีกครั้ง',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: _backgroundColor,
       appBar: AppBar(
@@ -43,7 +71,6 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
         backgroundColor: _primaryColor,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      // ใช้ StreamBuilder ตัวหลักเพื่อฟังข้อมูลออเดอร์
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance
             .collection('delivery_orders')
@@ -60,12 +87,11 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
           final orderData = orderSnapshot.data!.data() as Map<String, dynamic>;
           final riderId = orderData['riderId'] as String?;
 
-          // ถ้ายังไม่มีไรเดอร์รับงาน
-          if (riderId == null) {
-            return _buildContent(orderData, null); // ส่งตำแหน่งไรเดอร์เป็น null
+          // **ส่วนดักบั๊ก: 2. ตรวจสอบว่า riderId ไม่ใช่ค่าว่างก่อนเรียกใช้**
+          if (riderId == null || riderId.isEmpty) {
+            return _buildContent(orderData, null); // ยังไม่มีไรเดอร์รับงาน
           }
 
-          // ถ้ามีไรเดอร์แล้ว ให้สร้าง StreamBuilder อีกตัวเพื่อฟังตำแหน่งไรเดอร์
           return StreamBuilder<DocumentSnapshot>(
             stream: FirebaseFirestore.instance
                 .collection('users')
@@ -76,12 +102,12 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
               if (riderSnapshot.hasData && riderSnapshot.data!.exists) {
                 final riderData =
                     riderSnapshot.data!.data() as Map<String, dynamic>;
-                if (riderData['gps'] is GeoPoint) {
+                if (riderData.containsKey('gps') &&
+                    riderData['gps'] is GeoPoint) {
                   final geoPoint = riderData['gps'] as GeoPoint;
                   riderPosition = LatLng(geoPoint.latitude, geoPoint.longitude);
                 }
               }
-              // ส่งข้อมูลทั้งหมดไปสร้าง UI
               return _buildContent(orderData, riderPosition);
             },
           );
@@ -91,7 +117,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
     );
   }
 
-  // Widget หลักสำหรับสร้าง UI ทั้งหมดจากข้อมูลที่ได้มา
+  // Widget หลักสำหรับสร้าง UI ทั้งหมด
   Widget _buildContent(Map<String, dynamic> orderData, LatLng? riderPosition) {
     return SingleChildScrollView(
       child: Column(
@@ -110,22 +136,18 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
   // ส่วนแสดงแผนที่
   Widget _buildMapSection(
       Map<String, dynamic> orderData, LatLng? riderPosition) {
-    // ดึงพิกัดปลายทาง
     final GeoPoint destPoint = orderData['deliveryAddress']['gps'] ??
         const GeoPoint(16.4746, 102.8247);
     final LatLng destinationLatLng =
         LatLng(destPoint.latitude, destPoint.longitude);
 
-    // สร้างรายการหมุด
     final markers = <Marker>[
-      // หมุดปลายทาง
       Marker(
         point: destinationLatLng,
         child: const Icon(Icons.location_on, color: _primaryColor, size: 40),
       ),
     ];
 
-    // ถ้ามีตำแหน่งไรเดอร์ ให้เพิ่มหมุดไรเดอร์
     if (riderPosition != null) {
       markers.add(
         Marker(
@@ -163,7 +185,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
     );
   }
 
-  // ส่วนแสดงสถานะปัจจุบัน
+  // ส่วนแสดงสถานะปัจจุบันและรายละเอียด
   Widget _buildCurrentStatusHeader(Map<String, dynamic> orderData) {
     final status = orderData['currentStatus'] ?? 'pending';
     final orderDetails = orderData['orderDetails'] ?? 'ไม่มีรายละเอียด';
@@ -184,12 +206,19 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
                 'สถานะปัจจุบัน: ',
                 style: TextStyle(fontSize: 16, color: Colors.grey.shade700),
               ),
-              Text(
-                _translateStatus(status), // แปลสถานะเป็นภาษาไทย
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.orange,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _getStatusColor(status).withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  _translateStatus(status),
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: _getStatusColor(status),
+                  ),
                 ),
               ),
             ],
@@ -210,7 +239,6 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
       return const Center(child: Text('ไม่มีประวัติสถานะ'));
     }
 
-    // เรียงลำดับจากล่าสุดไปเก่าสุด
     statusHistory.sort((a, b) {
       Timestamp tsA = a['timestamp'] ?? Timestamp.now();
       Timestamp tsB = b['timestamp'] ?? Timestamp.now();
@@ -238,7 +266,9 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
               Column(
                 children: [
                   Icon(
-                    isFirst ? Icons.radio_button_checked : Icons.circle,
+                    isFirst
+                        ? Icons.radio_button_checked
+                        : Icons.circle_outlined,
                     color: isFirst ? _primaryColor : Colors.grey,
                     size: 20,
                   ),
@@ -266,7 +296,8 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
                     ),
                     Text(
                       formattedTime,
-                      style: TextStyle(color: Colors.grey.shade600),
+                      style:
+                          TextStyle(color: Colors.grey.shade600, fontSize: 12),
                     ),
                   ],
                 ),
@@ -278,7 +309,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
     );
   }
 
-  // ฟังก์ชันแปลสถานะเป็นภาษาไทย
+  // ฟังก์ชันสำหรับแปลสถานะเป็นภาษาไทย
   String _translateStatus(String status) {
     switch (status) {
       case 'pending':
@@ -293,6 +324,22 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
         return 'จัดส่งสำเร็จ';
       default:
         return status;
+    }
+  }
+
+  // ฟังก์ชันสำหรับกำหนดสีตามสถานะ
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'pending':
+      case 'accepted':
+        return Colors.blue;
+      case 'picked_up':
+      case 'in_transit':
+        return Colors.orange;
+      case 'delivered':
+        return Colors.green;
+      default:
+        return Colors.grey;
     }
   }
 
