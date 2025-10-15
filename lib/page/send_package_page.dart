@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloudinary_public/cloudinary_public.dart'; // **เพิ่ม:** import สำหรับ Cloudinary
+import 'package:cloudinary_public/cloudinary_public.dart'; // ใช้ Cloudinary
 import 'package:delivery_project/page/order_status_page.dart';
 
 // Constants
@@ -22,21 +22,14 @@ class SendPackagePage extends StatefulWidget {
 }
 
 class _SendPackagePageState extends State<SendPackagePage> {
-  // ตัวแปรสำหรับฟอร์ม
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _detailController = TextEditingController();
   final TextEditingController _deliveryAddressController =
       TextEditingController();
-
-  // ตัวแปรสำหรับข้อมูลผู้ใช้
   String _userName = 'กำลังโหลด...';
   String _userPhone = '...';
   String _profileImageUrl = 'https://picsum.photos/200';
-
-  // สถานะเพื่อจัดการขั้นตอน
   int _step = 1;
-
-  // ตัวแปรสำหรับจัดการรูปภาพ
   XFile? _imageFile;
   final ImagePicker _picker = ImagePicker();
 
@@ -90,7 +83,6 @@ class _SendPackagePageState extends State<SendPackagePage> {
     });
   }
 
-  // **ส่วนที่แก้ไขหลัก: เปลี่ยนมาใช้ Cloudinary ในการอัปโหลดรูป**
   void _completeSubmission() async {
     if (_imageFile == null) return;
 
@@ -101,27 +93,21 @@ class _SendPackagePageState extends State<SendPackagePage> {
 
     try {
       // 1. อัปโหลดรูปภาพไปยัง Cloudinary
-      final cloudinary = CloudinaryPublic(
-        'dnutmbomv', // << Cloud Name ของคุณจากหน้า Register
-        'delivery888', // << Upload Preset ของคุณจากหน้า Register
-        cache: false,
-      );
-
+      final cloudinary = CloudinaryPublic('dnutmbomv', 'delivery888', cache: false);
       final response = await cloudinary.uploadFile(
         CloudinaryFile.fromFile(
           _imageFile!.path,
           resourceType: CloudinaryResourceType.Image,
         ),
       );
-
       final imageUrl = response.secureUrl;
 
-      // 2. เตรียมข้อมูลสำหรับบันทึกลง Firestore (ส่วนนี้เหมือนเดิม)
+      // 2. เตรียมข้อมูลสำหรับบันทึกลง Firestore
       final orderData = {
         'customerId': widget.uid,
         'riderId': null,
         'orderDetails': _detailController.text,
-        'orderImageUrl': imageUrl, // ใช้ URL จาก Cloudinary
+        'orderImageUrl': imageUrl,
         'pickupAddress': {
           'detail': _addressController.text,
           'gps': const GeoPoint(16.4858, 102.8222)
@@ -131,20 +117,22 @@ class _SendPackagePageState extends State<SendPackagePage> {
           'gps': const GeoPoint(16.4746, 102.8247)
         },
         'currentStatus': 'pending',
-        'createdAt': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(), // <-- ตัวนี้ใช้ได้ เพราะอยู่ชั้นนอกสุด
+        
+        // **ส่วนที่แก้ไข: เปลี่ยนไปใช้ Timestamp.now()**
         'statusHistory': [
-          {'status': 'pending', 'timestamp': FieldValue.serverTimestamp()}
+          {'status': 'pending', 'timestamp': Timestamp.now()} // <-- ใช้เวลาของเครื่อง ณ ตอนนั้น
         ],
       };
 
-      // 3. บันทึกข้อมูลลงใน Collection 'delivery_orders'
+      // 3. บันทึกข้อมูล
       DocumentReference docRef = await FirebaseFirestore.instance
           .collection('delivery_orders')
           .add(orderData);
 
-      Get.back(); // ปิด Loading Dialog
+      Get.back();
 
-      // 4. ไปยังหน้าสำเร็จและนำทางไปหน้าดูสถานะ
+      // 4. ไปยังหน้าสำเร็จ
       setState(() {
         _step = 4;
       });
@@ -171,10 +159,7 @@ class _SendPackagePageState extends State<SendPackagePage> {
 
   Future<void> _takePhoto() async {
     try {
-      final pickedFile = await _picker.pickImage(
-        source: ImageSource.camera,
-        maxWidth: 800,
-      );
+      final pickedFile = await _picker.pickImage(source: ImageSource.camera, maxWidth: 800);
       if (mounted) {
         setState(() {
           _imageFile = pickedFile;
@@ -187,6 +172,7 @@ class _SendPackagePageState extends State<SendPackagePage> {
 
   @override
   Widget build(BuildContext context) {
+    // โค้ดส่วน UI ทั้งหมดเหมือนเดิม ไม่ต้องแก้ไข
     return Scaffold(
       backgroundColor: _backgroundColor,
       body: CustomScrollView(
@@ -215,7 +201,6 @@ class _SendPackagePageState extends State<SendPackagePage> {
 
   // (โค้ดส่วน UI ทั้งหมดตั้งแต่ _buildSliverAppBar จนสุดไฟล์ สามารถใช้ของเดิมได้เลย)
   // ...
-  // ส่วน Header
   Widget _buildSliverAppBar(BuildContext context) {
     return SliverAppBar(
       expandedHeight: 180.0,
@@ -227,7 +212,7 @@ class _SendPackagePageState extends State<SendPackagePage> {
         title: Padding(
           padding: const EdgeInsets.only(left: 20, bottom: 8),
           child: Text(
-            'สวัสดีคุณ\n$_userName', // แสดงชื่อผู้ใช้จริง
+            'สวัสดีคุณ\n$_userName',
             style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -248,7 +233,7 @@ class _SendPackagePageState extends State<SendPackagePage> {
                   radius: 35,
                   backgroundColor: Colors.white,
                   backgroundImage:
-                      NetworkImage(_profileImageUrl), // แสดงรูปโปรไฟล์จริง
+                      NetworkImage(_profileImageUrl),
                 ),
               ),
             ),
@@ -270,7 +255,6 @@ class _SendPackagePageState extends State<SendPackagePage> {
     );
   }
 
-  // ขั้นตอนที่ 1: กรอกข้อมูล
   Widget _buildStepOneForm(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -293,7 +277,6 @@ class _SendPackagePageState extends State<SendPackagePage> {
     );
   }
 
-  // ขั้นตอนที่ 2: ยืนยันข้อมูล
   Widget _buildStepTwoConfirmation(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -307,7 +290,6 @@ class _SendPackagePageState extends State<SendPackagePage> {
     );
   }
 
-  // ขั้นตอนที่ 3: ถามยืนยัน
   Widget _buildStepThreeFinalConfirmation() {
     return Column(
       children: [
@@ -324,7 +306,6 @@ class _SendPackagePageState extends State<SendPackagePage> {
     );
   }
 
-  // ขั้นตอนที่ 4: สำเร็จ
   Widget _buildStepFourSuccess() {
     return Column(
       children: [
@@ -337,7 +318,6 @@ class _SendPackagePageState extends State<SendPackagePage> {
     );
   }
 
-  // ข้อมูลผู้ใช้
   Widget _buildUserInfo() {
     return Container(
       padding: const EdgeInsets.all(15),
@@ -368,7 +348,6 @@ class _SendPackagePageState extends State<SendPackagePage> {
     );
   }
 
-  // ส่วนถ่ายรูปและแสดงรูป
   Widget _buildPackageSection() {
     return Container(
       padding: const EdgeInsets.all(15),
@@ -401,7 +380,6 @@ class _SendPackagePageState extends State<SendPackagePage> {
     );
   }
 
-  // ส่วนสรุปข้อมูล
   Widget _buildConfirmSection({bool showPackageIcon = false}) {
     return Container(
       padding: const EdgeInsets.all(15),
@@ -646,7 +624,6 @@ class _SendPackagePageState extends State<SendPackagePage> {
     );
   }
 }
-
 // Custom Clipper สำหรับ Header
 class CustomClipperWidget extends CustomClipper<Path> {
   @override

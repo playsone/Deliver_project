@@ -100,18 +100,18 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
 
       // 1. อัปโหลดรูปภาพไปยัง Cloudinary
       final cloudinary = CloudinaryPublic(
-        'dnutmbomv', // << Cloud Name ของคุณ
+        'dnutmbomv',   // << Cloud Name ของคุณ
         'delivery888', // << Upload Preset ของคุณ
         cache: false,
       );
-
+      
       final response = await cloudinary.uploadFile(
         CloudinaryFile.fromFile(
           pickedFile.path,
           resourceType: CloudinaryResourceType.Image,
         ),
       );
-
+      
       final imageUrl = response.secureUrl;
 
       // 2. อัปเดตสถานะใน Firestore
@@ -245,32 +245,15 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
     );
   }
 
-  // ------------------------------------------------------------------
-  // UI Components
-  // ------------------------------------------------------------------
-
+  // (โค้ดส่วน UI ทั้งหมดตั้งแต่ _buildStatusTracker จนสุดไฟล์ สามารถใช้ของเดิมได้เลย)
+  // ...
+    // UI Components
   Widget _buildStatusTracker(Color primaryColor, DeliveryStatus currentStatus) {
     final List<Map<String, dynamic>> steps = [
-      {
-        'icon': Icons.check_circle_outline,
-        'status': DeliveryStatus.accepted,
-        'label': 'รับงาน'
-      },
-      {
-        'icon': Icons.inventory_2,
-        'status': DeliveryStatus.pickedUp,
-        'label': 'รับของ'
-      },
-      {
-        'icon': Icons.local_shipping,
-        'status': DeliveryStatus.inTransit,
-        'label': 'จัดส่ง'
-      },
-      {
-        'icon': Icons.task_alt,
-        'status': DeliveryStatus.delivered,
-        'label': 'สำเร็จ'
-      },
+      {'icon': Icons.check_circle_outline, 'status': DeliveryStatus.accepted, 'label': 'รับงาน'},
+      {'icon': Icons.inventory_2, 'status': DeliveryStatus.pickedUp, 'label': 'รับของ'},
+      {'icon': Icons.local_shipping, 'status': DeliveryStatus.inTransit, 'label': 'จัดส่ง'},
+      {'icon': Icons.task_alt, 'status': DeliveryStatus.delivered, 'label': 'สำเร็จ'},
     ];
 
     return Container(
@@ -309,8 +292,8 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
   }
 
   Widget _buildMapSection(Map<String, dynamic> orderData, String? riderId) {
-    final GeoPoint destinationPoint = orderData['deliveryAddress']['gps'] ??
-        const GeoPoint(16.4746, 102.8247);
+    final GeoPoint destinationPoint =
+        orderData['deliveryAddress']['gps'] ?? const GeoPoint(16.4746, 102.8247);
     final destinationLatLng =
         LatLng(destinationPoint.latitude, destinationPoint.longitude);
 
@@ -353,7 +336,8 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
               ),
               children: [
                 TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  urlTemplate:
+                      'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 ),
                 MarkerLayer(
                   markers: [
@@ -589,4 +573,5 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
       ),
     );
   }
+
 }
