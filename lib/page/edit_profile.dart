@@ -1,10 +1,19 @@
 import 'dart:developer';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:delivery_project/models/user_model.dart';
+import 'dart:io';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
+
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geocoding/geocoding.dart';
+
+// ตรวจสอบว่า path ไปยัง model ของคุณถูกต้อง
+import 'package:delivery_project/models/user_model.dart';
 
 class EditProfilePage extends StatefulWidget {
   final String uid;
@@ -17,30 +26,349 @@ class EditProfilePage extends StatefulWidget {
 
 class _EditProfilePageState extends State<EditProfilePage> {
   final db = FirebaseFirestore.instance;
-  UserModel? _user;
-  LatLng defaultLocation = const LatLng(16.245721, 103.231722);
-  final MapController _mapController = MapController();
+  final _auth = FirebaseAuth.instance;
+  bool _isDataInitialized = false;
 
   // Controllers
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
-  final _addressController = TextEditingController();
-  final _address2Controller = TextEditingController();
-  final _gpsController = TextEditingController();
-  final _gps2Controller = TextEditingController();
   final _passwordController = TextEditingController();
   final _password2Controller = TextEditingController();
+  final _addressController = TextEditingController();
+  final _gpsController = TextEditingController();
+  final _address2Controller = TextEditingController();
+  final _gps2Controller = TextEditingController();
   final _vehicleRegController = TextEditingController();
 
-  late LatLng _currentMarkerPos;
-  late String _profileImageUrl;
+  // State Variables
+  UserModel? _user;
+  File? _profileImageFile;
+  File? _vehicleImageFile;
+  String _profileImageUrl = '';
+  String _vehicleImageUrl = '';
+  LatLng? _defaultMarkerPos;
+  LatLng? _secondMarkerPos;
 
   @override
-  void initState() {
-    super.initState();
-    _currentMarkerPos = defaultLocation;
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    _passwordController.dispose();
+    _password2Controller.dispose();
+    _addressController.dispose();
+    _gpsController.dispose();
+    _address2Controller.dispose();
+    _gps2Controller.dispose();
+    _vehicleRegController.dispose();
+    super.dispose();
   }
 
+  //----------- CORE LOGIC FUNCTIONS -----------//
+
+  Future<UserModel> fetchUser(String uid) async {
+    final docSnapshot =
+        await FirebaseFirestore.instance.collection('users').doc(uid).get();
+
+    if (!docSnapshot.exists) {
+      throw Exception('ไม่พบผู้ใช้งาน');
+    }
+    return UserModel.fromFirestore(docSnapshot);
+  }
+
+  Future<String?> _uploadImage(File imageFile) async {
+    const String cloudName = 'dvh40wpmm';
+    const String uploadPreset = 'gameshop_images';
+    final url =
+        Uri.parse('https://api.cloudinary.com/v1_1/$cloudName/image/upload');
+
+    final request = http.MultipartRequest('POST', url)
+      ..fields['upload_preset'] = uploadPreset
+      ..files.add(await http.MultipartFile.fromPath('file', imageFile.path));
+
+    try {
+      final response = await request.send();
+      if (response.statusCode == 200) {
+        final responseData = await response.stream.bytesToString();
+        final decodedData = json.decode(responseData);
+        return decodedData['secure_url'];
+      }
+    } catch (e) {
+      log('Image Upload Error: $e');
+    }
+    return null;
+  }
+
+  // ❗️ CORRECTED LOGIC: เพิ่มส่วนจัดการ Re-authentication สำหรับการเปลี่ยนรหัสผ่าน
+  Future<void> _saveProfile() async {
+    if (_passwordController.text.isNotEmpty &&
+        _passwordController.text != _password2Controller.text) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("รหัสผ่านใหม่ไม่ตรงกัน!")));
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+          child: CircularProgressIndicator(color: Color(0xFFC70808))),
+    );
+
+    final user = _auth.currentUser;
+    if (user == null) {
+      Navigator.of(context).pop(); // Dismiss loading
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("ไม่พบข้อมูลผู้ใช้ปัจจุบัน")));
+      return;
+    }
+
+    try {
+      // --- Step 1: อัปเดตข้อมูลใน Firestore (ทำก่อนเพราะไม่ sensitive) ---
+      String? newProfileUrl;
+      String? newVehicleUrl;
+      if (_profileImageFile != null)
+        newProfileUrl = await _uploadImage(_profileImageFile!);
+      if (_vehicleImageFile != null)
+        newVehicleUrl = await _uploadImage(_vehicleImageFile!);
+
+      final Map<String, dynamic> dataToUpdate = {
+        'fullname': _nameController.text
+      };
+      if (newProfileUrl != null) dataToUpdate['profile'] = newProfileUrl;
+
+      if (widget.role == 0) {
+        dataToUpdate.addAll({
+          'defaultAddress': _addressController.text,
+          'secondAddress': _address2Controller.text,
+        });
+        if (_defaultMarkerPos != null)
+          dataToUpdate['defaultGPS'] = GeoPoint(
+              _defaultMarkerPos!.latitude, _defaultMarkerPos!.longitude);
+        if (_secondMarkerPos != null)
+          dataToUpdate['secondGPS'] =
+              GeoPoint(_secondMarkerPos!.latitude, _secondMarkerPos!.longitude);
+      } else if (widget.role == 1) {
+        dataToUpdate.addAll({
+          'defaultAddress': _addressController.text,
+          'vehicle_no': _vehicleRegController.text,
+        });
+        if (newVehicleUrl != null)
+          dataToUpdate['vehicle_picture'] = newVehicleUrl;
+        if (_defaultMarkerPos != null)
+          dataToUpdate['defaultGPS'] = GeoPoint(
+              _defaultMarkerPos!.latitude, _defaultMarkerPos!.longitude);
+      }
+      await db.collection('users').doc(_user!.uid).update(dataToUpdate);
+
+      // --- Step 2: พยายามอัปเดตรหัสผ่าน (Sensitive Operation) ---
+      if (_passwordController.text.isNotEmpty) {
+        await user.updatePassword(_passwordController.text);
+      }
+
+      Navigator.of(context).pop(); // ปิด Loading
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text("บันทึกข้อมูลสำเร็จ!"),
+        backgroundColor: Colors.green,
+      ));
+    } on FirebaseAuthException catch (e) {
+      Navigator.of(context).pop(); // ปิด Loading ก่อนแสดง Dialog
+
+      // --- Step 3: ดักจับ Error และเรียก Re-authentication ---
+      if (e.code == 'requires-recent-login') {
+        final currentPassword = await _showReauthDialog();
+        if (currentPassword == null || currentPassword.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("ยกเลิกการดำเนินการ")));
+          return;
+        }
+
+        try {
+          AuthCredential credential = EmailAuthProvider.credential(
+              email: user.email!, password: currentPassword);
+          await user.reauthenticateWithCredential(credential);
+
+          // --- Step 4: ลองเปลี่ยนรหัสผ่านอีกครั้งหลัง Re-auth สำเร็จ ---
+          await user.updatePassword(_passwordController.text);
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text("บันทึกข้อมูลและอัปเดตรหัสผ่านสำเร็จ!"),
+            backgroundColor: Colors.green,
+          ));
+        } on FirebaseAuthException catch (reauthError) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text("ยืนยันตัวตนไม่สำเร็จ: ${reauthError.message}")),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("เกิดข้อผิดพลาด: ${e.message}")));
+      }
+    } catch (e) {
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("เกิดข้อผิดพลาดไม่คาดคิด: $e")));
+    }
+  }
+
+  // ✨ HELPER DIALOG: สำหรับการยืนยันตัวตนซ้ำ
+  Future<String?> _showReauthDialog() async {
+    final passwordController = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("ยืนยันตัวตนอีกครั้ง"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                  "เพื่อความปลอดภัย กรุณากรอกรหัสผ่านปัจจุบันของคุณเพื่อดำเนินการต่อ"),
+              const SizedBox(height: 16),
+              TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'รหัสผ่านปัจจุบัน',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(null),
+              child: const Text("ยกเลิก"),
+            ),
+            ElevatedButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(passwordController.text),
+              child: const Text("ยืนยัน"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _openMapPicker({required int target}) async {
+    LatLng initialPoint = target == 1
+        ? (_defaultMarkerPos ?? const LatLng(16.245721, 103.231722))
+        : (_secondMarkerPos ?? const LatLng(16.245721, 103.231722));
+
+    LatLng? selectedPoint = await showDialog<LatLng>(
+      context: context,
+      builder: (context) => MapPickerModal(initialLatLng: initialPoint),
+    );
+
+    if (selectedPoint != null) {
+      setState(() {
+        if (target == 1) {
+          _defaultMarkerPos = selectedPoint;
+          _gpsController.text =
+              "${selectedPoint.latitude.toStringAsFixed(6)}, ${selectedPoint.longitude.toStringAsFixed(6)}";
+          _updateAddressFromCoordinates(selectedPoint, _addressController);
+        } else {
+          _secondMarkerPos = selectedPoint;
+          _gps2Controller.text =
+              "${selectedPoint.latitude.toStringAsFixed(6)}, ${selectedPoint.longitude.toStringAsFixed(6)}";
+          _updateAddressFromCoordinates(selectedPoint, _address2Controller);
+        }
+      });
+    }
+  }
+
+  Future<void> _updateAddressFromCoordinates(
+      LatLng point, TextEditingController controller) async {
+    try {
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+          point.latitude, point.longitude,
+          localeIdentifier: "th_TH");
+      if (placemarks.isNotEmpty) {
+        final p = placemarks.first;
+        final addressLine =
+            "${p.street}, ${p.subLocality}, ${p.locality}, ${p.subAdministrativeArea}, ${p.administrativeArea} ${p.postalCode}"
+                .replaceAll(' ,', ',');
+        controller.text = addressLine.trim();
+      }
+    } catch (e) {
+      log("Reverse Geocoding Error: $e");
+    }
+  }
+
+  Future<void> _pickImage({required bool isProfile}) async {
+    final source = await _showImageSourceActionSheet();
+    if (source == null) return;
+
+    final ImagePicker picker = ImagePicker();
+    final XFile? image =
+        await picker.pickImage(source: source, imageQuality: 70);
+
+    if (image != null) {
+      setState(() {
+        if (isProfile) {
+          _profileImageFile = File(image.path);
+        } else {
+          _vehicleImageFile = File(image.path);
+        }
+      });
+    }
+  }
+
+  Future<ImageSource?> _showImageSourceActionSheet() async {
+    return await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera),
+              title: const Text('ถ่ายรูป'),
+              onTap: () => Navigator.of(context).pop(ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('เลือกจากคลังภาพ'),
+              onTap: () => Navigator.of(context).pop(ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _initializeData(UserModel user) {
+    if (_isDataInitialized) return;
+    _user = user;
+    _nameController.text = user.fullname;
+    _phoneController.text = user.phone;
+    _profileImageUrl = user.profile;
+
+    _addressController.text = user.defaultAddress ?? '';
+    if (user.defaultGPS != null) {
+      _defaultMarkerPos =
+          LatLng(user.defaultGPS!.latitude, user.defaultGPS!.longitude);
+      _gpsController.text =
+          "${_defaultMarkerPos!.latitude.toStringAsFixed(6)}, ${_defaultMarkerPos!.longitude.toStringAsFixed(6)}";
+    }
+
+    if (user.role == 0) {
+      _address2Controller.text = user.secondAddress ?? '';
+      if (user.secondGPS != null) {
+        _secondMarkerPos =
+            LatLng(user.secondGPS!.latitude, user.secondGPS!.longitude);
+        _gps2Controller.text =
+            "${_secondMarkerPos!.latitude.toStringAsFixed(6)}, ${_secondMarkerPos!.longitude.toStringAsFixed(6)}";
+      }
+    } else if (user.role == 1) {
+      _vehicleRegController.text = user.vehicleNo ?? '';
+      _vehicleImageUrl = user.vehiclePicture ?? '';
+    }
+    _isDataInitialized = true;
+  }
+
+  //----------- BUILD METHOD & WIDGETS -----------//
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -50,306 +378,153 @@ class _EditProfilePageState extends State<EditProfilePage> {
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         centerTitle: true,
         backgroundColor: const Color(0xFFC70808),
-        elevation: 0,
-        shape: const ContinuousRectangleBorder(
-          borderRadius: BorderRadius.only(
-            bottomLeft: Radius.circular(50),
-            bottomRight: Radius.circular(50),
-          ),
-        ),
       ),
       body: FutureBuilder<UserModel>(
         future: fetchUser(widget.uid),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            // 🔄 Loading State
             return const Center(
-              child: CircularProgressIndicator(color: Color(0xFFC70808)),
-            );
+                child: CircularProgressIndicator(color: Color(0xFFC70808)));
           }
-
           if (snapshot.hasError) {
-            return Center(
-              child: Text("เกิดข้อผิดพลาด: ${snapshot.error}"),
-            );
+            return Center(child: Text("เกิดข้อผิดพลาด: ${snapshot.error}"));
           }
-
-          if (!snapshot.hasData || snapshot.data == null) {
+          if (!snapshot.hasData) {
             return const Center(child: Text("ไม่พบข้อมูลผู้ใช้"));
           }
 
-          _user = snapshot.data!;
-          _profileImageUrl = _user!.profile;
-          _nameController.text = _user!.fullname;
-          _phoneController.text = _user!.phone;
-          // _addressController.text = _user!.defaultAddress;
+          _initializeData(snapshot.data!);
 
-          // ✅ Loaded Successfully
           return SingleChildScrollView(
             child: Column(
               children: [
-                const SizedBox(height: 10),
+                const SizedBox(height: 20),
                 _buildProfileSection(),
+                if (widget.role == 1) ...[
+                  const SizedBox(height: 15),
+                  const Text("รูปรถ",
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black54)),
+                  const SizedBox(height: 8),
+                  _buildVehicleImageSection(),
+                ],
                 _buildFormSection(),
-                _buildMapSection(),
               ],
             ),
           );
         },
       ),
-      bottomNavigationBar: _buildBottomNavigationBar(),
     );
   }
 
-  Future<UserModel> fetchUser(String uid) async {
-    final querySnapshot = await FirebaseFirestore.instance
-        .collection('users')
-        .where('uid', isEqualTo: '8RBMRHVI8wafkHwFMYyVfj5m6Px1')
-        .get();
-
-    // log(querySnapshot.docs.first.data().toString());
-    if (querySnapshot.docs.isEmpty) {
-      throw Exception('User not found');
-    }
-
-    final doc = querySnapshot.docs.first;
-    return UserModel.fromFirestore(doc);
-  }
-
-  void _onMapTap(TapPosition tapPosition, LatLng point) async {
-    setState(() {
-      _currentMarkerPos = point;
-      _gpsController.text =
-          "${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}";
-    });
-
-    try {
-      List<Placemark> placemarks =
-          await placemarkFromCoordinates(point.latitude, point.longitude);
-      if (placemarks.isNotEmpty) {
-        final p = placemarks.first;
-        final addressLine =
-            "${p.subThoroughfare ?? ''} ${p.thoroughfare ?? ''}, ${p.locality ?? ''}, ${p.administrativeArea ?? ''}";
-        _addressController.text = addressLine.trim();
-      }
-    } catch (e) {
-      debugPrint("Reverse Geocoding Error: $e");
-    }
-  }
-
-  // 🔍 ค้นหาพิกัดจากที่อยู่
-  Future<void> _geocodeAddress() async {
-    final address = _addressController.text.trim();
-    if (address.isEmpty) return;
-
-    try {
-      final locations = await locationFromAddress(address);
-      if (locations.isNotEmpty) {
-        final loc = locations.first;
-        final newPos = LatLng(loc.latitude, loc.longitude);
-        setState(() {
-          _currentMarkerPos = newPos;
-          _gpsController.text =
-              "${loc.latitude.toStringAsFixed(6)}, ${loc.longitude.toStringAsFixed(6)}";
-        });
-        _mapController.move(newPos, 15);
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("ค้นหาพิกัดไม่สำเร็จ: $e")),
-      );
-    }
-  }
-
-  Future<void> _geocodeAddress2() async {
-    final address = _address2Controller.text.trim();
-    if (address.isEmpty) return;
-
-    try {
-      final locations = await locationFromAddress(address);
-      if (locations.isNotEmpty) {
-        final loc = locations.first;
-        final newPos = LatLng(loc.latitude, loc.longitude);
-        setState(() {
-          _currentMarkerPos = newPos;
-          _gps2Controller.text =
-              "${loc.latitude.toStringAsFixed(6)}, ${loc.longitude.toStringAsFixed(6)}";
-        });
-        _mapController.move(newPos, 15);
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("ค้นหาพิกัดไม่สำเร็จ: $e")),
-      );
-    }
-  }
-
-  // 💾 ปุ่มบันทึกข้อมูล
-  Future<void> _saveProfile() async {
-    try {
-      await db.collection('users').doc(widget.uid).update({
-        'name': _nameController.text,
-        'phone': _phoneController.text,
-        'address': _addressController.text,
-        'gps': _gpsController.text,
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("บันทึกข้อมูลสำเร็จ!"),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("เกิดข้อผิดพลาด: $e")),
-      );
-    }
-  }
-
-  // 🧍 รูปโปรไฟล์
   Widget _buildProfileSection() {
-    return Padding(
-      padding: const EdgeInsets.all(10.0),
+    return InkWell(
+      onTap: () => _pickImage(isProfile: true),
       child: CircleAvatar(
         radius: 60,
         backgroundColor: Colors.grey.shade200,
-        backgroundImage: _profileImageUrl.isNotEmpty
-            ? NetworkImage(_profileImageUrl)
-            : const NetworkImage('https://via.placeholder.com/150'),
-        child: Align(
-          alignment: Alignment.bottomRight,
-          child: Container(
-            padding: const EdgeInsets.all(4),
-            decoration: const BoxDecoration(
-              color: Colors.green,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.edit, color: Colors.white, size: 20),
-          ),
-        ),
+        backgroundImage: _profileImageFile != null
+            ? FileImage(_profileImageFile!)
+            : (_profileImageUrl.isNotEmpty
+                ? NetworkImage(_profileImageUrl)
+                : null) as ImageProvider?,
+        child: _profileImageFile == null && _profileImageUrl.isEmpty
+            ? Icon(Icons.person, size: 60, color: Colors.grey.shade400)
+            : null,
       ),
     );
   }
 
-  // 📋 แบบฟอร์มแก้ไขข้อมูล
+  Widget _buildVehicleImageSection() {
+    return InkWell(
+      onTap: () => _pickImage(isProfile: false),
+      child: Container(
+        height: 150,
+        width: 250,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade200,
+          borderRadius: BorderRadius.circular(10),
+          image: _vehicleImageFile != null
+              ? DecorationImage(
+                  image: FileImage(_vehicleImageFile!), fit: BoxFit.cover)
+              : (_vehicleImageUrl.isNotEmpty
+                  ? DecorationImage(
+                      image: NetworkImage(_vehicleImageUrl), fit: BoxFit.cover)
+                  : null),
+        ),
+        child: _vehicleImageFile == null && _vehicleImageUrl.isEmpty
+            ? Center(
+                child: Icon(Icons.directions_car,
+                    size: 60, color: Colors.grey.shade400))
+            : null,
+      ),
+    );
+  }
+
   Widget _buildFormSection() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 40),
+      padding: const EdgeInsets.fromLTRB(40, 20, 40, 40),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (widget.role == 0) ...[
-            _buildTextFieldWithLabel('ชื่อ-สกุล', _nameController),
+          _buildTextFieldWithLabel('ชื่อ-สกุล', _nameController),
+          const SizedBox(height: 20),
+          _buildTextFieldWithLabel('หมายเลขโทรศัพท์', _phoneController,
+              isReadOnly: true),
+          const SizedBox(height: 20),
+          _buildTextFieldWithLabel('รหัสผ่านใหม่', _passwordController,
+              isPassword: true),
+          const SizedBox(height: 20),
+          _buildTextFieldWithLabel('ยืนยันรหัสผ่านใหม่', _password2Controller,
+              isPassword: true),
+          const SizedBox(height: 20),
+          if (widget.role == 1) ...[
+            _buildTextFieldWithLabel('เลขทะเบียนรถ', _vehicleRegController),
             const SizedBox(height: 20),
-            _buildTextFieldWithLabel('หมายเลขโทรศัพท์', _phoneController),
-            const SizedBox(height: 20),
-            _buildTextFieldWithLabel('รหัสผ่าน', _passwordController),
-            const SizedBox(height: 20),
-            _buildTextFieldWithLabel('รหัสผ่านอีกครั้ง', _password2Controller),
-            const SizedBox(height: 20),
-            _buildTextFieldWithLabel(
-                'ที่อยู่หรือสถานที่พิกัด', _addressController,
-                suffixIcon: Icons.search, onIconTap: _geocodeAddress),
-            const SizedBox(height: 20),
-            _buildTextFieldWithLabel('พิกัด GPS (Lat, Lng)', _gpsController,
-                isReadOnly: true),
-            const SizedBox(height: 30),
-            _buildTextFieldWithLabel(
-                'ที่อยู่หรือสถานที่พิกัด2', _address2Controller,
-                suffixIcon: Icons.search, onIconTap: _geocodeAddress2),
-            const SizedBox(height: 20),
-            _buildTextFieldWithLabel('พิกัด GPS (Lat, Lng)', _gps2Controller,
-                isReadOnly: true),
-            const SizedBox(height: 30),
-          ] else if (widget.role == 1) ...[
-            _buildTextFieldWithLabel('ชื่อ-สกุล', _nameController),
-            const SizedBox(height: 20),
-            _buildTextFieldWithLabel('หมายเลขโทรศัพท์', _phoneController),
-            const SizedBox(height: 20),
-            _buildTextFieldWithLabel(
-                'ที่อยู่หรือสถานที่พิกัด', _addressController,
-                suffixIcon: Icons.search, onIconTap: _geocodeAddress),
-            const SizedBox(height: 20),
-            _buildTextFieldWithLabel('พิกัด GPS (Lat, Lng)', _gpsController,
-                isReadOnly: true),
-            const SizedBox(height: 30),
           ],
+          _buildTextFieldWithLabel(
+              widget.role == 0 ? 'ที่อยู่หลัก' : 'ที่อยู่', _addressController),
+          const SizedBox(height: 20),
+          _buildTextFieldWithLabel(
+              widget.role == 0 ? 'พิกัด GPS หลัก' : 'พิกัด GPS', _gpsController,
+              isReadOnly: true, onTap: () => _openMapPicker(target: 1)),
+          if (widget.role == 0) ...[
+            const SizedBox(height: 30),
+            _buildTextFieldWithLabel('ที่อยู่รอง', _address2Controller),
+            const SizedBox(height: 20),
+            _buildTextFieldWithLabel('พิกัด GPS รอง', _gps2Controller,
+                isReadOnly: true, onTap: () => _openMapPicker(target: 2)),
+          ],
+          const SizedBox(height: 30),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
               onPressed: _saveProfile,
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFC70808),
-                padding: const EdgeInsets.symmetric(vertical: 15),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              child: const Text(
-                'บันทึกข้อมูล',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold),
-              ),
+                  backgroundColor: const Color(0xFFC70808),
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10))),
+              child: const Text('บันทึกข้อมูล',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold)),
             ),
           ),
-          const SizedBox(height: 20),
         ],
       ),
     );
   }
 
-  // 🗺️ แผนที่
-  Widget _buildMapSection() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-      child: Container(
-        height: 300,
-        decoration: BoxDecoration(
-          border: Border.all(color: const Color(0xFFC70808), width: 2),
-          borderRadius: BorderRadius.circular(15),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(13),
-          child: FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: _currentMarkerPos,
-              initialZoom: 15,
-              onTap: _onMapTap,
-            ),
-            children: [
-              TileLayer(
-                urlTemplate:
-                    'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=cb153d15cb4e41f59e25cfda6468f1a0',
-                userAgentPackageName: 'com.example.app',
-              ),
-              MarkerLayer(markers: [
-                Marker(
-                  point: _currentMarkerPos,
-                  width: 80,
-                  height: 80,
-                  child: const Icon(
-                    Icons.location_on,
-                    color: Color(0xFFC70808),
-                    size: 40,
-                  ),
-                ),
-              ]),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildTextFieldWithLabel(
-      String label, TextEditingController controller,
-      {IconData? suffixIcon,
-      VoidCallback? onIconTap,
-      bool isReadOnly = false}) {
+    String label,
+    TextEditingController controller, {
+    VoidCallback? onTap,
+    bool isReadOnly = false,
+    bool isPassword = false,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -362,68 +537,89 @@ class _EditProfilePageState extends State<EditProfilePage> {
         TextField(
           controller: controller,
           readOnly: isReadOnly,
+          obscureText: isPassword,
+          onTap: onTap,
           decoration: InputDecoration(
             filled: true,
-            fillColor: Colors.grey.shade200,
+            fillColor: isReadOnly ? Colors.grey.shade300 : Colors.grey.shade200,
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide.none,
-            ),
-            suffixIcon: suffixIcon != null
-                ? IconButton(
-                    icon: Icon(suffixIcon, color: const Color(0xFFC70808)),
-                    onPressed: onIconTap,
-                  )
-                : null,
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide.none),
           ),
         ),
       ],
     );
   }
-
-  Widget _buildBottomNavigationBar() {
-    return Container(
-      height: 80,
-      decoration: const BoxDecoration(
-        color: Color(0xFFC70808),
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(30),
-          topRight: Radius.circular(30),
-        ),
-      ),
-      child: const Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _NavItem(icon: Icons.home, label: 'หน้าแรก', isSelected: false),
-          _NavItem(
-              icon: Icons.history,
-              label: 'ประวัติการส่งสินค้า',
-              isSelected: false),
-          _NavItem(icon: Icons.logout, label: 'ออกจากระบบ', isSelected: true),
-        ],
-      ),
-    );
-  }
 }
 
-class _NavItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isSelected;
-  const _NavItem(
-      {required this.icon, required this.label, required this.isSelected});
+// ✨ NEW: วิดเจ็ตสำหรับแสดงแผนที่ใน Dialog
+class MapPickerModal extends StatefulWidget {
+  final LatLng initialLatLng;
+  const MapPickerModal({super.key, required this.initialLatLng});
+
+  @override
+  State<MapPickerModal> createState() => _MapPickerModalState();
+}
+
+class _MapPickerModalState extends State<MapPickerModal> {
+  late LatLng _currentMarkerPos;
+  final MapController _mapController = MapController();
+
+  @override
+  void initState() {
+    super.initState();
+    _currentMarkerPos = widget.initialLatLng;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(icon, color: isSelected ? Colors.white : Colors.white54),
-        const SizedBox(height: 4),
-        Text(label,
-            style: TextStyle(
-                color: isSelected ? Colors.white : Colors.white54,
-                fontSize: 12)),
+    return AlertDialog(
+      title: const Text("เลือกพิกัด"),
+      contentPadding: const EdgeInsets.all(0),
+      content: SizedBox(
+        width: double.maxFinite,
+        height: 400,
+        child: FlutterMap(
+          mapController: _mapController,
+          options: MapOptions(
+            initialCenter: _currentMarkerPos,
+            initialZoom: 16,
+            onTap: (tapPosition, point) {
+              setState(() {
+                _currentMarkerPos = point;
+              });
+            },
+          ),
+          children: [
+            TileLayer(
+              // ใช้ OpenStreetMap ที่ไม่ต้องใช้ API Key
+              urlTemplate:
+                  'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=cb153d15cb4e41f59e25cfda6468f1a0',
+              userAgentPackageName: 'com.example.app',
+            ),
+            MarkerLayer(markers: [
+              Marker(
+                point: _currentMarkerPos,
+                width: 80,
+                height: 80,
+                child:
+                    const Icon(Icons.location_on, color: Colors.red, size: 40),
+              ),
+            ]),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text("ยกเลิก"),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            Navigator.of(context).pop(_currentMarkerPos);
+          },
+          child: const Text("ยืนยันตำแหน่ง"),
+        ),
       ],
     );
   }
