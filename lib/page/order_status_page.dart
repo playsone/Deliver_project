@@ -1,7 +1,11 @@
 // order_status_page.dart
 
+import 'package:delivery_project/page/history_page.dart';
+import 'package:delivery_project/page/index.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:get/get_core/src/get_main.dart';
+import 'package:get/get_navigation/get_navigation.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:delivery_project/page/home.dart'; // สมมติว่ามี home.dart
 
@@ -10,7 +14,9 @@ const Color _primaryColor = Color(0xFFC70808);
 const Color _backgroundColor = Color(0xFFFDE9E9);
 
 class OrderStatusPage extends StatefulWidget {
-  const OrderStatusPage({super.key, required String orderId});
+  final String uid;
+  final int role;
+  const OrderStatusPage({super.key, required this.uid, required this.role});
 
   @override
   State<OrderStatusPage> createState() => _OrderStatusPageState();
@@ -231,9 +237,21 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
             label: 'ออกจากระบบ',
           ),
         ],
-        currentIndex: 0, // ควรเปลี่ยนเมื่อมีการนำทางจริง
+        currentIndex: 0,
         onTap: (index) {
-          // ใช้ Get.back() หรือ Get.to(() => const HomeScreen()) เพื่อกลับหน้าหลัก
+          if (index == 0) {
+            Get.to(() => HomeScreen(
+                  uid: widget.uid,
+                  role: widget.role,
+                ));
+          } else if (index == 1) {
+            Get.off(() => HistoryPage(
+                  uid: widget.uid,
+                  role: widget.role,
+                ));
+          } else if (index == 2) {
+            Get.off(() => SpeedDerApp());
+          }
         },
       ),
     );

@@ -10,9 +10,9 @@ class SpeedDerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return const MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: const SplashScreen(),
+      home: SplashScreen(),
     );
   }
 }
@@ -36,7 +36,7 @@ class SplashScreen extends StatelessWidget {
             ),
 
             // ชื่อแอป
-            Text(
+            const Text(
               "SPEED - DER",
               style: TextStyle(
                 color: Colors.white,
@@ -82,7 +82,8 @@ class SplashScreen extends StatelessWidget {
                   ),
                 ),
                 onPressed: () {
-                  Get.to(() => RegisterPage(), transition: Transition.fadeIn);
+                  Get.to(() => const RegisterPage(),
+                      transition: Transition.fadeIn);
                 },
                 child: const Text(
                   "สมัครสมาชิก",

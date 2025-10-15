@@ -21,7 +21,9 @@ import 'package:delivery_project/page/order_status_page.dart'; // สถาน�
 import 'package:delivery_project/page/send_package_page.dart'; // ส่งสินค้า
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final String uid;
+  final int role;
+  const HomeScreen({super.key, required this.uid, required this.role});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -29,6 +31,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   // 1. ตัวแปรสำหรับ Flutter Maps
+
   final MapController mapController = MapController();
 
   // พิกัดเริ่มต้น
@@ -38,11 +41,11 @@ class _HomeScreenState extends State<HomeScreen> {
   // 2. จุดปักหมุด
   List<Marker> get _fixedMarkers => [
         // Marker สำหรับจุดหมายปลายทาง (หอพักอาณาจักรฟ้า)
-        Marker(
+        const Marker(
           point: LatLng(16.4858, 102.8222),
           width: 40,
           height: 40,
-          child: const Tooltip(
+          child: Tooltip(
             message: 'หอพักอาณาจักรฟ้า',
             child: Icon(
               Icons.pin_drop,
@@ -52,11 +55,11 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         // Marker สำหรับไรเดอร์ (ตัวอย่าง)
-        Marker(
+        const Marker(
           point: LatLng(16.4900, 102.8180),
           width: 40,
           height: 40,
-          child: const Tooltip(
+          child: Tooltip(
             message: 'ไรเดอร์กำลังมา',
             child: Icon(
               Icons.two_wheeler,
@@ -251,14 +254,22 @@ class _HomeScreenState extends State<HomeScreen> {
   // ------------------------------------------------------------------
 
   Widget _buildIconButtons() {
-    final VoidCallback goToPickup =
-        () => Get.to(() => const PackagePickupPage());
-    final VoidCallback goToRiderInfo =
-        () => Get.to(() => const RiderInfoPage());
-    final VoidCallback goToStatus = () => Get.to(() => const OrderStatusPage(
-          orderId: '',
+    final VoidCallback goToPickup = () => Get.to(() => PackagePickupPage(
+          role: widget.role,
+          uid: widget.uid,
         ));
-    final VoidCallback goToSend = () => Get.to(() => const SendPackagePage());
+    final VoidCallback goToRiderInfo = () => Get.to(() => RiderInfoPage(
+          role: widget.role,
+          uid: widget.uid,
+        ));
+    final VoidCallback goToStatus = () => Get.to(() => OrderStatusPage(
+          role: widget.role,
+          uid: widget.uid,
+        ));
+    final VoidCallback goToSend = () => Get.to(() => SendPackagePage(
+          role: widget.role,
+          uid: widget.uid,
+        ));
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -449,9 +460,15 @@ class _HomeScreenState extends State<HomeScreen> {
         currentIndex: 0,
         onTap: (index) {
           if (index == 0) {
-            // หน้าแรก
+            Get.to(() => HomeScreen(
+                  uid: widget.uid,
+                  role: widget.role,
+                ));
           } else if (index == 1) {
-            Get.to(() => const HistoryPage());
+            Get.to(() => HistoryPage(
+                  uid: widget.uid,
+                  role: widget.role,
+                ));
           } else if (index == 2) {
             Get.offAll(() => const SpeedDerApp()); // Log out
           }
@@ -494,7 +511,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 'แก้ไขข้อมูลส่วนตัว',
                 Icons.person_outline,
                 () {
-                  Get.to(() => const EditProfilePage());
+                  Get.to(() => EditProfilePage(
+                        role: widget.role,
+                        uid: widget.uid,
+                      ));
                 },
               ),
             ],

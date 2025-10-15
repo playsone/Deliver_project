@@ -13,7 +13,9 @@ const Color _primaryColor = Color(0xFFC70808);
 const Color _backgroundColor = Color(0xFFFDE9E9);
 
 class SendPackagePage extends StatefulWidget {
-  const SendPackagePage({super.key});
+  final String uid;
+  final int role;
+  const SendPackagePage({super.key, required this.uid, required this.role});
 
   @override
   State<SendPackagePage> createState() => _SendPackagePageState();
