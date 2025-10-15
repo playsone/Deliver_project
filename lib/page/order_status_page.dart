@@ -15,7 +15,8 @@ const Color _backgroundColor = Color(0xFFFDE9E9);
 
 class OrderStatusPage extends StatefulWidget {
   final String uid;
-  const OrderStatusPage({super.key, required this.uid});
+  final int role;
+  const OrderStatusPage({super.key, required this.uid, required this.role});
 
   @override
   State<OrderStatusPage> createState() => _OrderStatusPageState();
@@ -241,10 +242,12 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
           if (index == 0) {
             Get.to(() => HomeScreen(
                   uid: widget.uid,
+                  role: widget.role,
                 ));
           } else if (index == 1) {
             Get.off(() => HistoryPage(
                   uid: widget.uid,
+                  role: widget.role,
                 ));
           } else if (index == 2) {
             Get.off(() => SpeedDerApp());

@@ -11,7 +11,9 @@ const Color _primaryColor = Color(0xFFC70808);
 const Color _backgroundColor = Color(0xFFFDE9E9);
 
 class HistoryDetailPage extends StatelessWidget {
-  const HistoryDetailPage({super.key});
+  final String uid;
+  final int role;
+  const HistoryDetailPage({super.key, required this.uid, required this.role});
 
   // Map Setup (อ้างอิงจาก home.dart และ order_status_page.dart)
   static final LatLng _initialCenter = LatLng(16.4858, 102.8222);
@@ -28,18 +30,18 @@ class HistoryDetailPage extends StatelessWidget {
   // หมุดบนแผนที่
   List<Marker> get _mapMarkers => [
         // Marker สำหรับจุดหมายปลายทาง (หอพักอาณาจักรฟ้า)
-        Marker(
+        const Marker(
           point: LatLng(16.4858, 102.8222),
           width: 40,
           height: 40,
-          child: const Icon(Icons.location_pin, color: _primaryColor, size: 40),
+          child: Icon(Icons.location_pin, color: _primaryColor, size: 40),
         ),
         // Marker สำหรับไรเดอร์ (ตำแหน่งล่าสุด)
-        Marker(
+        const Marker(
           point: LatLng(16.4900, 102.8180),
           width: 40,
           height: 40,
-          child: const Icon(Icons.two_wheeler, color: Colors.blue, size: 40),
+          child: Icon(Icons.two_wheeler, color: Colors.blue, size: 40),
         ),
       ];
 
@@ -121,17 +123,17 @@ class HistoryDetailPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 40),
-                Row(
+                const Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
+                    Text(
                       'สวัสดี คุณ',
                       style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
                           color: Colors.white),
                     ),
-                    const CircleAvatar(
+                    CircleAvatar(
                       radius: 30,
                       backgroundColor: Colors.white,
                       backgroundImage:

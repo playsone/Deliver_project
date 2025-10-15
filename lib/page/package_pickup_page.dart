@@ -8,7 +8,9 @@ const Color _primaryColor = Color(0xFFC70808);
 const Color _backgroundColor = Color(0xFFFDE9E9);
 
 class PackagePickupPage extends StatelessWidget {
-  const PackagePickupPage({super.key});
+  final String uid;
+  final int role;
+  const PackagePickupPage({super.key, required this.uid, required this.role});
 
   @override
   Widget build(BuildContext context) {

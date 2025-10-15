@@ -22,7 +22,8 @@ import 'package:delivery_project/page/send_package_page.dart'; // ส่งส�
 
 class HomeScreen extends StatefulWidget {
   final String uid;
-  const HomeScreen({super.key, required this.uid});
+  final int role;
+  const HomeScreen({super.key, required this.uid, required this.role});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -30,6 +31,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   // 1. ตัวแปรสำหรับ Flutter Maps
+
   final MapController mapController = MapController();
 
   // พิกัดเริ่มต้น
@@ -252,14 +254,22 @@ class _HomeScreenState extends State<HomeScreen> {
   // ------------------------------------------------------------------
 
   Widget _buildIconButtons() {
-    final VoidCallback goToPickup =
-        () => Get.to(() => const PackagePickupPage());
-    final VoidCallback goToRiderInfo =
-        () => Get.to(() => const RiderInfoPage());
-    final VoidCallback goToStatus = () => Get.to(() => OrderStatusPage(
+    final VoidCallback goToPickup = () => Get.to(() => PackagePickupPage(
+          role: widget.role,
           uid: widget.uid,
         ));
-    final VoidCallback goToSend = () => Get.to(() => const SendPackagePage());
+    final VoidCallback goToRiderInfo = () => Get.to(() => RiderInfoPage(
+          role: widget.role,
+          uid: widget.uid,
+        ));
+    final VoidCallback goToStatus = () => Get.to(() => OrderStatusPage(
+          role: widget.role,
+          uid: widget.uid,
+        ));
+    final VoidCallback goToSend = () => Get.to(() => SendPackagePage(
+          role: widget.role,
+          uid: widget.uid,
+        ));
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -452,10 +462,12 @@ class _HomeScreenState extends State<HomeScreen> {
           if (index == 0) {
             Get.to(() => HomeScreen(
                   uid: widget.uid,
+                  role: widget.role,
                 ));
           } else if (index == 1) {
             Get.to(() => HistoryPage(
                   uid: widget.uid,
+                  role: widget.role,
                 ));
           } else if (index == 2) {
             Get.offAll(() => const SpeedDerApp()); // Log out
@@ -500,6 +512,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Icons.person_outline,
                 () {
                   Get.to(() => EditProfilePage(
+                        role: widget.role,
                         uid: widget.uid,
                       ));
                 },

@@ -11,7 +11,8 @@ const Color _backgroundColor = Color(0xFFFDE9E9);
 
 class HistoryPage extends StatelessWidget {
   final String uid;
-  const HistoryPage({super.key, required this.uid});
+  final int role;
+  const HistoryPage({super.key, required this.uid, required this.role});
 
   @override
   Widget build(BuildContext context) {
@@ -294,6 +295,7 @@ class HistoryPage extends StatelessWidget {
           if (index == 0) {
             Get.to(() => HomeScreen(
                   uid: uid,
+                  role: role,
                 )); // สมมติว่าหน้า Home ถูกกำหนดเป็น '/'
           } else if (index == 2) {
             Get.off(() => const SpeedDerApp());

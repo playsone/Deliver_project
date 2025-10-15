@@ -26,8 +26,13 @@ enum DeliveryStatus {
 class PackageDeliveryPage extends StatefulWidget {
   // รับข้อมูลพัสดุผ่าน GetX Arguments
   final Package package;
-
-  const PackageDeliveryPage({super.key, required this.package});
+  final String uid;
+  final int role;
+  const PackageDeliveryPage(
+      {super.key,
+      required this.package,
+      required this.uid,
+      required this.role});
 
   @override
   State<PackageDeliveryPage> createState() => _PackageDeliveryPageState();

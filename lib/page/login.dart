@@ -85,9 +85,13 @@ class _LoginPageState extends State<LoginPage> {
         if (role == 0) {
           Get.to(() => HomeScreen(
                 uid: uid,
+                role: role,
               ));
         } else if (role == 1) {
-          Get.to(() => RiderHomeScreen(uid: uid));
+          Get.to(() => RiderHomeScreen(
+                uid: uid,
+                role: role,
+              ));
         } else {
           log("User has other role: $role");
         }

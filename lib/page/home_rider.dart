@@ -69,7 +69,8 @@ final List<Package> mockPackages = [
 
 class RiderHomeScreen extends StatelessWidget {
   final String uid;
-  const RiderHomeScreen({super.key, required this.uid});
+  final int role;
+  const RiderHomeScreen({super.key, required this.uid, required this.role});
 
   @override
   Widget build(BuildContext context) {
@@ -228,7 +229,11 @@ class RiderHomeScreen extends StatelessWidget {
                 onPressed: () {
                   // ***** แก้ไข: Action เมื่อกดปุ่ม (นำทางไปหน้าขั้นตอนการจัดส่ง) *****
                   if (isActionable) {
-                    Get.to(() => PackageDeliveryPage(package: package));
+                    Get.to(() => PackageDeliveryPage(
+                          package: package,
+                          uid: uid,
+                          role: role,
+                        ));
                   } else {
                     // สำหรับสถานะ 'จัดส่งสำเร็จ'
                     Get.snackbar('ข้อมูล', 'พัสดุนี้จัดส่งสำเร็จแล้ว');
@@ -364,6 +369,7 @@ class RiderHomeScreen extends StatelessWidget {
                 () {
                   Get.to(() => EditProfilePage(
                         uid: uid,
+                        role: role,
                       ));
                 },
               ),
