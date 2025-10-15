@@ -18,13 +18,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
-    ext {
-        // [TSLocationManager] Refer to a known-good version of the Google Play Services library.
-        googlePlayServicesLocationVersion = "21.2.0"
-        // [TSLocationManager] Refer to a known-good version of the AndroidX AppCompat library
-        appCompatVersion = "1.6.1"
-    }
-    
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_11.toString()
     }
