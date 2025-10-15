@@ -1,7 +1,5 @@
 import 'dart:developer'; // สำหรับ log()
 import 'package:delivery_project/page/history_page.dart';
-import 'package:delivery_project/page/order_status_page.dart';
-import 'package:delivery_project/page/send_package_page.dart';
 import 'package:flutter/foundation.dart'; // สำหรับ kIsWeb
 import 'package:delivery_project/page/index.dart';
 import 'package:flutter/material.dart';
@@ -256,13 +254,14 @@ class _HomeScreenState extends State<HomeScreen> {
     // ถ้ายังไม่มี ให้เปลี่ยน Get.to() เป็น log() หรือสร้างหน้าจำลอง
 
     // ตัวอย่างการใช้ Get.to() สำหรับหน้าใหม่ (ต้องสร้างไฟล์ Page ก่อน)
-
+    /*
     final VoidCallback goToStatus = () => Get.to(() => const OrderStatusPage());
     final VoidCallback goToSend = () => Get.to(() => const SendPackagePage());
+    */
 
     // ใช้ log() แทน จนกว่าจะสร้างหน้า OrderStatusPage/SendPackagePage จริง
-    // final VoidCallback goToStatus = () => log('Navigate to OrderStatusPage');
-    // final VoidCallback goToSend = () => log('Navigate to SendPackagePage');
+    final VoidCallback goToStatus = () => log('Navigate to OrderStatusPage');
+    final VoidCallback goToSend = () => log('Navigate to SendPackagePage');
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
