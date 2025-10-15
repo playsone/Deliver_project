@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:io'; // เพิ่ม import สำหรับ File
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/page/home_rider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart'; // เพิ่ม import สำหรับกล้อง
+import 'package:firebase_storage/firebase_storage.dart'; // เพิ่ม import สำหรับ Storage
 import 'package:latlong2/latlong.dart';
 import 'package:location/location.dart';
 
@@ -43,30 +46,20 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
   @override
   void initState() {
     super.initState();
-    _initializeRider();
-  }
-
-  Future<void> _initializeRider() async {
-    final doc = await FirebaseFirestore.instance
-        .collection('delivery_orders')
-        .doc(widget.package.id)
-        .get();
-    if (doc.exists) {
-      setState(() {
-        _currentRiderId = doc.data()!['riderId'];
-      });
-      if (_currentRiderId != null) {
-        _startSendingLocation(_currentRiderId!);
-      }
+    // ใช้ uid ที่ส่งมาจากหน้า home_rider ได้เลย
+    _currentRiderId = widget.uid;
+    if (_currentRiderId != null) {
+      _startSendingLocation(_currentRiderId!);
     }
   }
 
   @override
   void dispose() {
-    _locationSubscription?.cancel();
+    _locationSubscription?.cancel(); // หยุดส่งตำแหน่งเมื่อออกจากหน้านี้
     super.dispose();
   }
 
+  // ฟังก์ชันสำหรับเริ่มติดตามและส่งตำแหน่ง GPS
   void _startSendingLocation(String riderId) async {
     bool serviceEnabled = await _location.serviceEnabled();
     if (!serviceEnabled) {
@@ -80,6 +73,8 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
       if (permissionGranted != PermissionStatus.granted) return;
     }
 
+    // อัปเดตตำแหน่งทุกๆ 10 วินาที หรือเมื่อเคลื่อนที่ 10 เมตร
+    _location.changeSettings(interval: 10000, distanceFilter: 10);
     _locationSubscription =
         _location.onLocationChanged.listen((currentLocation) {
       if (currentLocation.latitude != null &&
@@ -93,6 +88,51 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
     });
   }
 
+  // ฟังก์ชันสำหรับถ่ายรูป, อัปโหลด, และอัปเดตสถานะเป็น picked_up
+  Future<void> _confirmAndPickupPackage() async {
+    final picker = ImagePicker();
+    try {
+      // 1. เปิดกล้องเพื่อถ่ายรูป
+      final pickedFile = await picker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1024, // ลดขนาดรูปภาพเพื่อความรวดเร็ว
+      );
+
+      if (pickedFile == null) return; // ผู้ใช้กดยกเลิกการถ่าย
+
+      // แสดง Loading
+      Get.dialog(const Center(child: CircularProgressIndicator()),
+          barrierDismissible: false);
+
+      // 2. อัปโหลดรูปภาพไปยัง Firebase Storage
+      final fileName = '${widget.package.id}_pickup.jpg';
+      final ref =
+          FirebaseStorage.instance.ref().child('pickup_images/$fileName');
+      await ref.putFile(File(pickedFile.path));
+      final imageUrl = await ref.getDownloadURL();
+
+      // 3. อัปเดตสถานะใน Firestore
+      final orderRef = FirebaseFirestore.instance
+          .collection('delivery_orders')
+          .doc(widget.package.id);
+
+      await orderRef.update({
+        'currentStatus': 'picked_up',
+        'pickupImageUrl': imageUrl, // บันทึก URL รูปที่ถ่ายไว้ในออเดอร์
+        'statusHistory': FieldValue.arrayUnion([
+          {'status': 'picked_up', 'timestamp': FieldValue.serverTimestamp()}
+        ]),
+      });
+
+      Get.back(); // ปิด Loading
+      Get.snackbar('สำเร็จ', 'ยืนยันการรับสินค้าเรียบร้อยแล้ว');
+    } catch (e) {
+      Get.back(); // ปิด Loading
+      Get.snackbar('เกิดข้อผิดพลาด', 'ไม่สามารถยืนยันการรับสินค้าได้: $e');
+    }
+  }
+
+  // ฟังก์ชันสำหรับอัปเดตสถานะอื่นๆ
   Future<void> _updateOrderStatus(String newStatus,
       {bool isFinal = false}) async {
     final orderRef = FirebaseFirestore.instance
@@ -107,7 +147,8 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
     });
 
     if (isFinal) {
-      Get.off(() => const RiderHomeScreen()); // กลับไปหน้า Home ของไรเดอร์
+      // เมื่อส่งสำเร็จ ให้กลับไปหน้า Rider Home
+      Get.offAll(() => RiderHomeScreen(uid: widget.uid, role: widget.role));
       Get.snackbar('เสร็จสิ้น', 'ดำเนินการจัดส่งเสร็จสมบูรณ์!');
     }
   }
@@ -296,25 +337,10 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
               final riderData =
                   riderSnapshot.data!.data() as Map<String, dynamic>;
 
-              if (riderData.containsKey('gps')) {
-                if (riderData['gps'] is GeoPoint) {
-                  final geoPoint = riderData['gps'] as GeoPoint;
-                  riderLatLng = LatLng(geoPoint.latitude, geoPoint.longitude);
-                } else if (riderData['gps'] is String) {
-                  // **ส่วนที่แก้ไข:** แก้ไขการแปลง String เป็นพิกัด
-                  final gpsString = riderData['gps'] as String;
-                  final cleanedString =
-                      gpsString.replaceAll(RegExp(r'[°NE]'), '').trim();
-                  final parts = cleanedString.split(',');
-
-                  if (parts.length == 2) {
-                    final lat = double.tryParse(parts[0].trim());
-                    final lng = double.tryParse(parts[1].trim());
-                    if (lat != null && lng != null) {
-                      riderLatLng = LatLng(lat, lng);
-                    }
-                  }
-                }
+              if (riderData.containsKey('gps') &&
+                  riderData['gps'] is GeoPoint) {
+                final geoPoint = riderData['gps'] as GeoPoint;
+                riderLatLng = LatLng(geoPoint.latitude, geoPoint.longitude);
               }
             }
 
@@ -371,42 +397,45 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
     }
 
     String buttonText;
-    String nextStatus;
-    bool isFinal = false;
+    VoidCallback onPressed;
+    IconData? icon;
 
     switch (currentStatus) {
       case DeliveryStatus.accepted:
-        buttonText = 'ยืนยันการรับสินค้า';
-        nextStatus = 'picked_up';
+        buttonText = 'ถ่ายรูปเพื่อยืนยันการรับสินค้า';
+        onPressed = _confirmAndPickupPackage;
+        icon = Icons.camera_alt;
         break;
       case DeliveryStatus.pickedUp:
         buttonText = 'เริ่มนำส่ง';
-        nextStatus = 'in_transit';
+        onPressed = () => _updateOrderStatus('in_transit');
+        icon = Icons.local_shipping;
         break;
       case DeliveryStatus.inTransit:
         buttonText = 'ยืนยันการจัดส่งสำเร็จ';
-        nextStatus = 'delivered';
-        isFinal = true;
+        onPressed = () => _updateOrderStatus('delivered', isFinal: true);
+        icon = Icons.task_alt;
         break;
       default:
         buttonText = '...';
-        nextStatus = '';
+        onPressed = () {};
     }
 
     return SizedBox(
       width: double.infinity,
-      child: ElevatedButton(
-        onPressed: () => _updateOrderStatus(nextStatus, isFinal: isFinal),
+      child: ElevatedButton.icon(
+        icon: Icon(icon, color: Colors.white),
+        label: Text(
+          buttonText,
+          style: const TextStyle(
+              fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        onPressed: onPressed,
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFC70808),
           padding: const EdgeInsets.symmetric(vertical: 15),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-        child: Text(
-          buttonText,
-          style: const TextStyle(
-              fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
     );
@@ -553,7 +582,9 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
           ),
         ],
         currentIndex: 0,
-        onTap: (index) {},
+        onTap: (index) {
+          // ไม่ควรให้กดออกจากหน้านี้โดยตรง
+        },
       ),
     );
   }

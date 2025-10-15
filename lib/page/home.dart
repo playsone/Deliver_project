@@ -265,6 +265,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final VoidCallback goToStatus = () => Get.to(() => OrderStatusPage(
           role: widget.role,
           uid: widget.uid,
+          orderId: '',
         ));
     final VoidCallback goToSend = () => Get.to(() => SendPackagePage(
           role: widget.role,

@@ -29,7 +29,9 @@ class Package {
 // ------------------------------------------------------------------
 
 class RiderHomeScreen extends StatelessWidget {
-  const RiderHomeScreen({super.key});
+  final String uid;
+  final int role;
+  const RiderHomeScreen({super.key, required this.uid, required this.role});
 
   @override
   Widget build(BuildContext context) {
@@ -51,28 +53,23 @@ class RiderHomeScreen extends StatelessWidget {
   }
 
   //------------------------------------------------------------------
-  // Header Section - ดึงข้อมูลไรเดอร์มาแสดง
+  // **ส่วนที่แก้ไข: Header ดึงข้อมูลไรเดอร์จริงมาแสดง**
   //------------------------------------------------------------------
 
   Widget _buildHeader(BuildContext context) {
-    // **สำคัญ:** ส่วนนี้ควรดึง UID ของไรเดอร์ที่ล็อกอินเข้ามาแล้ว
-    // ในที่นี้จะใช้ ID ตัวอย่างจากรูปที่คุณส่งมา
-    const String riderId = "20jIUruKySPaKaqnuntdIVCxO5z1";
-
     return StreamBuilder<DocumentSnapshot>(
-      // ฟังการเปลี่ยนแปลงข้อมูลของไรเดอร์คนนี้แบบ Real-time
+      // ฟังการเปลี่ยนแปลงข้อมูลของไรเดอร์ที่ล็อกอินอยู่
       stream:
-          FirebaseFirestore.instance.collection('users').doc(riderId).snapshots(),
+          FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
       builder: (context, snapshot) {
         // ค่าเริ่มต้น
         String riderName = 'ไรเดอร์';
-        String profileImageUrl = 'https://picsum.photos/200'; // รูปโปรไฟล์สำรอง
+        String profileImageUrl = 'https://picsum.photos/200';
 
         if (snapshot.hasData && snapshot.data!.exists) {
           final data = snapshot.data!.data() as Map<String, dynamic>;
           riderName = data['fullname'] ?? 'ไรเดอร์';
-          // ใช้ vehicle_picture เป็นรูปโปรไฟล์ หรือจะเปลี่ยนเป็น field 'profile' ก็ได้
-          profileImageUrl = data['vehicle_picture'] ?? profileImageUrl;
+          profileImageUrl = data['profile'] ?? profileImageUrl;
         }
 
         return Container(
@@ -144,22 +141,18 @@ class RiderHomeScreen extends StatelessWidget {
 
   Widget _buildPackageList() {
     return StreamBuilder<QuerySnapshot>(
-      // Query ข้อมูลเฉพาะออเดอร์ที่มีสถานะ 'pending' (รอไรเดอร์รับงาน)
       stream: FirebaseFirestore.instance
           .collection('delivery_orders')
           .where('currentStatus', isEqualTo: 'pending')
-          .orderBy('createdAt', descending: true) // เรียงจากงานใหม่สุดไปเก่าสุด
+          .orderBy('createdAt', descending: true)
           .snapshots(),
       builder: (context, snapshot) {
-        // สถานะขณะโหลดข้อมูล
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
-        // หากมีข้อผิดพลาด
         if (snapshot.hasError) {
           return const Center(child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล'));
         }
-        // หากไม่มีข้อมูล (ไม่มีงานว่าง)
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return const Center(
             child: Text(
@@ -169,7 +162,6 @@ class RiderHomeScreen extends StatelessWidget {
           );
         }
 
-        // เมื่อมีข้อมูลแล้ว
         final orderDocs = snapshot.data!.docs;
 
         return ListView.builder(
@@ -179,7 +171,6 @@ class RiderHomeScreen extends StatelessWidget {
             final doc = orderDocs[index];
             final data = doc.data() as Map<String, dynamic>;
 
-            // แปลงข้อมูลจาก Firestore เป็น Package object เพื่อส่งต่อไปยังหน้าอื่น
             final package = Package(
               id: doc.id,
               title: data['orderDetails'] ?? 'ไม่มีรายละเอียด',
@@ -189,15 +180,17 @@ class RiderHomeScreen extends StatelessWidget {
               imageUrl: data['orderImageUrl'],
             );
 
-            return _buildPackageCard(context, package);
+            // **ส่ง uid ของไรเดอร์ไปด้วย**
+            return _buildPackageCard(context, package, uid);
           },
         );
       },
     );
   }
 
-  // ส่วน Card ของแต่ละงาน - ทำให้ปุ่ม "รับงาน" ทำงานได้จริง
-  Widget _buildPackageCard(BuildContext context, Package package) {
+  // **ส่วนที่แก้ไข: แก้ไขข้อผิดพลาดทั้งหมดใน Card**
+  Widget _buildPackageCard(
+      BuildContext context, Package package, String riderId) {
     return Card(
       margin: const EdgeInsets.only(bottom: 15),
       elevation: 2,
@@ -207,7 +200,6 @@ class RiderHomeScreen extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // แสดงรูปภาพสินค้าจาก URL ที่อัปโหลด
             Container(
               width: 80,
               height: 80,
@@ -245,8 +237,10 @@ class RiderHomeScreen extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 5),
-                  _buildPackageDetailRow(Icons.store, 'ต้นทาง: ${package.location}'),
-                  _buildPackageDetailRow(Icons.location_on, 'ปลายทาง: ${package.destination}'),
+                  _buildPackageDetailRow(
+                      Icons.store, 'ต้นทาง: ${package.location}'),
+                  _buildPackageDetailRow(
+                      Icons.location_on, 'ปลายทาง: ${package.destination}'),
                 ],
               ),
             ),
@@ -254,20 +248,17 @@ class RiderHomeScreen extends StatelessWidget {
             Align(
               alignment: Alignment.center,
               child: TextButton(
+                // **ทำให้ onPressed เป็น async เพื่อรอการอัปเดตข้อมูล**
                 onPressed: () async {
-                  // **สำคัญ:** ส่วนนี้ควรดึง UID ของไรเดอร์ที่ล็อกอินเข้ามาแล้ว
-                  const String riderId = "20jIUruKySPaKaqnuntdIVCxO5z1"; // UID ตัวอย่าง
-
                   try {
-                    // อ้างอิงไปยังเอกสารออเดอร์ใน Firestore
                     final orderRef = FirebaseFirestore.instance
                         .collection('delivery_orders')
                         .doc(package.id);
 
-                    // อัปเดตข้อมูล: เพิ่ม riderId และเปลี่ยนสถานะ
+                    // อัปเดตเอกสารใน Firestore
                     await orderRef.update({
-                      'riderId': riderId,
-                      'currentStatus': 'accepted', // เปลี่ยนสถานะเป็น "รับงานแล้ว"
+                      'riderId': riderId, // ใช้ riderId ที่รับเข้ามา
+                      'currentStatus': 'accepted',
                       'statusHistory': FieldValue.arrayUnion([
                         {
                           'status': 'accepted',
@@ -276,15 +267,18 @@ class RiderHomeScreen extends StatelessWidget {
                       ]),
                     });
 
-                    // เมื่ออัปเดตสำเร็จ นำทางไปยังหน้าขั้นตอนการจัดส่ง
-                    Get.to(() => PackageDeliveryPage(package: package));
+                    // เมื่อสำเร็จแล้วจึงนำทางไปยังหน้าต่อไป
+                    Get.to(() => PackageDeliveryPage(
+                          package: package,
+                          uid: '',
+                          role: 1,
+                        ));
                   } catch (e) {
-                    Get.snackbar(
-                        'เกิดข้อผิดพลาด', 'ไม่สามารถรับงานนี้ได้ในขณะนี้');
+                    Get.snackbar('เกิดข้อผิดพลาด', 'ไม่สามารถรับงานนี้ได้');
                   }
                 },
                 style: TextButton.styleFrom(
-                  backgroundColor: const Color(0xFF38B000), // สีเขียว
+                  backgroundColor: const Color(0xFF38B000),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
                     vertical: 5,
@@ -339,7 +333,7 @@ class RiderHomeScreen extends StatelessWidget {
   Widget _buildBottomNavigationBar(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        color: Color(0xFFC70808), // สีแดงเข้มตามรูป
+        color: Color(0xFFC70808),
         boxShadow: [
           BoxShadow(
             color: Colors.black12,
@@ -368,18 +362,12 @@ class RiderHomeScreen extends StatelessWidget {
         currentIndex: 0,
         onTap: (index) {
           if (index == 2) {
-            Get.offAll(() =>
-                const SpeedDerApp()); // **สำคัญ:** แก้ SpeedDerApp() เป็นหน้า Login ของคุณ
+            Get.offAll(() => const SpeedDerApp());
           }
-          // TODO: เพิ่มการนำทางสำหรับรายการอื่น ๆ
         },
       ),
     );
   }
-
-  //------------------------------------------------------------------
-  // Profile Options Modal (นำมาจากโค้ดก่อนหน้า)
-  //------------------------------------------------------------------
 
   void _showProfileOptions(BuildContext context) {
     showModalBottomSheet(
@@ -411,7 +399,11 @@ class RiderHomeScreen extends StatelessWidget {
                 'แก้ไขข้อมูลส่วนตัว',
                 Icons.person_outline,
                 () {
-                  Get.to(() => const EditProfilePage());
+                  // **ส่ง uid และ role ไปยังหน้าแก้ไขโปรไฟล์**
+                  Get.to(() => EditProfilePage(
+                        uid: uid,
+                        role: role,
+                      ));
                 },
               ),
               _buildOptionButton(
