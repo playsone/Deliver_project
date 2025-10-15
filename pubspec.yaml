@@ -36,6 +36,8 @@ dependencies:
   cloud_firestore: ^6.0.2
   firebase_auth: ^6.1.0
   firebase_storage: ^13.0.2
+  flutter_background_geolocation: ^4.18.0
+  provider: ^6.1.5+1
 
 dev_dependencies:
   flutter_test:

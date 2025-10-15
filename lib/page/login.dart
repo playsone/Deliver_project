@@ -56,40 +56,7 @@ class _LoginPageState extends State<LoginPage> {
       _isLoading = true;
     });
 
-    try {
-      final email = _constructEmailFromPhone(phoneNumber);
-
-      var result = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-
-      var uid = result.user!.uid;
-
-      var db = FirebaseFirestore.instance;
-      var usersCollection = db.collection("users");
-
-      // ดึง user ตาม phone
-      var query = usersCollection.where("phone",
-          isEqualTo: phoneController.text.trim());
-      var data = await query.get();
-
-      log(data.docs.first.data().toString());
-      if (data.docs.isEmpty) {
-        Get.snackbar("Error", "Can't Login");
-      } else {
-        var userData = data.docs.first.data(); // Map<String, dynamic>
-        var role = userData['role']; // ดึงค่า role
-
-        if (role == 0) {
-          Get.to(() => HomeScreen());
-        } else if (role == 1) {
-          Get.to(() => RiderHomeScreen());
-        } else {
-          log("User has other role: $role");
-        }
-      }
-    } on FirebaseAuthException catch (e) {
+    try {} on FirebaseAuthException catch (e) {
       String errorMessage =
           "การเข้าสู่ระบบล้มเหลว กรุณาตรวจสอบเบอร์โทรศัพท์และรหัสผ่าน";
       if (e.code == 'user-not-found') {
