@@ -14,9 +14,11 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:delivery_project/page/edit_profile.dart';
 
-// **เพิ่ม Import สำหรับหน้าใหม่ (สมมติว่าคุณได้สร้างไฟล์เหล่านี้แล้ว)**
-// import 'package:delivery_project/page/order_status_page.dart';
-// import 'package:delivery_project/page/send_package_page.dart';
+// ** 🚀 เพิ่ม Import สำหรับหน้าใหม่ทั้งหมด **
+import 'package:delivery_project/page/rider_info_page.dart'; // ข้อมูลไรเดอร์
+import 'package:delivery_project/page/package_pickup_page.dart'; // พัสดุที่ต้องรับ
+import 'package:delivery_project/page/order_status_page.dart'; // สถานะสินค้า
+import 'package:delivery_project/page/send_package_page.dart'; // ส่งสินค้า
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -168,9 +170,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  //------------------------------------------------------------------
+  // ------------------------------------------------------------------
   // Header Section
-  //------------------------------------------------------------------
+  // ------------------------------------------------------------------
 
   Widget _buildHeader(BuildContext context) {
     return Stack(
@@ -206,7 +208,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: const CircleAvatar(
                       radius: 35,
                       backgroundColor: Colors.white,
-                      // ใช้ NetworkImage สำหรับรูปโปรไฟล์ (ต้องมี URL จริง)
                       backgroundImage: NetworkImage(
                         'https://picsum.photos/200',
                       ),
@@ -245,23 +246,17 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  //------------------------------------------------------------------
-  // Icon Buttons Section
-  //------------------------------------------------------------------
+  // ------------------------------------------------------------------
+  // Icon Buttons Section (แก้ไขการนำทาง)
+  // ------------------------------------------------------------------
 
   Widget _buildIconButtons() {
-    // สมมติว่ามีการ Import OrderStatusPage และ SendPackagePage แล้ว
-    // ถ้ายังไม่มี ให้เปลี่ยน Get.to() เป็น log() หรือสร้างหน้าจำลอง
-
-    // ตัวอย่างการใช้ Get.to() สำหรับหน้าใหม่ (ต้องสร้างไฟล์ Page ก่อน)
-    /*
+    final VoidCallback goToPickup =
+        () => Get.to(() => const PackagePickupPage());
+    final VoidCallback goToRiderInfo =
+        () => Get.to(() => const RiderInfoPage());
     final VoidCallback goToStatus = () => Get.to(() => const OrderStatusPage());
     final VoidCallback goToSend = () => Get.to(() => const SendPackagePage());
-    */
-
-    // ใช้ log() แทน จนกว่าจะสร้างหน้า OrderStatusPage/SendPackagePage จริง
-    final VoidCallback goToStatus = () => log('Navigate to OrderStatusPage');
-    final VoidCallback goToSend = () => log('Navigate to SendPackagePage');
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -273,16 +268,12 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildFeatureButton(
                 'พัสดุที่ต้องรับ',
                 'assets/images/package_icon.png',
-                () {
-                  // TODO: action พัสดุที่ต้องรับ
-                },
+                goToPickup,
               ),
               _buildFeatureButton(
                 'ข้อมูลไรเดอร์',
                 'assets/images/rider_icon.png',
-                () {
-                  // TODO: action ข้อมูลไรเดอร์
-                },
+                goToRiderInfo,
               ),
             ],
           ),
@@ -293,12 +284,12 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildFeatureButton(
                 'สถานะสินค้า',
                 'assets/images/status_icon.png',
-                goToStatus, // ใช้ action สำหรับดูสถานะสินค้า
+                goToStatus,
               ),
               _buildFeatureButton(
                 'ส่งสินค้า',
                 'assets/images/send_icon.png',
-                goToSend, // ใช้ action สำหรับส่งสินค้า
+                goToSend,
               ),
             ],
           ),
@@ -307,26 +298,22 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// สร้างปุ่มคุณสมบัติ (ปรับปรุงให้รับ onTap)
+  /// สร้างปุ่มคุณสมบัติ (Feature Button)
   Widget _buildFeatureButton(
-    String text,
-    String imagePath,
-    VoidCallback onTap, // <--- เพิ่ม VoidCallback สำหรับ Action
-  ) {
+      String text, String imagePath, VoidCallback onTap) {
     return Expanded(
       child: Card(
         color: Colors.white,
         elevation: 2,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         child: InkWell(
-          onTap: onTap, // <--- ใช้ onTap ที่นี่
+          onTap: onTap,
           borderRadius: BorderRadius.circular(15),
           child: Padding(
             padding: const EdgeInsets.all(15.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // ใช้ Icon แทน Image.asset ถ้าไม่มีรูปภาพจริงใน assets
                 const Icon(
                   Icons.delivery_dining,
                   size: 40,
@@ -349,12 +336,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  //------------------------------------------------------------------
-  // Map Section (ใช้ Flutter Map แทน Google Maps)
-  //------------------------------------------------------------------
+  // ------------------------------------------------------------------
+  // Map Section
+  // ------------------------------------------------------------------
 
   Widget _buildMapSection(BuildContext context) {
-    // รวม Marker ทั้งหมด: Marker ตำแหน่งคงที่ + Marker ตำแหน่งปัจจุบัน (ถ้ามี)
     List<Marker> allMarkers = [
       ..._fixedMarkers,
       if (currentPos != null)
@@ -366,7 +352,7 @@ class _HomeScreenState extends State<HomeScreen> {
             message: 'ตำแหน่งปัจจุบัน',
             child: Icon(
               Icons.my_location,
-              color: Colors.green, // ใช้สีเขียวสำหรับตำแหน่งปัจจุบัน
+              color: Colors.green,
               size: 40,
             ),
           ),
@@ -397,12 +383,11 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(15),
-              // 5. เปลี่ยนมาใช้ FlutterMap
               child: FlutterMap(
                 mapController: mapController,
                 options: MapOptions(
-                  initialCenter: _initialCenter, // พิกัดเริ่มต้น
-                  initialZoom: _initialZoom, // ซูมเริ่มต้น
+                  initialCenter: _initialCenter,
+                  initialZoom: _initialZoom,
                   interactionOptions: const InteractionOptions(
                     flags: InteractiveFlag.all,
                   ),
@@ -411,13 +396,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   },
                 ),
                 children: [
-                  // 6. ใช้ TileLayer สำหรับโหลดแผนที่
                   TileLayer(
                     urlTemplate:
                         'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=cb153d15cb4e41f59e25cfda6468f1a0',
                     userAgentPackageName: "com.example.delivery_project",
                   ),
-                  // 7. ใช้ MarkerLayer สำหรับแสดงหมุด
                   MarkerLayer(markers: allMarkers),
                 ],
               ),
@@ -428,9 +411,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  //------------------------------------------------------------------
+  // ------------------------------------------------------------------
   // Bottom Navigation Bar
-  //------------------------------------------------------------------
+  // ------------------------------------------------------------------
 
   Widget _buildBottomNavigationBar(BuildContext context) {
     return Container(
@@ -461,12 +444,11 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'ออกจากระบบ',
           ),
         ],
-        currentIndex: 0, // หน้าแรกถูกเลือกอยู่
+        currentIndex: 0,
         onTap: (index) {
           if (index == 0) {
-            // อยู่หน้า Home อยู่แล้ว ไม่ต้องทำอะไร
+            // หน้าแรก
           } else if (index == 1) {
-            // 🚀 นำทางไปหน้าประวัติการส่งสินค้า
             Get.to(() => const HistoryPage());
           } else if (index == 2) {
             Get.offAll(() => const SpeedDerApp()); // Log out
@@ -476,9 +458,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  //------------------------------------------------------------------
+  // ------------------------------------------------------------------
   // Profile Options Modal
-  //------------------------------------------------------------------
+  // ------------------------------------------------------------------
 
   void _showProfileOptions(BuildContext context) {
     showModalBottomSheet(
@@ -521,11 +503,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildOptionButton(
-    BuildContext context,
-    String title,
-    IconData icon,
-    VoidCallback onTap,
-  ) {
+      BuildContext context, String title, IconData icon, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
       child: Container(
@@ -545,16 +523,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-//------------------------------------------------------------------
-// Custom Clipper for Header Wave (ไม่ได้ใช้งานในโค้ดที่ให้มา แต่เพื่อความสมบูรณ์)
-//-----------------------------------------------------------------
 /*
+//------------------------------------------------------------------
+// Custom Clipper for Header Wave (ไม่ได้ใช้งานในโค้ดนี้)
+//------------------------------------------------------------------
 class HeaderClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
-    // ... โค้ดสำหรับวาดคลื่น ...
     return Path();
   }
+
   @override
   bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
 }
