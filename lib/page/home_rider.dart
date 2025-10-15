@@ -1,67 +1,28 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get_core/src/get_main.dart';
-import 'package:get/get_navigation/get_navigation.dart';
+import 'package:get/get.dart';
 import 'package:delivery_project/page/edit_profile.dart';
 import 'package:delivery_project/page/index.dart';
-// ***** เพิ่ม Import หน้าขั้นตอนการจัดส่ง (สมมติว่าคุณได้สร้างไฟล์นี้แล้ว) *****
-import 'package_delivery_page.dart';
+import 'package:delivery_project/page/package_delivery_page.dart';
 
 // ------------------------------------------------------------------
-// Model Data (จำลองโครงสร้างข้อมูลสินค้าที่จะได้จาก API)
+// Model Data ที่ปรับแก้ให้ตรงกับ Firestore
 // ------------------------------------------------------------------
 class Package {
+  final String id; // ID ของเอกสารใน Firestore
   final String title;
-  final String location;
-  final String status;
-  final String imagePath;
-  final String destination;
-  final String receiver;
+  final String location; // ที่อยู่ต้นทาง
+  final String destination; // ที่อยู่ปลายทาง
+  final String? imageUrl; // URL รูปภาพสินค้า
 
   Package({
+    required this.id,
     required this.title,
     required this.location,
-    required this.status,
-    required this.imagePath,
     required this.destination,
-    required this.receiver,
+    this.imageUrl,
   });
 }
-
-// ข้อมูลจำลอง
-final List<Package> mockPackages = [
-  Package(
-    title: 'พัสดุวิชาการสารสนเทศ',
-    location: 'หอพักอาณาจักรฟ้า',
-    status: 'รอรับสินค้า',
-    imagePath: 'assets/images/package1.png', // ต้องเพิ่มรูปภาพ
-    destination: 'รหัส donner:1',
-    receiver: 'คุณ...',
-  ),
-  Package(
-    title: 'น้ำหอมผู้ชาย',
-    location: 'หอพักอาณาจักรฟ้า',
-    status: 'จัดส่งสำเร็จ',
-    imagePath: 'assets/images/package2.png',
-    destination: 'รหัส donner:2',
-    receiver: 'คุณ...',
-  ),
-  Package(
-    title: 'เครื่องปริ้นท์เตอร์',
-    location: 'หอพักอาณาจักรฟ้า',
-    status: 'รับสินค้าแล้ว',
-    imagePath: 'assets/images/package3.png',
-    destination: 'รหัส donner:3',
-    receiver: 'คุณ...',
-  ),
-  Package(
-    title: 'กล่องพัสดุขนาดใหญ่',
-    location: 'หอพักอาณาจักรฟ้า',
-    status: 'รอรับสินค้า',
-    imagePath: 'assets/images/package4.png',
-    destination: 'รหัส donner:4',
-    receiver: 'คุณ...',
-  ),
-];
 
 // ------------------------------------------------------------------
 // Rider Home Screen
@@ -80,7 +41,7 @@ class RiderHomeScreen extends StatelessWidget {
             _buildHeader(context),
             _buildContentHeader(),
             Expanded(
-              child: _buildPackageList(), // รายการสินค้า
+              child: _buildPackageList(), // รายการสินค้าที่ดึงข้อมูลจริง
             ),
           ],
         ),
@@ -90,49 +51,69 @@ class RiderHomeScreen extends StatelessWidget {
   }
 
   //------------------------------------------------------------------
-  // Header Section
+  // Header Section - ดึงข้อมูลไรเดอร์มาแสดง
   //------------------------------------------------------------------
 
   Widget _buildHeader(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFFC70808),
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(50),
-          bottomRight: Radius.circular(50),
-        ),
-      ),
-      padding: const EdgeInsets.only(left: 20, right: 20, top: 40, bottom: 20),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Text(
-            'สวัสดีคุณ พ่อครูกรัน',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+    // **สำคัญ:** ส่วนนี้ควรดึง UID ของไรเดอร์ที่ล็อกอินเข้ามาแล้ว
+    // ในที่นี้จะใช้ ID ตัวอย่างจากรูปที่คุณส่งมา
+    const String riderId = "20jIUruKySPaKaqnuntdIVCxO5z1";
+
+    return StreamBuilder<DocumentSnapshot>(
+      // ฟังการเปลี่ยนแปลงข้อมูลของไรเดอร์คนนี้แบบ Real-time
+      stream:
+          FirebaseFirestore.instance.collection('users').doc(riderId).snapshots(),
+      builder: (context, snapshot) {
+        // ค่าเริ่มต้น
+        String riderName = 'ไรเดอร์';
+        String profileImageUrl = 'https://picsum.photos/200'; // รูปโปรไฟล์สำรอง
+
+        if (snapshot.hasData && snapshot.data!.exists) {
+          final data = snapshot.data!.data() as Map<String, dynamic>;
+          riderName = data['fullname'] ?? 'ไรเดอร์';
+          // ใช้ vehicle_picture เป็นรูปโปรไฟล์ หรือจะเปลี่ยนเป็น field 'profile' ก็ได้
+          profileImageUrl = data['vehicle_picture'] ?? profileImageUrl;
+        }
+
+        return Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFFC70808),
+            borderRadius: BorderRadius.only(
+              bottomLeft: Radius.circular(50),
+              bottomRight: Radius.circular(50),
             ),
           ),
-          // รูปโปรไฟล์ไรเดอร์
-          GestureDetector(
-            onTap: () {
-              // อาจจะมีเมนูสำหรับไรเดอร์โดยเฉพาะ
-              _showProfileOptions(context);
-            },
-            child: const CircleAvatar(
-              radius: 30,
-              // ใช้ NetworkImage สำหรับรูปโปรไฟล์ (ต้องมี URL จริง)
-              backgroundImage: NetworkImage('https://picsum.photos/200'),
-              backgroundColor: Colors.white,
-            ),
+          padding:
+              const EdgeInsets.only(left: 20, right: 20, top: 40, bottom: 20),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'สวัสดีคุณ $riderName',
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              GestureDetector(
+                onTap: () {
+                  _showProfileOptions(context);
+                },
+                child: CircleAvatar(
+                  radius: 30,
+                  backgroundImage: NetworkImage(profileImageUrl),
+                  backgroundColor: Colors.white,
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  // ส่วนหัวรายการสินค้า (รายการสินค้า)
+  // ส่วนหัวรายการสินค้า
   Widget _buildContentHeader() {
     return Container(
       width: double.infinity,
@@ -146,7 +127,7 @@ class RiderHomeScreen extends StatelessWidget {
         ],
       ),
       child: const Text(
-        'รายการสินค้า',
+        'รายการงานที่รอการจัดส่ง',
         textAlign: TextAlign.center,
         style: TextStyle(
           color: Colors.white,
@@ -158,25 +139,65 @@ class RiderHomeScreen extends StatelessWidget {
   }
 
   //------------------------------------------------------------------
-  // Package List Section
+  // Package List Section - ใช้ StreamBuilder ดึงงานที่ว่างอยู่
   //------------------------------------------------------------------
 
   Widget _buildPackageList() {
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      itemCount: mockPackages.length,
-      itemBuilder: (context, index) {
-        final package = mockPackages[index];
-        return _buildPackageCard(context, package);
+    return StreamBuilder<QuerySnapshot>(
+      // Query ข้อมูลเฉพาะออเดอร์ที่มีสถานะ 'pending' (รอไรเดอร์รับงาน)
+      stream: FirebaseFirestore.instance
+          .collection('delivery_orders')
+          .where('currentStatus', isEqualTo: 'pending')
+          .orderBy('createdAt', descending: true) // เรียงจากงานใหม่สุดไปเก่าสุด
+          .snapshots(),
+      builder: (context, snapshot) {
+        // สถานะขณะโหลดข้อมูล
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        // หากมีข้อผิดพลาด
+        if (snapshot.hasError) {
+          return const Center(child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล'));
+        }
+        // หากไม่มีข้อมูล (ไม่มีงานว่าง)
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const Center(
+            child: Text(
+              'ไม่มีงานให้รับในขณะนี้',
+              style: TextStyle(fontSize: 16, color: Colors.grey),
+            ),
+          );
+        }
+
+        // เมื่อมีข้อมูลแล้ว
+        final orderDocs = snapshot.data!.docs;
+
+        return ListView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          itemCount: orderDocs.length,
+          itemBuilder: (context, index) {
+            final doc = orderDocs[index];
+            final data = doc.data() as Map<String, dynamic>;
+
+            // แปลงข้อมูลจาก Firestore เป็น Package object เพื่อส่งต่อไปยังหน้าอื่น
+            final package = Package(
+              id: doc.id,
+              title: data['orderDetails'] ?? 'ไม่มีรายละเอียด',
+              location: data['pickupAddress']['detail'] ?? 'ไม่มีข้อมูลต้นทาง',
+              destination:
+                  data['deliveryAddress']['detail'] ?? 'ไม่มีข้อมูลปลายทาง',
+              imageUrl: data['orderImageUrl'],
+            );
+
+            return _buildPackageCard(context, package);
+          },
+        );
       },
     );
   }
 
+  // ส่วน Card ของแต่ละงาน - ทำให้ปุ่ม "รับงาน" ทำงานได้จริง
   Widget _buildPackageCard(BuildContext context, Package package) {
-    // กำหนดว่าพัสดุนี้สามารถดำเนินการได้หรือไม่ (ไม่ใช่ 'จัดส่งสำเร็จ' แล้ว)
-    bool isActionable = package.status != 'จัดส่งสำเร็จ';
-    // ใช้ isActionable แทน isPending ในการแสดงผลปุ่ม
-
     return Card(
       margin: const EdgeInsets.only(bottom: 15),
       elevation: 2,
@@ -186,19 +207,27 @@ class RiderHomeScreen extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // รูปภาพสินค้า (ใช้ Icon แทน Image.asset ถ้าไม่มีรูปภาพจริงใน assets)
+            // แสดงรูปภาพสินค้าจาก URL ที่อัปโหลด
             Container(
-              width: 60,
-              height: 60,
+              width: 80,
+              height: 80,
               decoration: BoxDecoration(
                 color: Colors.grey[200],
                 borderRadius: BorderRadius.circular(8),
+                image: package.imageUrl != null
+                    ? DecorationImage(
+                        image: NetworkImage(package.imageUrl!),
+                        fit: BoxFit.cover,
+                      )
+                    : null,
               ),
-              child: const Icon(
-                Icons.inventory_2_outlined,
-                size: 35,
-                color: Colors.black54,
-              ),
+              child: package.imageUrl == null
+                  ? const Icon(
+                      Icons.inventory_2_outlined,
+                      size: 40,
+                      color: Colors.black54,
+                    )
+                  : null,
             ),
             const SizedBox(width: 15),
             Expanded(
@@ -212,31 +241,50 @@ class RiderHomeScreen extends StatelessWidget {
                       fontSize: 16,
                       color: Color(0xFFC70808),
                     ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 5),
-                  _buildPackageDetailRow(Icons.location_on, package.location),
-                  _buildPackageDetailRow(Icons.qr_code, package.destination),
-                  _buildPackageDetailRow(Icons.person, package.receiver),
+                  _buildPackageDetailRow(Icons.store, 'ต้นทาง: ${package.location}'),
+                  _buildPackageDetailRow(Icons.location_on, 'ปลายทาง: ${package.destination}'),
                 ],
               ),
             ),
             // ปุ่มดำเนินการ
             Align(
-              alignment: Alignment.bottomRight,
+              alignment: Alignment.center,
               child: TextButton(
-                onPressed: () {
-                  // ***** แก้ไข: Action เมื่อกดปุ่ม (นำทางไปหน้าขั้นตอนการจัดส่ง) *****
-                  if (isActionable) {
+                onPressed: () async {
+                  // **สำคัญ:** ส่วนนี้ควรดึง UID ของไรเดอร์ที่ล็อกอินเข้ามาแล้ว
+                  const String riderId = "20jIUruKySPaKaqnuntdIVCxO5z1"; // UID ตัวอย่าง
+
+                  try {
+                    // อ้างอิงไปยังเอกสารออเดอร์ใน Firestore
+                    final orderRef = FirebaseFirestore.instance
+                        .collection('delivery_orders')
+                        .doc(package.id);
+
+                    // อัปเดตข้อมูล: เพิ่ม riderId และเปลี่ยนสถานะ
+                    await orderRef.update({
+                      'riderId': riderId,
+                      'currentStatus': 'accepted', // เปลี่ยนสถานะเป็น "รับงานแล้ว"
+                      'statusHistory': FieldValue.arrayUnion([
+                        {
+                          'status': 'accepted',
+                          'timestamp': FieldValue.serverTimestamp()
+                        }
+                      ]),
+                    });
+
+                    // เมื่ออัปเดตสำเร็จ นำทางไปยังหน้าขั้นตอนการจัดส่ง
                     Get.to(() => PackageDeliveryPage(package: package));
-                  } else {
-                    // สำหรับสถานะ 'จัดส่งสำเร็จ'
-                    Get.snackbar('ข้อมูล', 'พัสดุนี้จัดส่งสำเร็จแล้ว');
+                  } catch (e) {
+                    Get.snackbar(
+                        'เกิดข้อผิดพลาด', 'ไม่สามารถรับงานนี้ได้ในขณะนี้');
                   }
                 },
                 style: TextButton.styleFrom(
-                  backgroundColor: isActionable
-                      ? const Color(0xFF38B000)
-                      : Colors.grey, // สีเขียวหรือเทา
+                  backgroundColor: const Color(0xFF38B000), // สีเขียว
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
                     vertical: 5,
@@ -245,15 +293,15 @@ class RiderHomeScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                child: Row(
+                child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      // เปลี่ยนข้อความปุ่มตามสถานะที่ดำเนินการได้หรือไม่
-                      isActionable ? 'ดำเนินการ' : 'เสร็จสิ้น',
-                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                      'รับงาน',
+                      style: TextStyle(color: Colors.white, fontSize: 14),
                     ),
-                    const Icon(
+                    SizedBox(width: 4),
+                    Icon(
                       Icons.arrow_forward_ios,
                       size: 14,
                       color: Colors.white,
@@ -272,10 +320,11 @@ class RiderHomeScreen extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2.0),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, size: 14, color: Colors.grey[600]),
           const SizedBox(width: 5),
-          Flexible(
+          Expanded(
             child: Text(
               text,
               style: const TextStyle(fontSize: 14, color: Colors.black87),
@@ -319,7 +368,8 @@ class RiderHomeScreen extends StatelessWidget {
         currentIndex: 0,
         onTap: (index) {
           if (index == 2) {
-            Get.offAll(() => const SpeedDerApp()); // ออกจากระบบ
+            Get.offAll(() =>
+                const SpeedDerApp()); // **สำคัญ:** แก้ SpeedDerApp() เป็นหน้า Login ของคุณ
           }
           // TODO: เพิ่มการนำทางสำหรับรายการอื่น ๆ
         },

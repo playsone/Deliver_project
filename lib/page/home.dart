@@ -255,7 +255,9 @@ class _HomeScreenState extends State<HomeScreen> {
         () => Get.to(() => const PackagePickupPage());
     final VoidCallback goToRiderInfo =
         () => Get.to(() => const RiderInfoPage());
-    final VoidCallback goToStatus = () => Get.to(() => const OrderStatusPage());
+    final VoidCallback goToStatus = () => Get.to(() => const OrderStatusPage(
+          orderId: '',
+        ));
     final VoidCallback goToSend = () => Get.to(() => const SendPackagePage());
 
     return Padding(

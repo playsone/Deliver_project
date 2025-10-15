@@ -1,8 +1,12 @@
 // send_package_page.dart
 
+import 'dart:io'; // เพิ่ม import สำหรับ File
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:delivery_project/page/home.dart'; // สมมติว่ามี home.dart
+import 'package:image_picker/image_picker.dart'; // เพิ่ม import สำหรับกล้อง
+import 'package:firebase_storage/firebase_storage.dart'; // เพิ่ม import สำหรับ Storage
+import 'package:cloud_firestore/cloud_firestore.dart'; // เพิ่ม import สำหรับ Firestore
+import 'package:delivery_project/page/order_status_page.dart'; // **สำคัญ:** ตรวจสอบว่าหน้านี้รับ orderId ได้
 
 // Constants
 const Color _primaryColor = Color(0xFFC70808);
@@ -28,10 +32,17 @@ class _SendPackagePageState extends State<SendPackagePage> {
   // สถานะเพื่อจัดการขั้นตอน
   int _step = 1; // 1: กรอกข้อมูล, 2: ยืนยัน, 3: ถามยืนยัน, 4: สำเร็จ
 
+  // **ส่วนที่เพิ่มเข้ามา: 1. ตัวแปรสำหรับจัดการรูปภาพ**
+  XFile? _imageFile;
+  final ImagePicker _picker = ImagePicker();
+
   // ฟังก์ชันจำลองการส่ง
   void _submitData() {
-    // 1. ตรวจสอบข้อมูล (ในโลกจริง)
-    // 2. ไปยังขั้นตอนยืนยัน
+    // ตรวจสอบว่ากรอกข้อมูลครบหรือไม่
+    if (_detailController.text.isEmpty || _imageFile == null) {
+      Get.snackbar('ข้อมูลไม่ครบ', 'กรุณาถ่ายรูปและใส่รายละเอียดสินค้า');
+      return;
+    }
     setState(() {
       _step = 2;
     });
@@ -44,11 +55,65 @@ class _SendPackagePageState extends State<SendPackagePage> {
     });
   }
 
-  // ฟังก์ชันจำลองการสำเร็จ
-  void _completeSubmission() {
-    setState(() {
-      _step = 4;
-    });
+  // **ส่วนที่แก้ไข: 2. เปลี่ยนฟังก์ชันนี้ให้บันทึกข้อมูลจริง**
+  void _completeSubmission() async {
+    // แสดง Loading Dialog
+    Get.dialog(
+      const Center(
+        child: CircularProgressIndicator(),
+      ),
+      barrierDismissible: false,
+    );
+
+    try {
+      // 1. อัปโหลดรูปภาพไปยัง Firebase Storage
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final storageRef =
+          FirebaseStorage.instance.ref().child('order_images/$fileName');
+      await storageRef.putFile(File(_imageFile!.path));
+      final imageUrl = await storageRef.getDownloadURL();
+
+      // 2. เตรียมข้อมูลสำหรับบันทึกลง Firestore
+      final orderData = {
+        'customerId':
+            "20jIUruKySPaKaqnuntdIVCxO5z1", // **สำคัญ:** ควรเปลี่ยนเป็น UID ของผู้ใช้ที่ล็อกอินอยู่จริง
+        'riderId': null,
+        'orderDetails': _detailController.text,
+        'orderImageUrl': imageUrl,
+        'pickupAddress': {
+          'detail': _addressController.text,
+          'gps': const GeoPoint(16.4858, 102.8222) // ตำแหน่งตัวอย่าง
+        },
+        'deliveryAddress': {
+          'detail': 'คณะวิทยาการสารสนเทศ มข.', // ปลายทางตัวอย่าง
+          'gps': const GeoPoint(16.4746, 102.8247) // ตำแหน่งตัวอย่าง
+        },
+        'currentStatus': 'pending',
+        'createdAt': FieldValue.serverTimestamp(),
+        'statusHistory': [
+          {'status': 'pending', 'timestamp': FieldValue.serverTimestamp()}
+        ],
+      };
+
+      // 3. บันทึกข้อมูลลงใน Collection 'delivery_orders'
+      DocumentReference docRef = await FirebaseFirestore.instance
+          .collection('delivery_orders')
+          .add(orderData);
+
+      Get.back(); // ปิด Loading Dialog
+
+      // 4. เปลี่ยน _step ไปยังหน้าสำเร็จ และส่งไปหน้าดูสถานะ
+      setState(() {
+        _step = 4;
+      });
+      // หน่วงเวลาเล็กน้อยแล้วไปหน้า OrderStatusPage
+      Future.delayed(const Duration(seconds: 2), () {
+        Get.off(() => OrderStatusPage(orderId: docRef.id));
+      });
+    } catch (e) {
+      Get.back(); // ปิด Loading Dialog หากเกิดข้อผิดพลาด
+      Get.snackbar('เกิดข้อผิดพลาด', 'ไม่สามารถสร้างออเดอร์ได้: $e');
+    }
   }
 
   @override
@@ -58,6 +123,21 @@ class _SendPackagePageState extends State<SendPackagePage> {
     _addressController.dispose();
     _detailController.dispose();
     super.dispose();
+  }
+
+  // **ส่วนที่เพิ่มเข้ามา: 3. ฟังก์ชันสำหรับเรียกใช้กล้อง**
+  Future<void> _takePhoto() async {
+    try {
+      final pickedFile = await _picker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 800, // ลดขนาดรูปภาพเพื่อประหยัดพื้นที่และเวลาอัปโหลด
+      );
+      setState(() {
+        _imageFile = pickedFile;
+      });
+    } catch (e) {
+      Get.snackbar('เกิดข้อผิดพลาด', 'ไม่สามารถเปิดกล้องได้');
+    }
   }
 
   @override
@@ -99,8 +179,8 @@ class _SendPackagePageState extends State<SendPackagePage> {
       flexibleSpace: FlexibleSpaceBar(
         titlePadding: EdgeInsets.zero,
         centerTitle: false,
-        title: Padding(
-          padding: const EdgeInsets.only(left: 20, bottom: 8),
+        title: const Padding(
+          padding: EdgeInsets.only(left: 20, bottom: 8),
           child: Text(
             'สวัสดีคุณ\nพ่อครูกรัน',
             style: TextStyle(
@@ -134,7 +214,15 @@ class _SendPackagePageState extends State<SendPackagePage> {
       ],
       leading: IconButton(
         icon: const Icon(Icons.arrow_back, color: Colors.white),
-        onPressed: () => Get.back(),
+        onPressed: () {
+          if (_step > 1 && _step < 4) {
+            setState(() {
+              _step = _step - 1; // ย้อนกลับไปขั้นตอนก่อนหน้า
+            });
+          } else {
+            Get.back();
+          }
+        },
       ),
     );
   }
@@ -155,7 +243,7 @@ class _SendPackagePageState extends State<SendPackagePage> {
             _detailController, 'รายการสินค้าเพิ่มเติม', Icons.note_alt_outlined,
             maxLines: 3),
         const SizedBox(height: 20),
-        _buildPrimaryButton('เพิ่มข้อมูลสินค้า', _submitData),
+        _buildPrimaryButton('ดำเนินการต่อ', _submitData),
       ],
     );
   }
@@ -182,13 +270,11 @@ class _SendPackagePageState extends State<SendPackagePage> {
         const SizedBox(height: 20),
         _buildDialogBox(
           'คุณต้องการส่งมอบสินค้านี้หรือไม่',
-          'ยกเลิก',
+          'แก้ไข',
           'ยืนยัน',
-          () => setState(() => _step = 2), // ยกเลิกกลับไปขั้นตอน 2
+          () => setState(() => _step = 1), // ยกเลิกกลับไปขั้นตอน 1
           _completeSubmission, // ยืนยันไปยังขั้นตอน 4
         ),
-        const SizedBox(height: 20),
-        _buildPrimaryButton('ยืนยัน', _completeSubmission), // ปุ่มสำรอง
       ],
     );
   }
@@ -199,9 +285,9 @@ class _SendPackagePageState extends State<SendPackagePage> {
       children: [
         _buildConfirmSection(showPackageIcon: true),
         const SizedBox(height: 20),
-        _buildSuccessDialog('ส่งมอบสินค้าเรียบร้อยแล้ว'),
+        _buildSuccessDialog('สร้างรายการส่งของสำเร็จ!'),
         const SizedBox(height: 20),
-        _buildPrimaryButton('กลับสู่หน้าหลัก', () => Get.back()),
+        const Text('กำลังนำท่านไปยังหน้าติดตามสถานะ...'),
       ],
     );
   }
@@ -238,7 +324,7 @@ class _SendPackagePageState extends State<SendPackagePage> {
     );
   }
 
-  // ส่วนรายการพัสดุ
+  // **ส่วนที่แก้ไข: แสดงรูปที่ถ่ายและเปลี่ยน onPressed**
   Widget _buildPackageSection() {
     return Container(
       padding: const EdgeInsets.all(15),
@@ -252,21 +338,27 @@ class _SendPackagePageState extends State<SendPackagePage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Icon(Icons.inventory, color: Colors.grey, size: 40),
+              // ถ้ายังไม่มีรูป ให้แสดง Icon
+              // ถ้ามีรูปแล้ว ให้แสดงรูปที่ถ่ายจากไฟล์
+              _imageFile == null
+                  ? const Icon(Icons.inventory, color: Colors.grey, size: 60)
+                  : ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.file(
+                        File(_imageFile!.path),
+                        width: 80,
+                        height: 80,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
               TextButton.icon(
-                onPressed: () {},
+                onPressed: _takePhoto, // **เปลี่ยนเป็นฟังก์ชันถ่ายรูป**
                 icon: const Icon(Icons.camera_alt, color: _primaryColor),
                 label: const Text('ถ่ายรูปสินค้า',
                     style: TextStyle(color: _primaryColor)),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          const Text('รายละเอียดสินค้า:',
-              style: TextStyle(fontWeight: FontWeight.bold)),
-          _buildTextField(TextEditingController(text: 'แอมป์กีต้าร์, น้ำหอม'),
-              'ชื่อสินค้า', Icons.shopping_bag,
-              isReadOnly: true),
         ],
       ),
     );
@@ -283,39 +375,39 @@ class _SendPackagePageState extends State<SendPackagePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (showPackageIcon) ...[
-                const Icon(Icons.inventory, color: Colors.grey, size: 60),
-                const SizedBox(width: 10),
-              ],
-              Text('รายการสินค้าที่จะส่งมอบ',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            ],
+          const Center(
+            child: Text('สรุปรายการ',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           ),
           const Divider(),
-          // รายการสินค้าจริง (จำลอง)
-          Text(' - แอมป์กีต้าร์ (Order: 0814***)'),
-          Text(' - น้ำหอม (Order: 0814***)'),
+          _buildConfirmRow('ที่อยู่ต้นทาง:', _addressController.text),
+          _buildConfirmRow('รายละเอียด:', _detailController.text),
           const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              TextButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.camera_alt, color: _primaryColor),
-                label: const Text('ดูรูปสินค้า',
-                    style: TextStyle(color: _primaryColor)),
+          if (_imageFile != null)
+            Center(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.file(
+                  File(_imageFile!.path),
+                  height: 150,
+                  fit: BoxFit.cover,
+                ),
               ),
-              TextButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.receipt, color: _primaryColor),
-                label: const Text('ใบเสร็จ',
-                    style: TextStyle(color: _primaryColor)),
-              ),
-            ],
-          ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConfirmRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(width: 8),
+          Expanded(child: Text(value)),
         ],
       ),
     );
@@ -339,7 +431,8 @@ class _SendPackagePageState extends State<SendPackagePage> {
           hintText: hint,
           border: InputBorder.none,
           prefixIcon: Icon(icon, color: _primaryColor),
-          contentPadding: EdgeInsets.symmetric(vertical: 15, horizontal: 10),
+          contentPadding:
+              const EdgeInsets.symmetric(vertical: 15, horizontal: 10),
         ),
       ),
     );

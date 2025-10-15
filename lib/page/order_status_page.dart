@@ -10,7 +10,7 @@ const Color _primaryColor = Color(0xFFC70808);
 const Color _backgroundColor = Color(0xFFFDE9E9);
 
 class OrderStatusPage extends StatefulWidget {
-  const OrderStatusPage({super.key});
+  const OrderStatusPage({super.key, required String orderId});
 
   @override
   State<OrderStatusPage> createState() => _OrderStatusPageState();
