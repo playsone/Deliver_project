@@ -2,6 +2,7 @@ import 'dart:developer';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/firebase_options.dart';
+import 'package:delivery_project/service/authen_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:delivery_project/page/index.dart';
@@ -17,10 +18,12 @@ void main() async {
     persistenceEnabled: true,
   );
 
-  MultiProvider(
-    providers: [],
+  runApp(
+    MultiProvider(
+      providers: [ChangeNotifierProvider(create: (context) => AuthenService())],
+      child: const MyApp(),
+    ),
   );
-  runApp(const MyApp());
   bg.BackgroundGeolocation.registerHeadlessTask(headlessTask);
 }
 

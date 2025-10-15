@@ -55,6 +55,23 @@ class _LoginPageState extends State<LoginPage> {
     setState(() {
       _isLoading = true;
     });
+
+    try {} on FirebaseAuthException catch (e) {
+      String errorMessage =
+          "การเข้าสู่ระบบล้มเหลว กรุณาตรวจสอบเบอร์โทรศัพท์และรหัสผ่าน";
+      if (e.code == 'user-not-found') {
+        errorMessage = "ไม่พบผู้ใช้งานด้วยเบอร์โทรศัพท์นี้";
+      } else if (e.code == 'wrong-password') {
+        errorMessage = "รหัสผ่านไม่ถูกต้อง";
+      } else if (e.code == 'invalid-email') {
+        errorMessage = "เบอร์โทรศัพท์ที่ใช้ไม่ถูกต้อง";
+      }
+      _showSnackBar(errorMessage);
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   @override
