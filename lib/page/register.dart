@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get_core/src/get_main.dart';
 import 'package:get/get_navigation/get_navigation.dart';
+import 'package:get/utils.dart';
 import 'dart:ui' as ui;
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
@@ -78,6 +79,10 @@ class _RegisterPageState extends State<RegisterPage> {
         title: "ข้อมูลไม่ถูกต้อง",
         message: "โปรดตรวจสอบข้อมูลอีกครั้ง",
       );
+    }
+    if (_vehicleImage == null) {
+      Get.snackbar("SYSTEM", 'โปรดเลือกรูปยานพาหนะของท่าน');
+      return;
     }
 
     try {
@@ -311,8 +316,8 @@ class _RegisterPageState extends State<RegisterPage> {
 
     try {
       final cloudinary = CloudinaryPublic(
-        'dnutmbomv',
-        'delivery888',
+        'dvh40wpmm',
+        'gameshop_images',
         cache: false,
       );
 

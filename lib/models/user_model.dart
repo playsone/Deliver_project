@@ -11,6 +11,9 @@ class UserModel {
   final String? defaultAddress;
   final double? defaultLat;
   final double? defaultLng;
+  final String? secondAddress;
+  final double? secondLat;
+  final double? secondLng;
 
   // สำหรับ role 1 (Rider)
   final String? vehicleNo;
@@ -27,6 +30,9 @@ class UserModel {
     this.defaultAddress,
     this.defaultLat,
     this.defaultLng,
+    this.secondAddress,
+    this.secondLat,
+    this.secondLng,
     this.vehicleNo,
     this.vehiclePicture,
     this.gpsLat,
@@ -40,6 +46,7 @@ class UserModel {
     if (role == 0) {
       // User ปกติ
       final geo = data['defaultGPS'] as GeoPoint?;
+      final geo2 = data['secondGPS'] as GeoPoint?;
       return UserModel(
         uid: data['uid'] ?? '',
         role: role,
@@ -49,6 +56,9 @@ class UserModel {
         defaultAddress: data['defaultAddress'],
         defaultLat: geo?.latitude,
         defaultLng: geo?.longitude,
+        secondAddress: data['secondAddress'],
+        secondLat: geo2?.latitude,
+        secondLng: geo2?.longitude,
       );
     } else if (role == 1) {
       // Rider
@@ -84,6 +94,11 @@ class UserModel {
         "defaultGPS": {
           "latitude": defaultLat,
           "longitude": defaultLng,
+        },
+        "secondAddress": secondAddress ?? "",
+        "secondGPS": {
+          "latitude": secondLat,
+          "longitude": secondLng,
         },
       });
     } else if (role == 1) {
