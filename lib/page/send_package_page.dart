@@ -4,8 +4,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloudinary_public/cloudinary_public.dart'; // **เพิ่ม:** import สำหรับ Cloudinary
 import 'package:delivery_project/page/order_status_page.dart';
 
 // Constants
@@ -28,13 +28,13 @@ class _SendPackagePageState extends State<SendPackagePage> {
   final TextEditingController _deliveryAddressController =
       TextEditingController();
 
-  // ตัวแปรสำหรับข้อมูลผู้ใช้ (จะดึงจาก Firestore)
+  // ตัวแปรสำหรับข้อมูลผู้ใช้
   String _userName = 'กำลังโหลด...';
   String _userPhone = '...';
   String _profileImageUrl = 'https://picsum.photos/200';
 
   // สถานะเพื่อจัดการขั้นตอน
-  int _step = 1; // 1: กรอกข้อมูล, 2: ยืนยัน, 3: ถามยืนยัน, 4: สำเร็จ
+  int _step = 1;
 
   // ตัวแปรสำหรับจัดการรูปภาพ
   XFile? _imageFile;
@@ -43,10 +43,9 @@ class _SendPackagePageState extends State<SendPackagePage> {
   @override
   void initState() {
     super.initState();
-    _fetchUserData(); // ดึงข้อมูลผู้ใช้เมื่อหน้าถูกสร้าง
+    _fetchUserData();
   }
 
-  // ดึงข้อมูลผู้ใช้จาก Firestore มาแสดง
   Future<void> _fetchUserData() async {
     try {
       final doc = await FirebaseFirestore.instance
@@ -72,7 +71,6 @@ class _SendPackagePageState extends State<SendPackagePage> {
     }
   }
 
-  // ฟังก์ชันสำหรับไปขั้นตอนถัดไป
   void _submitData() {
     if (_detailController.text.isEmpty ||
         _addressController.text.isEmpty ||
@@ -86,45 +84,51 @@ class _SendPackagePageState extends State<SendPackagePage> {
     });
   }
 
-  // ฟังก์ชันสำหรับถามยืนยัน
   void _confirmSubmission() {
     setState(() {
       _step = 3;
     });
   }
 
-  // ฟังก์ชันสำหรับบันทึกข้อมูลลง Firebase
+  // **ส่วนที่แก้ไขหลัก: เปลี่ยนมาใช้ Cloudinary ในการอัปโหลดรูป**
   void _completeSubmission() async {
+    if (_imageFile == null) return;
+
     Get.dialog(
-      const Center(
-        child: CircularProgressIndicator(),
-      ),
+      const Center(child: CircularProgressIndicator()),
       barrierDismissible: false,
     );
 
     try {
-      // 1. อัปโหลดรูปภาพไปยัง Firebase Storage
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final storageRef =
-          FirebaseStorage.instance.ref().child('order_images/$fileName');
-      await storageRef.putFile(File(_imageFile!.path));
-      final imageUrl = await storageRef.getDownloadURL();
+      // 1. อัปโหลดรูปภาพไปยัง Cloudinary
+      final cloudinary = CloudinaryPublic(
+        'dnutmbomv', // << Cloud Name ของคุณจากหน้า Register
+        'delivery888', // << Upload Preset ของคุณจากหน้า Register
+        cache: false,
+      );
 
-      // 2. เตรียมข้อมูลสำหรับบันทึกลง Firestore
+      final response = await cloudinary.uploadFile(
+        CloudinaryFile.fromFile(
+          _imageFile!.path,
+          resourceType: CloudinaryResourceType.Image,
+        ),
+      );
+
+      final imageUrl = response.secureUrl;
+
+      // 2. เตรียมข้อมูลสำหรับบันทึกลง Firestore (ส่วนนี้เหมือนเดิม)
       final orderData = {
-        'customerId': widget.uid, // ใช้ UID ของผู้ใช้ที่ล็อกอิน
+        'customerId': widget.uid,
         'riderId': null,
         'orderDetails': _detailController.text,
-        'orderImageUrl': imageUrl,
+        'orderImageUrl': imageUrl, // ใช้ URL จาก Cloudinary
         'pickupAddress': {
           'detail': _addressController.text,
-          'gps': const GeoPoint(
-              16.4858, 102.8222) // **หมายเหตุ:** ควรเปลี่ยนเป็นพิกัดจริง
+          'gps': const GeoPoint(16.4858, 102.8222)
         },
         'deliveryAddress': {
           'detail': _deliveryAddressController.text,
-          'gps': const GeoPoint(
-              16.4746, 102.8247) // **หมายเหตุ:** ควรเปลี่ยนเป็นพิกัดจริง
+          'gps': const GeoPoint(16.4746, 102.8247)
         },
         'currentStatus': 'pending',
         'createdAt': FieldValue.serverTimestamp(),
@@ -165,7 +169,6 @@ class _SendPackagePageState extends State<SendPackagePage> {
     super.dispose();
   }
 
-  // ฟังก์ชันสำหรับเรียกใช้กล้อง
   Future<void> _takePhoto() async {
     try {
       final pickedFile = await _picker.pickImage(
@@ -210,6 +213,8 @@ class _SendPackagePageState extends State<SendPackagePage> {
     );
   }
 
+  // (โค้ดส่วน UI ทั้งหมดตั้งแต่ _buildSliverAppBar จนสุดไฟล์ สามารถใช้ของเดิมได้เลย)
+  // ...
   // ส่วน Header
   Widget _buildSliverAppBar(BuildContext context) {
     return SliverAppBar(
