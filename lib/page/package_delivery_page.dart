@@ -1,12 +1,12 @@
 import 'dart:async';
-import 'dart:io'; // เพิ่ม import สำหรับ File
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/page/home_rider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
-import 'package:image_picker/image_picker.dart'; // เพิ่ม import สำหรับกล้อง
-import 'package:firebase_storage/firebase_storage.dart'; // เพิ่ม import สำหรับ Storage
+import 'package:image_picker/image_picker.dart';
+import 'package:cloudinary_public/cloudinary_public.dart'; // **เพิ่ม:** import สำหรับ Cloudinary
 import 'package:latlong2/latlong.dart';
 import 'package:location/location.dart';
 
@@ -46,7 +46,6 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
   @override
   void initState() {
     super.initState();
-    // ใช้ uid ที่ส่งมาจากหน้า home_rider ได้เลย
     _currentRiderId = widget.uid;
     if (_currentRiderId != null) {
       _startSendingLocation(_currentRiderId!);
@@ -55,11 +54,10 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
 
   @override
   void dispose() {
-    _locationSubscription?.cancel(); // หยุดส่งตำแหน่งเมื่อออกจากหน้านี้
+    _locationSubscription?.cancel();
     super.dispose();
   }
 
-  // ฟังก์ชันสำหรับเริ่มติดตามและส่งตำแหน่ง GPS
   void _startSendingLocation(String riderId) async {
     bool serviceEnabled = await _location.serviceEnabled();
     if (!serviceEnabled) {
@@ -73,13 +71,11 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
       if (permissionGranted != PermissionStatus.granted) return;
     }
 
-    // อัปเดตตำแหน่งทุกๆ 10 วินาที หรือเมื่อเคลื่อนที่ 10 เมตร
     _location.changeSettings(interval: 10000, distanceFilter: 10);
     _locationSubscription =
         _location.onLocationChanged.listen((currentLocation) {
       if (currentLocation.latitude != null &&
           currentLocation.longitude != null) {
-        // อัปเดตตำแหน่งเป็น GeoPoint ซึ่งเป็นวิธีที่ดีที่สุด
         FirebaseFirestore.instance.collection('users').doc(riderId).update({
           'gps':
               GeoPoint(currentLocation.latitude!, currentLocation.longitude!),
@@ -88,51 +84,57 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
     });
   }
 
-  // ฟังก์ชันสำหรับถ่ายรูป, อัปโหลด, และอัปเดตสถานะเป็น picked_up
+  // **ส่วนที่แก้ไขหลัก: เปลี่ยนมาใช้ Cloudinary ในการอัปโหลดรูป**
   Future<void> _confirmAndPickupPackage() async {
     final picker = ImagePicker();
     try {
-      // 1. เปิดกล้องเพื่อถ่ายรูป
       final pickedFile = await picker.pickImage(
         source: ImageSource.camera,
-        maxWidth: 1024, // ลดขนาดรูปภาพเพื่อความรวดเร็ว
+        maxWidth: 1024,
       );
 
-      if (pickedFile == null) return; // ผู้ใช้กดยกเลิกการถ่าย
+      if (pickedFile == null) return;
 
-      // แสดง Loading
       Get.dialog(const Center(child: CircularProgressIndicator()),
           barrierDismissible: false);
 
-      // 2. อัปโหลดรูปภาพไปยัง Firebase Storage
-      final fileName = '${widget.package.id}_pickup.jpg';
-      final ref =
-          FirebaseStorage.instance.ref().child('pickup_images/$fileName');
-      await ref.putFile(File(pickedFile.path));
-      final imageUrl = await ref.getDownloadURL();
+      // 1. อัปโหลดรูปภาพไปยัง Cloudinary
+      final cloudinary = CloudinaryPublic(
+        'dnutmbomv', // << Cloud Name ของคุณ
+        'delivery888', // << Upload Preset ของคุณ
+        cache: false,
+      );
 
-      // 3. อัปเดตสถานะใน Firestore
+      final response = await cloudinary.uploadFile(
+        CloudinaryFile.fromFile(
+          pickedFile.path,
+          resourceType: CloudinaryResourceType.Image,
+        ),
+      );
+
+      final imageUrl = response.secureUrl;
+
+      // 2. อัปเดตสถานะใน Firestore
       final orderRef = FirebaseFirestore.instance
           .collection('delivery_orders')
           .doc(widget.package.id);
 
       await orderRef.update({
         'currentStatus': 'picked_up',
-        'pickupImageUrl': imageUrl, // บันทึก URL รูปที่ถ่ายไว้ในออเดอร์
+        'pickupImageUrl': imageUrl, // บันทึก URL รูปที่ถ่ายไว้
         'statusHistory': FieldValue.arrayUnion([
           {'status': 'picked_up', 'timestamp': FieldValue.serverTimestamp()}
         ]),
       });
 
-      Get.back(); // ปิด Loading
+      Get.back();
       Get.snackbar('สำเร็จ', 'ยืนยันการรับสินค้าเรียบร้อยแล้ว');
     } catch (e) {
-      Get.back(); // ปิด Loading
+      Get.back();
       Get.snackbar('เกิดข้อผิดพลาด', 'ไม่สามารถยืนยันการรับสินค้าได้: $e');
     }
   }
 
-  // ฟังก์ชันสำหรับอัปเดตสถานะอื่นๆ
   Future<void> _updateOrderStatus(String newStatus,
       {bool isFinal = false}) async {
     final orderRef = FirebaseFirestore.instance
@@ -147,7 +149,6 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
     });
 
     if (isFinal) {
-      // เมื่อส่งสำเร็จ ให้กลับไปหน้า Rider Home
       Get.offAll(() => RiderHomeScreen(uid: widget.uid, role: widget.role));
       Get.snackbar('เสร็จสิ้น', 'ดำเนินการจัดส่งเสร็จสมบูรณ์!');
     }
