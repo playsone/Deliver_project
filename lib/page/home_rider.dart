@@ -68,7 +68,8 @@ final List<Package> mockPackages = [
 // ------------------------------------------------------------------
 
 class RiderHomeScreen extends StatelessWidget {
-  const RiderHomeScreen({super.key});
+  final String uid;
+  const RiderHomeScreen({super.key, required this.uid});
 
   @override
   Widget build(BuildContext context) {
@@ -361,7 +362,9 @@ class RiderHomeScreen extends StatelessWidget {
                 'แก้ไขข้อมูลส่วนตัว',
                 Icons.person_outline,
                 () {
-                  Get.to(() => const EditProfilePage());
+                  Get.to(() => EditProfilePage(
+                        uid: uid,
+                      ));
                 },
               ),
               _buildOptionButton(

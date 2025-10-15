@@ -1,17 +1,22 @@
+import 'dart:developer';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geocoding/geocoding.dart'; // สำหรับ Geocoding
 
 class EditProfilePage extends StatefulWidget {
-  const EditProfilePage({super.key});
+  final String uid;
+  const EditProfilePage({super.key, required this.uid});
 
   @override
   State<EditProfilePage> createState() => _EditProfilePageState();
 }
 
 class _EditProfilePageState extends State<EditProfilePage> {
-  final String _profileImageUrl = 'https://picsum.photos/200';
+  final db = FirebaseFirestore.instance;
+  late final String _profileImageUrl;
   final LatLng _defaultLocation = const LatLng(13.7563, 100.5018);
   LatLng _currentMarkerPos = const LatLng(13.7563, 100.5018);
   final _nameController = TextEditingController(text: 'สมชาย รักชาติ');
@@ -20,6 +25,13 @@ class _EditProfilePageState extends State<EditProfilePage> {
       TextEditingController(text: 'ตึกใบหยก 2, กรุงเทพมหานคร');
   final _gpsController = TextEditingController(text: '13.7563, 100.5018');
   final MapController _mapController = MapController();
+
+  @override
+  void initState() {
+    // TODO: implement initState
+    super.initState();
+    getUserProfile();
+  }
 
   @override
   void dispose() {
@@ -130,7 +142,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // _buildHeaderBackground() ถูกรวมอยู่ใน AppBar และ _buildProfileSection แล้ว
+            const SizedBox(
+              height: 10,
+            ),
             _buildProfileSection(),
             _buildFormSection(),
             _buildMapSection(), // เพิ่มส่วนแผนที่
@@ -141,11 +155,22 @@ class _EditProfilePageState extends State<EditProfilePage> {
     );
   }
 
-  // ลบ _buildHeaderBackground() ออกไปแล้วเพราะ AppBar มี shape อยู่แล้ว
+  getUserProfile() async {
+    try {
+      var userData = await db
+          .collection('users')
+          .where('uid', isEqualTo: widget.uid)
+          .get();
+      var query = userData.docs.first.data();
+      _profileImageUrl = query['profile'];
+    } on FirebaseException catch (e) {
+      log(e.toString());
+    }
+  }
 
   Widget _buildProfileSection() {
     return Transform.translate(
-      offset: const Offset(0, -60), // Move the profile image up
+      offset: const Offset(0, 10), // Move the profile image up
       child: Column(
         children: [
           CircleAvatar(

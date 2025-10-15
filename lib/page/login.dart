@@ -79,12 +79,15 @@ class _LoginPageState extends State<LoginPage> {
         Get.snackbar("Error", "Can't Login");
       } else {
         var userData = data.docs.first.data(); // Map<String, dynamic>
+        var uid = userData['uid'];
         var role = userData['role']; // ดึงค่า role
 
         if (role == 0) {
-          Get.to(() => HomeScreen());
+          Get.to(() => HomeScreen(
+                uid: uid,
+              ));
         } else if (role == 1) {
-          Get.to(() => RiderHomeScreen());
+          Get.to(() => RiderHomeScreen(uid: uid));
         } else {
           log("User has other role: $role");
         }
@@ -154,9 +157,9 @@ class _LoginPageState extends State<LoginPage> {
             child: Container(height: 100, color: Colors.white),
           ),
         ),
-        Positioned(
+        const Positioned(
           bottom: 50,
-          child: const Text(
+          child: Text(
             'เข้าสู่ระบบ',
             style: TextStyle(
               fontSize: 24,

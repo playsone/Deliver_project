@@ -1,5 +1,7 @@
 // history_page.dart
 
+import 'package:delivery_project/page/home.dart';
+import 'package:delivery_project/page/index.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -8,7 +10,8 @@ const Color _primaryColor = Color(0xFFC70808);
 const Color _backgroundColor = Color(0xFFFDE9E9);
 
 class HistoryPage extends StatelessWidget {
-  const HistoryPage({super.key});
+  final String uid;
+  const HistoryPage({super.key, required this.uid});
 
   @override
   Widget build(BuildContext context) {
@@ -289,9 +292,11 @@ class HistoryPage extends StatelessWidget {
         currentIndex: currentIndex,
         onTap: (index) {
           if (index == 0) {
-            Get.offAllNamed('/'); // สมมติว่าหน้า Home ถูกกำหนดเป็น '/'
+            Get.to(() => HomeScreen(
+                  uid: uid,
+                )); // สมมติว่าหน้า Home ถูกกำหนดเป็น '/'
           } else if (index == 2) {
-            // TODO: Log out
+            Get.off(() => const SpeedDerApp());
           }
         },
       ),
