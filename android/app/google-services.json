@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "320345112481",
-    "project_id": "derivery-7a618",
-    "storage_bucket": "derivery-7a618.firebasestorage.app"
+    "project_number": "467537653170",
+    "project_id": "activity-1cee2",
+    "storage_bucket": "activity-1cee2.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:320345112481:android:25db56caecb80a8d48d5e0",
+        "mobilesdk_app_id": "1:467537653170:android:7587f0f0a644c8e26408ab",
         "android_client_info": {
           "package_name": "com.example.delivery_project"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyC1eaao3HiWm6e1AQ3QcJ0WravJaIrgaw0"
+          "current_key": "AIzaSyBnzxTUUHGphu7I3m1Jpw6w48qNjI8qXAU"
         }
       ],
       "services": {
