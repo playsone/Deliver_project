@@ -16,14 +16,13 @@ const Color _primaryColor = Color(0xFFC70808);
 const Color _backgroundColor = Color(0xFFFDE9E9);
 
 class OrderStatusPage extends StatefulWidget {
-  // ทำให้ orderId สามารถเป็น null ได้ เพื่อแยกการทำงาน
   final String? orderId;
   final String uid;
   final int role;
 
   const OrderStatusPage({
     super.key,
-    this.orderId, // ไม่บังคับ
+    this.orderId,
     required this.uid,
     required this.role,
   });
@@ -43,7 +42,6 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
 
   @override
   Widget build(BuildContext context) {
-    // ตรวจสอบว่าควรแสดงหน้ารายละเอียด หรือ หน้ารายการ
     bool isDetailPage = widget.orderId != null && widget.orderId!.isNotEmpty;
 
     return Scaffold(
@@ -53,10 +51,8 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
             style: const TextStyle(color: Colors.white)),
         backgroundColor: _primaryColor,
         iconTheme: const IconThemeData(color: Colors.white),
-        // ถ้าเป็นหน้ารายละเอียด ให้มีปุ่ม back อัตโนมัติ
         automaticallyImplyLeading: isDetailPage,
       ),
-      // Logic หลัก: แสดง UI ตามค่า isDetailPage
       body: isDetailPage
           ? _buildOrderDetailView(widget.orderId!)
           : _buildOrderListView(),
@@ -70,7 +66,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
   Widget _buildOrderListView() {
     return Column(
       children: [
-        _buildActionCard(), // ปุ่มสำหรับกดส่งของ
+        _buildActionCard(),
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 20.0),
           child: Align(
@@ -124,9 +120,9 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
 
   Widget _buildOrderList() {
     return StreamBuilder<QuerySnapshot>(
-      // ดึงออเดอร์ของ User คนนี้ ที่ยังไม่เสร็จสิ้น
+      // **แก้ไข:** เปลี่ยน collection เป็น 'orders'
       stream: FirebaseFirestore.instance
-          .collection('delivery_orders')
+          .collection('orders')
           .where('customerId', isEqualTo: widget.uid)
           .where('currentStatus', isNotEqualTo: 'delivered')
           .orderBy('createdAt', descending: true)
@@ -162,7 +158,6 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
                     'วันที่: $formattedDate - สถานะ: ${_translateStatus(data['currentStatus'])}'),
                 trailing: const Icon(Icons.arrow_forward_ios),
                 onTap: () {
-                  // **นำทางไปยังหน้าตัวเองอีกครั้ง แต่ครั้งนี้ส่ง orderId ไปด้วย**
                   Get.to(() => OrderStatusPage(
                         orderId: doc.id,
                         uid: widget.uid,
@@ -182,8 +177,9 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
   // ===================================================================
   Widget _buildOrderDetailView(String orderId) {
     return StreamBuilder<DocumentSnapshot>(
+      // **แก้ไข:** เปลี่ยน collection เป็น 'orders'
       stream: FirebaseFirestore.instance
-          .collection('delivery_orders')
+          .collection('orders')
           .doc(orderId)
           .snapshots(),
       builder: (context, orderSnapshot) {
@@ -284,26 +280,28 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
     );
   }
 
+  // **แก้ไข:** เพิ่มการแสดงข้อมูลผู้รับ
   Widget _buildCurrentStatusHeader(Map<String, dynamic> orderData) {
     final status = orderData['currentStatus'] ?? 'pending';
     final orderDetails = orderData['orderDetails'] ?? 'ไม่มีรายละเอียด';
+    final deliveryAddress =
+        orderData['deliveryAddress'] as Map<String, dynamic>? ?? {};
+    final receiverName = deliveryAddress['receiverName'] ?? 'ไม่มีข้อมูล';
+    final receiverPhone = deliveryAddress['receiverPhone'] ?? '-';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            orderDetails,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-          ),
+          Text(orderDetails,
+              style:
+                  const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Row(
             children: [
-              Text(
-                'สถานะปัจจุบัน: ',
-                style: TextStyle(fontSize: 16, color: Colors.grey.shade700),
-              ),
+              Text('สถานะปัจจุบัน: ',
+                  style: TextStyle(fontSize: 16, color: Colors.grey.shade700)),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
@@ -313,19 +311,22 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
                 child: Text(
                   _translateStatus(status),
                   style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: _getStatusColor(status),
-                  ),
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: _getStatusColor(status)),
                 ),
               ),
             ],
           ),
           const Divider(height: 20),
-          const Text(
-            'ประวัติการจัดส่ง',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
+          // **เพิ่ม:** แสดงข้อมูลผู้รับ
+          const Text('ข้อมูลผู้รับ',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          Text('ชื่อ: $receiverName'),
+          Text('เบอร์โทร: $receiverPhone'),
+          const Divider(height: 20),
+          const Text('ประวัติการจัดส่ง',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -335,13 +336,8 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
     if (statusHistory.isEmpty) {
       return const Center(child: Text('ไม่มีประวัติสถานะ'));
     }
-
-    statusHistory.sort((a, b) {
-      Timestamp tsA = a['timestamp'] ?? Timestamp.now();
-      Timestamp tsB = b['timestamp'] ?? Timestamp.now();
-      return tsB.compareTo(tsA);
-    });
-
+    statusHistory.sort((a, b) =>
+        (b['timestamp'] as Timestamp).compareTo(a['timestamp'] as Timestamp));
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -353,9 +349,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
         final formattedTime = timestamp != null
             ? DateFormat('dd MMM yyyy, HH:mm', 'th').format(timestamp)
             : 'ไม่มีข้อมูลเวลา';
-
         bool isFirst = index == 0;
-
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
           child: Row(
@@ -370,11 +364,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
                     size: 20,
                   ),
                   if (index != statusHistory.length - 1)
-                    Container(
-                      height: 40,
-                      width: 2,
-                      color: Colors.grey.shade300,
-                    )
+                    Container(height: 40, width: 2, color: Colors.grey.shade300)
                 ],
               ),
               const SizedBox(width: 15),
@@ -391,11 +381,9 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
                         color: isFirst ? Colors.black : Colors.grey.shade700,
                       ),
                     ),
-                    Text(
-                      formattedTime,
-                      style:
-                          TextStyle(color: Colors.grey.shade600, fontSize: 12),
-                    ),
+                    Text(formattedTime,
+                        style: TextStyle(
+                            color: Colors.grey.shade600, fontSize: 12)),
                   ],
                 ),
               ),
@@ -443,8 +431,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
       decoration: const BoxDecoration(
         color: _primaryColor,
         boxShadow: [
-          BoxShadow(
-              color: Colors.black12, offset: Offset(0, -2), blurRadius: 5),
+          BoxShadow(color: Colors.black12, offset: Offset(0, -2), blurRadius: 5)
         ],
       ),
       child: BottomNavigationBar(
@@ -456,17 +443,18 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'หน้าแรก'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.history),
-            label: 'ประวัติการส่ง',
-          ),
+              icon: Icon(Icons.history), label: 'ประวัติการส่ง'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.logout),
-            label: 'ออกจากระบบ',
-          ),
+              icon: Icon(Icons.logout), label: 'ออกจากระบบ'),
         ],
         currentIndex: 0,
         onTap: (index) {
-          if (index == 1) {
+          if (index == 0) {
+            // ถ้าอยู่หน้ารายละเอียด ให้กลับไปหน้ารายการ
+            if (widget.orderId != null) {
+              Get.back();
+            }
+          } else if (index == 1) {
             Get.to(() => HistoryPage(uid: widget.uid, role: widget.role));
           } else if (index == 2) {
             Get.offAll(() => const SpeedDerApp());
