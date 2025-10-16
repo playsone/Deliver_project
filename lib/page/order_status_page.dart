@@ -2,12 +2,12 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/page/history_page.dart';
-import 'package:delivery_project/page/home.dart';
 import 'package:delivery_project/page/index.dart';
+import 'package:delivery_project/page/send_package_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
-import 'package:intl/date_symbol_data_local.dart'; // เพิ่ม import สำหรับภาษาไทย
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -16,13 +16,14 @@ const Color _primaryColor = Color(0xFFC70808);
 const Color _backgroundColor = Color(0xFFFDE9E9);
 
 class OrderStatusPage extends StatefulWidget {
-  final String orderId;
+  // ทำให้ orderId สามารถเป็น null ได้ เพื่อแยกการทำงาน
+  final String? orderId;
   final String uid;
   final int role;
 
   const OrderStatusPage({
     super.key,
-    required this.orderId,
+    this.orderId, // ไม่บังคับ
     required this.uid,
     required this.role,
   });
@@ -37,87 +38,192 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
   @override
   void initState() {
     super.initState();
-    // ตั้งค่า locale สำหรับการจัดรูปแบบวันที่และเวลาเป็นภาษาไทย
     initializeDateFormatting('th', null);
   }
 
   @override
   Widget build(BuildContext context) {
-    // **ส่วนดักบั๊ก: 1. ตรวจสอบว่าได้รับ orderId ที่ถูกต้องหรือไม่**
-    if (widget.orderId.isEmpty) {
-      // ถ้า orderId เป็นค่าว่าง ให้แสดงหน้าจอข้อผิดพลาดทันทีเพื่อป้องกันแอปพัง
-      return Scaffold(
-        appBar: AppBar(
-            title: const Text('เกิดข้อผิดพลาด'),
-            backgroundColor: _primaryColor),
-        body: const Center(
-          child: Padding(
-            padding: EdgeInsets.all(20.0),
-            child: Text(
-              'ไม่สามารถโหลดข้อมูลได้ เนื่องจากไม่ได้รับ ID ของออเดอร์\nกรุณาลองกลับไปทำรายการใหม่อีกครั้ง',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 16),
-            ),
-          ),
-        ),
-      );
-    }
+    // ตรวจสอบว่าควรแสดงหน้ารายละเอียด หรือ หน้ารายการ
+    bool isDetailPage = widget.orderId != null && widget.orderId!.isNotEmpty;
 
     return Scaffold(
       backgroundColor: _backgroundColor,
       appBar: AppBar(
-        title: const Text('ติดตามสถานะการจัดส่ง',
-            style: TextStyle(color: Colors.white)),
+        title: Text(isDetailPage ? 'ติดตามสถานะการจัดส่ง' : 'รายการส่งของ',
+            style: const TextStyle(color: Colors.white)),
         backgroundColor: _primaryColor,
         iconTheme: const IconThemeData(color: Colors.white),
+        // ถ้าเป็นหน้ารายละเอียด ให้มีปุ่ม back อัตโนมัติ
+        automaticallyImplyLeading: isDetailPage,
       ),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('delivery_orders')
-            .doc(widget.orderId)
-            .snapshots(),
-        builder: (context, orderSnapshot) {
-          if (orderSnapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (!orderSnapshot.hasData || !orderSnapshot.data!.exists) {
-            return const Center(child: Text('ไม่พบข้อมูลออเดอร์'));
-          }
-
-          final orderData = orderSnapshot.data!.data() as Map<String, dynamic>;
-          final riderId = orderData['riderId'] as String?;
-
-          // **ส่วนดักบั๊ก: 2. ตรวจสอบว่า riderId ไม่ใช่ค่าว่างก่อนเรียกใช้**
-          if (riderId == null || riderId.isEmpty) {
-            return _buildContent(orderData, null); // ยังไม่มีไรเดอร์รับงาน
-          }
-
-          return StreamBuilder<DocumentSnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('users')
-                .doc(riderId)
-                .snapshots(),
-            builder: (context, riderSnapshot) {
-              LatLng? riderPosition;
-              if (riderSnapshot.hasData && riderSnapshot.data!.exists) {
-                final riderData =
-                    riderSnapshot.data!.data() as Map<String, dynamic>;
-                if (riderData.containsKey('gps') &&
-                    riderData['gps'] is GeoPoint) {
-                  final geoPoint = riderData['gps'] as GeoPoint;
-                  riderPosition = LatLng(geoPoint.latitude, geoPoint.longitude);
-                }
-              }
-              return _buildContent(orderData, riderPosition);
-            },
-          );
-        },
-      ),
+      // Logic หลัก: แสดง UI ตามค่า isDetailPage
+      body: isDetailPage
+          ? _buildOrderDetailView(widget.orderId!)
+          : _buildOrderListView(),
       bottomNavigationBar: _buildBottomNavigationBar(context),
     );
   }
 
-  // Widget หลักสำหรับสร้าง UI ทั้งหมด
+  // ===================================================================
+  // == WIDGETS สำหรับแสดง "หน้ารายการออเดอร์" ==
+  // ===================================================================
+  Widget _buildOrderListView() {
+    return Column(
+      children: [
+        _buildActionCard(), // ปุ่มสำหรับกดส่งของ
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 20.0),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'รายการที่กำลังดำเนินการ',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ),
+        Expanded(child: _buildOrderList()),
+      ],
+    );
+  }
+
+  Widget _buildActionCard() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.grey.withOpacity(0.2),
+              spreadRadius: 2,
+              blurRadius: 5)
+        ],
+      ),
+      child: Column(
+        children: [
+          const Text('ต้องการส่งของใช่ไหม?',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 15),
+          ElevatedButton(
+            onPressed: () => Get.to(
+                () => SendPackagePage(uid: widget.uid, role: widget.role)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _primaryColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
+            ),
+            child: const Text('กดที่นี่เพื่อส่งของ'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOrderList() {
+    return StreamBuilder<QuerySnapshot>(
+      // ดึงออเดอร์ของ User คนนี้ ที่ยังไม่เสร็จสิ้น
+      stream: FirebaseFirestore.instance
+          .collection('delivery_orders')
+          .where('customerId', isEqualTo: widget.uid)
+          .where('currentStatus', isNotEqualTo: 'delivered')
+          .orderBy('createdAt', descending: true)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const Center(child: Text('ไม่มีรายการที่กำลังดำเนินการ'));
+        }
+
+        final docs = snapshot.data!.docs;
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+          itemCount: docs.length,
+          itemBuilder: (context, index) {
+            final doc = docs[index];
+            final data = doc.data() as Map<String, dynamic>;
+            final timestamp = (data['createdAt'] as Timestamp?)?.toDate();
+            final formattedDate = timestamp != null
+                ? DateFormat('dd MMM yy', 'th').format(timestamp)
+                : '';
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 15),
+              child: ListTile(
+                leading: const Icon(Icons.inventory_2_outlined,
+                    color: _primaryColor),
+                title: Text(data['orderDetails'] ?? 'ไม่มีรายละเอียด',
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text(
+                    'วันที่: $formattedDate - สถานะ: ${_translateStatus(data['currentStatus'])}'),
+                trailing: const Icon(Icons.arrow_forward_ios),
+                onTap: () {
+                  // **นำทางไปยังหน้าตัวเองอีกครั้ง แต่ครั้งนี้ส่ง orderId ไปด้วย**
+                  Get.to(() => OrderStatusPage(
+                        orderId: doc.id,
+                        uid: widget.uid,
+                        role: widget.role,
+                      ));
+                },
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ===================================================================
+  // == WIDGETS สำหรับแสดง "หน้ารายละเอียดออเดอร์" ==
+  // ===================================================================
+  Widget _buildOrderDetailView(String orderId) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('delivery_orders')
+          .doc(orderId)
+          .snapshots(),
+      builder: (context, orderSnapshot) {
+        if (orderSnapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (!orderSnapshot.hasData || !orderSnapshot.data!.exists) {
+          return const Center(child: Text('ไม่พบข้อมูลออเดอร์'));
+        }
+
+        final orderData = orderSnapshot.data!.data() as Map<String, dynamic>;
+        final riderId = orderData['riderId'] as String?;
+
+        if (riderId == null || riderId.isEmpty) {
+          return _buildContent(orderData, null);
+        }
+
+        return StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('users')
+              .doc(riderId)
+              .snapshots(),
+          builder: (context, riderSnapshot) {
+            LatLng? riderPosition;
+            if (riderSnapshot.hasData && riderSnapshot.data!.exists) {
+              final riderData =
+                  riderSnapshot.data!.data() as Map<String, dynamic>;
+              if (riderData.containsKey('gps') &&
+                  riderData['gps'] is GeoPoint) {
+                final geoPoint = riderData['gps'] as GeoPoint;
+                riderPosition = LatLng(geoPoint.latitude, geoPoint.longitude);
+              }
+            }
+            return _buildContent(orderData, riderPosition);
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildContent(Map<String, dynamic> orderData, LatLng? riderPosition) {
     return SingleChildScrollView(
       child: Column(
@@ -133,37 +239,31 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
     );
   }
 
-  // ส่วนแสดงแผนที่
   Widget _buildMapSection(
       Map<String, dynamic> orderData, LatLng? riderPosition) {
     final GeoPoint destPoint = orderData['deliveryAddress']['gps'] ??
         const GeoPoint(16.4746, 102.8247);
     final LatLng destinationLatLng =
         LatLng(destPoint.latitude, destPoint.longitude);
-
     final markers = <Marker>[
       Marker(
         point: destinationLatLng,
         child: const Icon(Icons.location_on, color: _primaryColor, size: 40),
       ),
     ];
-
     if (riderPosition != null) {
-      markers.add(
-        Marker(
-          point: riderPosition,
-          child: const Icon(Icons.two_wheeler, color: Colors.blue, size: 40),
-        ),
-      );
+      markers.add(Marker(
+        point: riderPosition,
+        child: const Icon(Icons.two_wheeler, color: Colors.blue, size: 40),
+      ));
     }
-
     return Container(
-      height: MediaQuery.of(context).size.height * 0.5,
+      height: MediaQuery.of(context).size.height * 0.45,
       margin: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(15),
         boxShadow: const [
-          BoxShadow(color: Colors.black26, offset: Offset(0, 4), blurRadius: 8),
+          BoxShadow(color: Colors.black26, offset: Offset(0, 4), blurRadius: 8)
         ],
       ),
       child: ClipRRect(
@@ -176,8 +276,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
           ),
           children: [
             TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            ),
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'),
             MarkerLayer(markers: markers),
           ],
         ),
@@ -185,7 +284,6 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
     );
   }
 
-  // ส่วนแสดงสถานะปัจจุบันและรายละเอียด
   Widget _buildCurrentStatusHeader(Map<String, dynamic> orderData) {
     final status = orderData['currentStatus'] ?? 'pending';
     final orderDetails = orderData['orderDetails'] ?? 'ไม่มีรายละเอียด';
@@ -233,7 +331,6 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
     );
   }
 
-  // ส่วนแสดงประวัติสถานะ (Timeline)
   Widget _buildStatusTimeline(List<dynamic> statusHistory) {
     if (statusHistory.isEmpty) {
       return const Center(child: Text('ไม่มีประวัติสถานะ'));
@@ -309,7 +406,6 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
     );
   }
 
-  // ฟังก์ชันสำหรับแปลสถานะเป็นภาษาไทย
   String _translateStatus(String status) {
     switch (status) {
       case 'pending':
@@ -327,7 +423,6 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
     }
   }
 
-  // ฟังก์ชันสำหรับกำหนดสีตามสถานะ
   Color _getStatusColor(String status) {
     switch (status) {
       case 'pending':
@@ -343,7 +438,6 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
     }
   }
 
-  // Bottom Navigation Bar
   Widget _buildBottomNavigationBar(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
@@ -363,7 +457,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'หน้าแรก'),
           BottomNavigationBarItem(
             icon: Icon(Icons.history),
-            label: 'ประวัติการส่งสินค้า',
+            label: 'ประวัติการส่ง',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.logout),
@@ -372,16 +466,8 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
         ],
         currentIndex: 0,
         onTap: (index) {
-          if (index == 0) {
-            Get.offAll(() => HomeScreen(
-                  uid: widget.uid,
-                  role: widget.role,
-                ));
-          } else if (index == 1) {
-            Get.to(() => HistoryPage(
-                  uid: widget.uid,
-                  role: widget.role,
-                ));
+          if (index == 1) {
+            Get.to(() => HistoryPage(uid: widget.uid, role: widget.role));
           } else if (index == 2) {
             Get.offAll(() => const SpeedDerApp());
           }
