@@ -3,7 +3,6 @@
 import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/models/package_model.dart';
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -14,6 +13,10 @@ import '../models/rider_model.dart';
 import 'package:delivery_project/page/edit_profile.dart';
 import 'package:delivery_project/page/index.dart';
 import 'package:delivery_project/page/package_delivery_page.dart';
+
+// ------------------------------------------------------------------
+// **แก้ไข:** ย้าย Class Package ออกมาไว้ข้างนอกสุด
+// ------------------------------------------------------------------
 
 // ------------------------------------------------------------------
 // Controller (ส่วนจัดการ Logic ทั้งหมดของหน้า Home)
@@ -30,7 +33,6 @@ class RiderHomeController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-
     // 1. ตรวจสอบงานที่ค้างอยู่ก่อนเป็นอันดับแรก
     _checkAndNavigateToActiveOrder();
 
@@ -47,16 +49,14 @@ class RiderHomeController extends GetxController {
   // ฟังก์ชันใหม่สำหรับตรวจสอบและนำทางไปยังงานที่ Rider รับไว้
   Future<void> _checkAndNavigateToActiveOrder() async {
     try {
-      // ค้นหางานที่ riderId ตรงกับ uid ของเรา และสถานะยังไม่เสร็จสิ้น
       final querySnapshot = await db
-          .collection('orders') // **แก้ไข:** ใช้ collection 'orders'
+          .collection('orders')
           .where('riderId', isEqualTo: uid)
           .where('currentStatus',
               whereIn: ['accepted', 'picked_up', 'in_transit'])
-          .limit(1) // เอามาแค่งานเดียว
+          .limit(1)
           .get();
 
-      // ถ้าเจองานที่ค้างอยู่
       if (querySnapshot.docs.isNotEmpty) {
         final activeOrderDoc = querySnapshot.docs.first;
         final orderModel = OrderModel.fromFirestore(activeOrderDoc);
@@ -89,7 +89,7 @@ class RiderHomeController extends GetxController {
   // Stream สำหรับดึงรายการงานที่ยังว่างอยู่ (pending)
   Stream<List<OrderModel>> getPendingOrdersStream() {
     return db
-        .collection('orders') // **แก้ไข:** ใช้ collection 'orders'
+        .collection('orders')
         .where('currentStatus', isEqualTo: 'pending')
         .orderBy('createdAt', descending: true)
         .snapshots()
@@ -102,9 +102,7 @@ class RiderHomeController extends GetxController {
     Get.dialog(const Center(child: CircularProgressIndicator()),
         barrierDismissible: false);
     try {
-      final orderRef = db
-          .collection('orders')
-          .doc(order.id); // **แก้ไข:** ใช้ collection 'orders'
+      final orderRef = db.collection('orders').doc(order.id);
 
       await orderRef.update({
         'riderId': uid,
