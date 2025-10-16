@@ -1,251 +1,180 @@
 // history_page.dart
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/page/home.dart';
 import 'package:delivery_project/page/index.dart';
+import 'package:delivery_project/page/history_detail_page.dart'; // **เพิ่ม:** Import หน้ารายละเอียด
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 // Constants
 const Color _primaryColor = Color(0xFFC70808);
 const Color _backgroundColor = Color(0xFFFDE9E9);
 
-class HistoryPage extends StatelessWidget {
+class HistoryPage extends StatefulWidget {
   final String uid;
   final int role;
   const HistoryPage({super.key, required this.uid, required this.role});
 
   @override
+  State<HistoryPage> createState() => _HistoryPageState();
+}
+
+class _HistoryPageState extends State<HistoryPage> {
+  @override
+  void initState() {
+    super.initState();
+    // ตั้งค่า locale สำหรับการจัดรูปแบบวันที่และเวลาเป็นภาษาไทย
+    initializeDateFormatting('th', null);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _backgroundColor,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(context),
-              _buildHistoryTitle(),
-              const SizedBox(height: 10),
-              // รายการประวัติการจัดส่ง (Hardcoded Data)
-              _buildHistoryItem(
-                'กองพัฒนานักศึกษา',
-                'หอพักอาณาจักรฟ้า',
-                'ส่งสำเร็จ',
-                const Color(0xFF4CAF50), // สีเขียว
-              ),
-              _buildHistoryItem(
-                'กองบริการการศึกษา',
-                'หอพักอาณาจักรฟ้า',
-                'อยู่ระหว่างส่ง',
-                const Color(0xFFFF9800), // สีส้ม
-              ),
-              _buildHistoryItem(
-                'คณะวิทยาศาสตร์',
-                'หอพักอาณาจักรฟ้า',
-                'ส่งสำเร็จ',
-                const Color(0xFF4CAF50),
-              ),
-              _buildHistoryItem(
-                'ร้านค้าหน้า ม.',
-                'หอพักอาณาจักรฟ้า',
-                'ส่งสำเร็จ',
-                const Color(0xFF4CAF50),
-              ),
-              const SizedBox(height: 20),
-            ],
+      appBar: AppBar(
+        title: const Text('ประวัติการส่งสินค้า',
+            style: TextStyle(color: Colors.white)),
+        backgroundColor: _primaryColor,
+        iconTheme: const IconThemeData(color: Colors.white),
+        automaticallyImplyLeading: true, // แสดงปุ่ม Back
+      ),
+      body: Column(
+        children: [
+          // **ส่วนที่เพิ่มเข้ามา: ใช้ StreamBuilder เพื่อดึงข้อมูลประวัติ**
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              // Query ข้อมูลเฉพาะออเดอร์ที่ "ส่งสำเร็จแล้ว" (delivered) ของ User คนนี้
+              stream: FirebaseFirestore.instance
+                  .collection('orders')
+                  .where('customerId', isEqualTo: widget.uid)
+                  .where('currentStatus', isEqualTo: 'delivered')
+                  .orderBy('createdAt',
+                      descending: true) // เรียงจากล่าสุดไปเก่าสุด
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return const Center(
+                      child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล'));
+                }
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return const Center(
+                      child: Text('ยังไม่มีประวัติการส่งสินค้า'));
+                }
+
+                final orderDocs = snapshot.data!.docs;
+
+                return ListView.builder(
+                  padding: const EdgeInsets.all(10),
+                  itemCount: orderDocs.length,
+                  itemBuilder: (context, index) {
+                    final doc = orderDocs[index];
+                    final data = doc.data() as Map<String, dynamic>;
+
+                    final pickupAddress =
+                        data['pickupAddress'] as Map<String, dynamic>? ?? {};
+                    final deliveryAddress =
+                        data['deliveryAddress'] as Map<String, dynamic>? ?? {};
+                    final timestamp =
+                        (data['createdAt'] as Timestamp?)?.toDate();
+                    final formattedDate = timestamp != null
+                        ? DateFormat('dd MMM yyyy', 'th').format(timestamp)
+                        : '';
+
+                    // สร้าง UI จากข้อมูลจริง
+                    return _buildHistoryItem(
+                      orderId: doc.id, // **เพิ่ม:** ส่ง document ID ไปด้วย
+                      locationFrom: pickupAddress['detail'] ?? 'N/A',
+                      locationTo: deliveryAddress['detail'] ?? 'N/A',
+                      receiverName:
+                          deliveryAddress['receiverName'] ?? 'ไม่มีชื่อผู้รับ',
+                      date: formattedDate,
+                    );
+                  },
+                );
+              },
+            ),
           ),
-        ),
+        ],
       ),
       bottomNavigationBar: _buildBottomNavigationBar(context, 1), // Index 1
     );
   }
 
-  // ส่วน Header (คล้าย home.dart)
-  Widget _buildHeader(BuildContext context) {
-    return Stack(
-      children: [
-        // Background Wave/ClipPath
-        ClipPath(
-          child: Container(
-            height: MediaQuery.of(context).size.height * 0.25,
-            decoration: const BoxDecoration(color: _primaryColor),
-          ),
-        ),
-        // Content
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'สวัสดีคุณ\nพ่อครูกรัน',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      height: 1.2,
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      // TODO: Go to Profile Options
-                    },
-                    child: const CircleAvatar(
-                      radius: 30,
-                      backgroundColor: Colors.white,
-                      backgroundImage:
-                          NetworkImage('https://picsum.photos/200'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              _buildSearchBar(),
-              const SizedBox(height: 10),
-              _buildLocationBar(),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// สร้างแถบค้นหา
-  Widget _buildSearchBar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      height: 40,
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.8),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: const Row(
-        children: [
-          Icon(Icons.search, color: _primaryColor, size: 20),
-          SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: 'ค้นหา 0814715566',
-                border: InputBorder.none,
-                hintStyle: TextStyle(color: Colors.grey),
-              ),
-              style: TextStyle(fontSize: 14),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// สร้างแถบที่อยู่
-  Widget _buildLocationBar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
-      decoration: BoxDecoration(
-        color: _primaryColor, // ใช้สีเข้มเพื่อให้เด่น
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.location_on, color: Colors.white, size: 18),
-          SizedBox(width: 8),
-          Text(
-            'หอพักอาณาจักรฟ้า',
-            style: TextStyle(
-                color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ส่วนหัวข้อ "ประวัติการส่งสินค้า"
-  Widget _buildHistoryTitle() {
-    return Center(
+  // **แก้ไข:** ปรับแก้ Widget ให้รับข้อมูลที่ต้องการแสดงผลและกดได้
+  Widget _buildHistoryItem({
+    required String orderId,
+    required String locationFrom,
+    required String locationTo,
+    required String receiverName,
+    required String date,
+  }) {
+    return InkWell(
+      // **เพิ่ม:** ทำให้ Card สามารถกดได้
+      onTap: () {
+        // **เพิ่ม:** นำทางไปยังหน้ารายละเอียด พร้อมส่ง orderId
+        Get.to(() => HistoryDetailPage(
+              uid: widget.uid,
+              role: widget.role,
+              orderId: orderId, // ส่ง ID ของออเดอร์ที่กด
+            ));
+      },
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 12),
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        padding: const EdgeInsets.all(15),
         decoration: BoxDecoration(
-          color: _primaryColor,
+          color: Colors.white,
           borderRadius: BorderRadius.circular(10),
-          boxShadow: const [
-            BoxShadow(
-                color: Colors.black26, offset: Offset(0, 4), blurRadius: 6),
+          boxShadow: [
+            BoxShadow(color: Colors.grey.withOpacity(0.3), blurRadius: 5),
           ],
         ),
-        child: const Text(
-          'ประวัติการส่งสินค้า',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-    );
-  }
-
-  // Widget สำหรับรายการประวัติแต่ละชิ้น
-  Widget _buildHistoryItem(String locationFrom, String locationTo,
-      String status, Color statusColor) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: [
-          BoxShadow(color: Colors.grey.withOpacity(0.3), blurRadius: 5),
-        ],
-      ),
-      child: Row(
-        children: [
-          // Icon/Image ส่วนซ้าย
-          const Icon(
-            Icons.two_wheeler,
-            size: 60,
-            color: Colors.black,
-          ),
-          const SizedBox(width: 15),
-          // รายละเอียด
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
+          children: [
+            const Icon(Icons.task_alt, size: 50, color: Colors.green),
+            const SizedBox(width: 15),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'ส่งไปยัง: $receiverName',
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  _buildLocationDetail(Icons.store, 'จาก: $locationFrom'),
+                  _buildLocationDetail(Icons.location_on, 'ถึง: $locationTo'),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                _buildLocationDetail(
-                  Icons.store,
-                  'ต้นทาง: $locationFrom',
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.green,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text('ส่งสำเร็จ',
+                      style: TextStyle(color: Colors.white, fontSize: 12)),
                 ),
-                _buildLocationDetail(
-                  Icons.location_on,
-                  'ปลายทาง: $locationTo',
-                ),
-                _buildLocationDetail(
-                  Icons.person,
-                  'ผู้รับ: ________',
-                ),
+                const SizedBox(height: 4),
+                Text(date,
+                    style: const TextStyle(color: Colors.grey, fontSize: 12)),
               ],
             ),
-          ),
-          // สถานะปุ่มขวา
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: statusColor,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              status,
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -257,13 +186,19 @@ class HistoryPage extends StatelessWidget {
         children: [
           Icon(icon, size: 16, color: Colors.grey.shade700),
           const SizedBox(width: 5),
-          Text(text, style: const TextStyle(fontSize: 14)),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 14),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  // Bottom Navigation Bar (อ้างอิงจาก home.dart)
+  // Bottom Navigation Bar
   Widget _buildBottomNavigationBar(BuildContext context, int currentIndex) {
     return Container(
       decoration: const BoxDecoration(
@@ -283,7 +218,7 @@ class HistoryPage extends StatelessWidget {
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'หน้าแรก'),
           BottomNavigationBarItem(
             icon: Icon(Icons.history),
-            label: 'ประวัติการส่งสินค้า',
+            label: 'ประวัติ',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.logout),
@@ -293,12 +228,12 @@ class HistoryPage extends StatelessWidget {
         currentIndex: currentIndex,
         onTap: (index) {
           if (index == 0) {
-            Get.to(() => HomeScreen(
-                  uid: uid,
-                  role: role,
-                )); // สมมติว่าหน้า Home ถูกกำหนดเป็น '/'
+            Get.offAll(() => HomeScreen(
+                  uid: widget.uid,
+                  role: widget.role,
+                ));
           } else if (index == 2) {
-            Get.off(() => const SpeedDerApp());
+            Get.offAll(() => const SpeedDerApp());
           }
         },
       ),

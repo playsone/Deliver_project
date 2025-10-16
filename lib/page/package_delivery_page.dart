@@ -1,7 +1,7 @@
 // package_delivery_page.dart
 
-import 'dart.async';
-import 'dart.io';
+import 'dart:async';
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/models/package_model.dart';
 import 'package:delivery_project/page/home_rider.dart';
@@ -13,19 +13,14 @@ import 'package:cloudinary_public/cloudinary_public.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:location/location.dart';
 
-// ------------------------------------------------------------------
 // Enum เพื่อจัดการสถานะการจัดส่ง
-// ------------------------------------------------------------------
 enum DeliveryStatus {
-  accepted, // รับงานแล้ว
-  pickedUp, // รับสินค้าจากต้นทางแล้ว
-  inTransit, // กำลังนำส่ง
-  delivered, // ถึงที่หมาย/จัดส่งสำเร็จ
+  accepted,
+  pickedUp,
+  inTransit,
+  delivered,
 }
 
-// ------------------------------------------------------------------
-// หน้าจอหลักของขั้นตอนการจัดส่ง
-// ------------------------------------------------------------------
 class PackageDeliveryPage extends StatefulWidget {
   final Package package;
   final String uid;
@@ -87,63 +82,45 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
     });
   }
 
-  Future<void> _confirmAndPickupPackage() async {
+  // ฟังก์ชันกลาง: สำหรับถ่ายรูป, อัปโหลด, และอัปเดตสถานะ
+  Future<void> _captureAndUploadStatusImage({
+    required String nextStatus,
+    required String imageUrlField,
+    bool isFinal = false,
+  }) async {
     final picker = ImagePicker();
     try {
-      final pickedFile = await picker.pickImage(
-        source: ImageSource.camera,
-        maxWidth: 1024,
-      );
+      final pickedFile = await picker.pickImage(source: ImageSource.camera, maxWidth: 1024);
       if (pickedFile == null) return;
 
-      Get.dialog(const Center(child: CircularProgressIndicator()),
-          barrierDismissible: false);
-
+      Get.dialog(const Center(child: CircularProgressIndicator()), barrierDismissible: false);
+      
       final cloudinary = CloudinaryPublic('dnutmbomv', 'delivery888', cache: false);
-      final response = await cloudinary.uploadFile(
-        CloudinaryFile.fromFile(pickedFile.path, resourceType: CloudinaryResourceType.Image),
-      );
+      final response = await cloudinary.uploadFile(CloudinaryFile.fromFile(pickedFile.path));
       final imageUrl = response.secureUrl;
-
-      // **แก้ไข:** เปลี่ยนเป็น collection 'orders'
-      final orderRef = FirebaseFirestore.instance
-          .collection('orders')
-          .doc(widget.package.id);
-
+      
+      final orderRef = FirebaseFirestore.instance.collection('orders').doc(widget.package.id);
+      
       await orderRef.update({
-        'currentStatus': 'picked_up',
-        'pickupImageUrl': imageUrl,
+        'currentStatus': nextStatus,
+        imageUrlField: imageUrl,
         'statusHistory': FieldValue.arrayUnion([
-          // **แก้ไข:** เปลี่ยนเป็น Timestamp.now()
-          {'status': 'picked_up', 'timestamp': Timestamp.now()}
+          {'status': nextStatus, 'timestamp': Timestamp.now()}
         ]),
       });
 
       Get.back();
-      Get.snackbar('สำเร็จ', 'ยืนยันการรับสินค้าเรียบร้อยแล้ว');
+      Get.snackbar('สำเร็จ', 'อัปเดตสถานะเรียบร้อยแล้ว');
+      
+      if (isFinal) {
+        await Future.delayed(const Duration(seconds: 1));
+        Get.offAll(() => RiderHomeScreen(uid: widget.uid, role: widget.role));
+        Get.snackbar('เสร็จสิ้น', 'ดำเนินการจัดส่งเสร็จสมบูรณ์!');
+      }
+
     } catch (e) {
       Get.back();
-      Get.snackbar('เกิดข้อผิดพลาด', 'ไม่สามารถยืนยันการรับสินค้าได้: $e');
-    }
-  }
-
-  Future<void> _updateOrderStatus(String newStatus, {bool isFinal = false}) async {
-    // **แก้ไข:** เปลี่ยนเป็น collection 'orders'
-    final orderRef = FirebaseFirestore.instance
-        .collection('orders')
-        .doc(widget.package.id);
-
-    await orderRef.update({
-      'currentStatus': newStatus,
-      'statusHistory': FieldValue.arrayUnion([
-        // **แก้ไข:** เปลี่ยนเป็น Timestamp.now()
-        {'status': newStatus, 'timestamp': Timestamp.now()}
-      ]),
-    });
-
-    if (isFinal) {
-      Get.offAll(() => RiderHomeScreen(uid: widget.uid, role: widget.role));
-      Get.snackbar('เสร็จสิ้น', 'ดำเนินการจัดส่งเสร็จสมบูรณ์!');
+      Get.snackbar('เกิดข้อผิดพลาด', 'ไม่สามารถอัปเดตสถานะได้: $e');
     }
   }
 
@@ -163,7 +140,6 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
 
     return WillPopScope(
       onWillPop: () async {
-        // **แก้ไข:** เปลี่ยนเป็น collection 'orders'
         final doc = await FirebaseFirestore.instance
             .collection('orders')
             .doc(widget.package.id)
@@ -191,7 +167,6 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
           automaticallyImplyLeading: false,
         ),
         body: StreamBuilder<DocumentSnapshot>(
-          // **แก้ไข:** เปลี่ยนเป็น collection 'orders'
           stream: FirebaseFirestore.instance
               .collection('orders')
               .doc(widget.package.id)
@@ -218,6 +193,8 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
                         const SizedBox(height: 20),
                         _buildActionSection(deliveryStatusEnum),
                         const SizedBox(height: 20),
+                        _buildEvidenceImage(data), // แสดงรูปหลักฐาน
+                        const SizedBox(height: 20),
                         if (riderId != null) _buildRiderInfoSection(riderId),
                         const SizedBox(height: 20),
                         _buildPackageInfoSection(data),
@@ -234,7 +211,7 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
     );
   }
 
-  // (โค้ดส่วน UI ทั้งหมดตั้งแต่ _buildStatusTracker จนสุดไฟล์ สามารถใช้ของเดิมได้เลย)
+  // (โค้ด UI Widgets ที่เหลือ)
   // ...
   Widget _buildStatusTracker(Color primaryColor, DeliveryStatus currentStatus) {
     final List<Map<String, dynamic>> steps = [
@@ -367,22 +344,39 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
     IconData? icon;
     switch (currentStatus) {
       case DeliveryStatus.accepted:
-        buttonText = 'ถ่ายรูปเพื่อยืนยันการรับสินค้า';
-        onPressed = _confirmAndPickupPackage;
+        buttonText = 'ถ่ายรูปยืนยันการรับของ';
         icon = Icons.camera_alt;
+        onPressed = () => _captureAndUploadStatusImage(
+          nextStatus: 'picked_up',
+          imageUrlField: 'pickedUpImageUrl',
+        );
         break;
       case DeliveryStatus.pickedUp:
         buttonText = 'เริ่มนำส่ง';
-        onPressed = () => _updateOrderStatus('in_transit');
         icon = Icons.local_shipping;
+        onPressed = () async {
+            final orderRef = FirebaseFirestore.instance.collection('orders').doc(widget.package.id);
+            await orderRef.update({
+              'currentStatus': 'in_transit',
+              'statusHistory': FieldValue.arrayUnion([
+                {'status': 'in_transit', 'timestamp': Timestamp.now()}
+              ]),
+            });
+            Get.snackbar('อัปเดต', 'เริ่มนำส่งสินค้าแล้ว');
+        };
         break;
       case DeliveryStatus.inTransit:
-        buttonText = 'ยืนยันการจัดส่งสำเร็จ';
-        onPressed = () => _updateOrderStatus('delivered', isFinal: true);
-        icon = Icons.task_alt;
+        buttonText = 'ถ่ายรูปยืนยันการส่งสำเร็จ';
+        icon = Icons.photo_camera;
+        onPressed = () => _captureAndUploadStatusImage(
+          nextStatus: 'delivered',
+          imageUrlField: 'deliveredImageUrl',
+          isFinal: true,
+        );
         break;
       default:
         buttonText = '...';
+        icon = Icons.error;
         onPressed = () {};
     }
     return SizedBox(
@@ -400,6 +394,54 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
           padding: const EdgeInsets.symmetric(vertical: 15),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildEvidenceImage(Map<String, dynamic> orderData) {
+    final pickedUpUrl = orderData['pickedUpImageUrl'] as String?;
+    final deliveredUrl = orderData['deliveredImageUrl'] as String?;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (pickedUpUrl != null || deliveredUrl != null)
+          const Text("รูปภาพหลักฐาน", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        
+        if (pickedUpUrl != null)
+          _buildImageCard('รูปภาพตอนรับของ', pickedUpUrl),
+
+        if (deliveredUrl != null)
+          _buildImageCard('รูปภาพตอนส่งของ', deliveredUrl),
+      ],
+    );
+  }
+
+  Widget _buildImageCard(String title, String imageUrl) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                imageUrl,
+                height: 200,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                loadingBuilder: (context, child, progress) {
+                  return progress == null ? child : const Center(child: CircularProgressIndicator());
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
