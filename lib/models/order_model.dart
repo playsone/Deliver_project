@@ -1,10 +1,11 @@
 // file: models/order_model.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/models/address_model.dart';
 import 'package:delivery_project/models/status_history_model.dart';
 
 class OrderModel {
-  final String id; // Document ID จาก Firestore
+  final String id;
   final String customerId;
   final String? riderId;
   final String orderDetails;
@@ -14,10 +15,12 @@ class OrderModel {
   final Timestamp? pickupDatetime;
   final Timestamp? deliveryDatetime;
 
-  // ใช้ Model ย่อยเพื่อความชัดเจน
   final AddressModel pickupAddress;
   final AddressModel deliveryAddress;
   final List<StatusHistoryModel> statusHistory;
+
+  // --- เพิ่ม Field นี้เข้าไป ---
+  final GeoPoint? currentLocation; // ตำแหน่งล่าสุดของไรเดอร์
 
   OrderModel({
     required this.id,
@@ -32,13 +35,12 @@ class OrderModel {
     required this.pickupAddress,
     required this.deliveryAddress,
     required this.statusHistory,
+    this.currentLocation, // << เพิ่มใน constructor
   });
 
-  // Factory constructor สำหรับแปลงข้อมูลจาก Firestore
   factory OrderModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
 
-    // แปลง List ของ Map ให้เป็น List ของ StatusHistoryModel
     final historyList = (data['statusHistory'] as List<dynamic>?)
             ?.map((item) =>
                 StatusHistoryModel.fromMap(item as Map<String, dynamic>))
@@ -58,10 +60,10 @@ class OrderModel {
       pickupAddress: AddressModel.fromMap(data['pickupAddress'] ?? {}),
       deliveryAddress: AddressModel.fromMap(data['deliveryAddress'] ?? {}),
       statusHistory: historyList,
+      currentLocation: data['currentLocation'], // << ดึงข้อมูลจาก Firestore
     );
   }
 
-  // Method สำหรับแปลง Object กลับเป็น Map เพื่อบันทึกลง Firestore
   Map<String, dynamic> toMap() {
     return {
       'customerId': customerId,
@@ -75,6 +77,7 @@ class OrderModel {
       'pickupAddress': pickupAddress.toMap(),
       'deliveryAddress': deliveryAddress.toMap(),
       'statusHistory': statusHistory.map((item) => item.toMap()).toList(),
+      'currentLocation': currentLocation, // << เพิ่มตอนแปลงกลับเป็น Map
     };
   }
 }

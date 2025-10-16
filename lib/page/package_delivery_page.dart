@@ -1,7 +1,6 @@
 // package_delivery_page.dart
 
-import 'dart.async';
-import 'dart.io';
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/models/package_model.dart';
 import 'package:delivery_project/page/home_rider.dart';
@@ -99,9 +98,11 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
       Get.dialog(const Center(child: CircularProgressIndicator()),
           barrierDismissible: false);
 
-      final cloudinary = CloudinaryPublic('dnutmbomv', 'delivery888', cache: false);
+      final cloudinary =
+          CloudinaryPublic('dnutmbomv', 'delivery888', cache: false);
       final response = await cloudinary.uploadFile(
-        CloudinaryFile.fromFile(pickedFile.path, resourceType: CloudinaryResourceType.Image),
+        CloudinaryFile.fromFile(pickedFile.path,
+            resourceType: CloudinaryResourceType.Image),
       );
       final imageUrl = response.secureUrl;
 
@@ -127,11 +128,11 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
     }
   }
 
-  Future<void> _updateOrderStatus(String newStatus, {bool isFinal = false}) async {
+  Future<void> _updateOrderStatus(String newStatus,
+      {bool isFinal = false}) async {
     // **แก้ไข:** เปลี่ยนเป็น collection 'orders'
-    final orderRef = FirebaseFirestore.instance
-        .collection('orders')
-        .doc(widget.package.id);
+    final orderRef =
+        FirebaseFirestore.instance.collection('orders').doc(widget.package.id);
 
     await orderRef.update({
       'currentStatus': newStatus,
@@ -149,11 +150,16 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
 
   DeliveryStatus _mapStatusToEnum(String status) {
     switch (status) {
-      case 'accepted': return DeliveryStatus.accepted;
-      case 'picked_up': return DeliveryStatus.pickedUp;
-      case 'in_transit': return DeliveryStatus.inTransit;
-      case 'delivered': return DeliveryStatus.delivered;
-      default: return DeliveryStatus.accepted;
+      case 'accepted':
+        return DeliveryStatus.accepted;
+      case 'picked_up':
+        return DeliveryStatus.pickedUp;
+      case 'in_transit':
+        return DeliveryStatus.inTransit;
+      case 'delivered':
+        return DeliveryStatus.delivered;
+      default:
+        return DeliveryStatus.accepted;
     }
   }
 
@@ -174,7 +180,8 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
               title: const Text('ยังไม่สามารถย้อนกลับได้'),
               content: const Text('กรุณาดำเนินการจัดส่งสินค้าให้เสร็จสิ้นก่อน'),
               actions: [
-                TextButton(onPressed: () => Get.back(), child: const Text('ตกลง'))
+                TextButton(
+                    onPressed: () => Get.back(), child: const Text('ตกลง'))
               ],
             ),
           );
@@ -238,10 +245,26 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
   // ...
   Widget _buildStatusTracker(Color primaryColor, DeliveryStatus currentStatus) {
     final List<Map<String, dynamic>> steps = [
-      {'icon': Icons.check_circle_outline, 'status': DeliveryStatus.accepted, 'label': 'รับงาน'},
-      {'icon': Icons.inventory_2, 'status': DeliveryStatus.pickedUp, 'label': 'รับของ'},
-      {'icon': Icons.local_shipping, 'status': DeliveryStatus.inTransit, 'label': 'จัดส่ง'},
-      {'icon': Icons.task_alt, 'status': DeliveryStatus.delivered, 'label': 'สำเร็จ'},
+      {
+        'icon': Icons.check_circle_outline,
+        'status': DeliveryStatus.accepted,
+        'label': 'รับงาน'
+      },
+      {
+        'icon': Icons.inventory_2,
+        'status': DeliveryStatus.pickedUp,
+        'label': 'รับของ'
+      },
+      {
+        'icon': Icons.local_shipping,
+        'status': DeliveryStatus.inTransit,
+        'label': 'จัดส่ง'
+      },
+      {
+        'icon': Icons.task_alt,
+        'status': DeliveryStatus.delivered,
+        'label': 'สำเร็จ'
+      },
     ];
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 15),

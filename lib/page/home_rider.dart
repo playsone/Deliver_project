@@ -91,7 +91,6 @@ class RiderHomeController extends GetxController {
     return db
         .collection('orders') // **แก้ไข:** ใช้ collection 'orders'
         .where('currentStatus', isEqualTo: 'pending')
-        .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) =>
             snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList());
