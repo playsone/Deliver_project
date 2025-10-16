@@ -51,8 +51,6 @@ class _HistoryPageState extends State<HistoryPage> {
                   .collection('orders')
                   .where('customerId', isEqualTo: widget.uid)
                   .where('currentStatus', isEqualTo: 'delivered')
-                  .orderBy('createdAt',
-                      descending: true) // เรียงจากล่าสุดไปเก่าสุด
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {

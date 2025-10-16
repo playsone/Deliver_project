@@ -1,10 +1,14 @@
-import 'dart:developer'; // สำหรับ log()
+// file: lib/page/home_screen.dart
+
+import 'dart:async';
+import 'dart:developer';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:delivery_project/models/user_model.dart';
 import 'package:delivery_project/page/history_page.dart';
-import 'package:flutter/foundation.dart'; // สำหรับ kIsWeb
+import 'package:flutter/foundation.dart';
 import 'package:delivery_project/page/index.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get_core/src/get_main.dart';
-import 'package:get/get_navigation/get_navigation.dart';
+import 'package:get/get.dart';
 
 // สำหรับ Flutter Map และ LatLong2
 import 'package:flutter_map/flutter_map.dart';
@@ -14,11 +18,10 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:delivery_project/page/edit_profile.dart';
 
-// ** 🚀 เพิ่ม Import สำหรับหน้าใหม่ทั้งหมด **
-// import 'package:delivery_project/page/rider_info_page.dart'; // ข้อมูลไรเดอร์
-import 'package:delivery_project/page/package_pickup_page.dart'; // พัสดุที่ต้องรับ
-import 'package:delivery_project/page/order_status_page.dart'; // สถานะสินค้า
-import 'package:delivery_project/page/send_package_page.dart'; // ส่งสินค้า
+// Pages
+import 'package:delivery_project/page/package_pickup_page.dart';
+import 'package:delivery_project/page/order_status_page.dart';
+import 'package:delivery_project/page/send_package_page.dart';
 
 class HomeScreen extends StatefulWidget {
   final String uid;
@@ -31,68 +34,134 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   // 1. ตัวแปรสำหรับ Flutter Maps
-
   final MapController mapController = MapController();
-
-  // พิกัดเริ่มต้น
-  static final LatLng _initialCenter = LatLng(16.4858, 102.8222);
+  static const LatLng _initialCenter = LatLng(16.2470, 103.2522);
   static const double _initialZoom = 14.0;
 
-  // 2. จุดปักหมุด
+  // 2. จุดปักหมุด (ถาวร)
   List<Marker> get _fixedMarkers => [
-        // Marker สำหรับจุดหมายปลายทาง (หอพักอาณาจักรฟ้า)
         const Marker(
-          point: LatLng(16.4858, 102.8222),
+          point: LatLng(16.2427, 103.2555),
           width: 40,
           height: 40,
           child: Tooltip(
-            message: 'หอพักอาณาจักรฟ้า',
+            message: 'จุดบริการ',
             child: Icon(
-              Icons.pin_drop,
-              color: Color(0xFFC70808),
-              size: 40.0,
-            ),
-          ),
-        ),
-        // Marker สำหรับไรเดอร์ (ตัวอย่าง)
-        const Marker(
-          point: LatLng(16.4900, 102.8180),
-          width: 40,
-          height: 40,
-          child: Tooltip(
-            message: 'ไรเดอร์กำลังมา',
-            child: Icon(
-              Icons.two_wheeler,
-              color: Colors.blue,
+              Icons.pin_drop_outlined,
+              color: Colors.red,
               size: 40.0,
             ),
           ),
         ),
       ];
 
-  // 3. ตัวแปรสำหรับตำแหน่ง GPS ปัจจุบัน
+  // 3. ตัวแปรสำหรับตำแหน่ง GPS ปัจจุบันของผู้ใช้
   LatLng? currentPos;
 
-  // 4. ฟังก์ชันดึงตำแหน่ง GPS
+  // --- ตัวแปรสำหรับข้อมูลจาก Firestore ---
+  UserModel? _currentUser;
+  List<Marker> _orderMarkers = [];
+  StreamSubscription? _ordersSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserData();
+    _listenToOrders();
+    _getCurrentLocation(); // เรียกฟังก์ชันเพื่อค้นหาตำแหน่งเมื่อเปิดหน้า
+  }
+
+  @override
+  void dispose() {
+    _ordersSubscription?.cancel(); // ยกเลิกการฟังข้อมูลเพื่อป้องกัน memory leak
+    super.dispose();
+  }
+
+  // --- ฟังก์ชันดึงข้อมูลจาก Firestore ---
+
+  /// ดึงข้อมูลผู้ใช้ที่กำลัง login อยู่
+  Future<void> _fetchUserData() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .where('uid', isEqualTo: widget.uid)
+          .get();
+      if (doc.docs.first.exists) {
+        setState(() {
+          _currentUser = UserModel.fromFirestore(doc.docs.first);
+          log(_currentUser.toString());
+        });
+      }
+    } catch (e) {
+      log("Error fetching user data: $e");
+      // สามารถแสดง SnackBar แจ้งเตือนได้
+    }
+  }
+
+  /// ฟังข้อมูลออเดอร์แบบ Real-time จาก Firestore
+  void _listenToOrders() {
+    // ฟังเฉพาะออเดอร์ที่มีสถานะ 'delivering' (กำลังจัดส่ง)
+    final ordersStream = FirebaseFirestore.instance
+        .collection('orders')
+        .where('customerId', isEqualTo: widget.uid)
+        .where('currentStatus', isEqualTo: 'accepted')
+        .snapshots();
+
+    _ordersSubscription = ordersStream.listen((snapshot) {
+      if (!mounted) return;
+      final newMarkers = snapshot.docs
+          .map((doc) {
+            final data = doc.data();
+            // ตรวจสอบว่ามี field 'currentLocation' และเป็นประเภท GeoPoint หรือไม่
+            if (data['pickupAddress'] is! GeoPoint) return null;
+
+            final GeoPoint position = data['pickupAddress'];
+            final String orderId = doc.id;
+
+            return Marker(
+              point: LatLng(position.latitude, position.longitude),
+              width: 40,
+              height: 40,
+              child: Tooltip(
+                message: 'Order ID: $orderId',
+                child: const Icon(
+                  Icons.local_shipping, // ไอคอนรถส่งของ
+                  color: Colors.orange,
+                  size: 40.0,
+                ),
+              ),
+            );
+          })
+          .whereType<Marker>()
+          .toList(); // กรองค่า null ออกจาก List
+
+      setState(() {
+        _orderMarkers = newMarkers;
+      });
+    }, onError: (error) {
+      log("Error listening to orders: $error");
+    });
+  }
+
+  /// ดึงตำแหน่ง GPS ปัจจุบัน
   Future<void> _getCurrentLocation() async {
     try {
       if (kIsWeb) {
-        // บน Web
         Position pos = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high,
-        );
-        setState(() {
-          currentPos = LatLng(pos.latitude, pos.longitude);
-        });
-        mapController.move(currentPos!, 16);
+            desiredAccuracy: LocationAccuracy.high);
+        if (mounted) {
+          setState(() {
+            currentPos = LatLng(pos.latitude, pos.longitude);
+          });
+          mapController.move(currentPos!, 16);
+        }
         log("Web Location: ${pos.latitude}, ${pos.longitude}");
       } else {
-        // Mobile (รวมถึงการขออนุญาต)
         bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
         if (!serviceEnabled) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Location services are disabled.')),
+              const SnackBar(content: Text('กรุณาเปิด GPS')),
             );
           }
           return;
@@ -104,8 +173,7 @@ class _HomeScreenState extends State<HomeScreen> {
           if (permission == LocationPermission.denied) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                    content: Text('Location permissions are denied')),
+                const SnackBar(content: Text('การเข้าถึงตำแหน่งถูกปฏิเสธ')),
               );
             }
             return;
@@ -116,29 +184,28 @@ class _HomeScreenState extends State<HomeScreen> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Location permissions are permanently denied.'),
-              ),
+                  content: Text(
+                      'การเข้าถึงตำแหน่งถูกปฏิเสธถาวร, กรุณาไปที่การตั้งค่า')),
             );
           }
           return;
         }
 
         Position pos = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high,
-        );
-        setState(() {
-          currentPos = LatLng(pos.latitude, pos.longitude);
-        });
-        // เลื่อนแผนที่ไปตำแหน่งปัจจุบัน
-        mapController.move(currentPos!, 16);
+            desiredAccuracy: LocationAccuracy.high);
+        if (mounted) {
+          setState(() {
+            currentPos = LatLng(pos.latitude, pos.longitude);
+          });
+          mapController.move(currentPos!, 16);
+        }
         log("Mobile Location: ${pos.latitude}, ${pos.longitude}");
       }
     } catch (e) {
       log("Error getting location: $e");
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Error getting location: $e")));
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("เกิดข้อผิดพลาดในการดึงตำแหน่ง: $e")));
       }
     }
   }
@@ -146,23 +213,21 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFDE9E9), // สีพื้นหลังตามรูป
+      backgroundColor: const Color(0xFFFDE9E9),
       body: SafeArea(
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildHeader(context),
-              _buildIconButtons(),
-              const SizedBox(height: 20),
-              // วิดเจ็ตแผนที่ Flutter Map
               _buildMapSection(context),
+              const SizedBox(height: 20),
+              _buildIconButtons(),
               const SizedBox(height: 20),
             ],
           ),
         ),
       ),
-      // เพิ่มปุ่ม Floating Action Button เพื่อดึงตำแหน่ง GPS
       floatingActionButton: FloatingActionButton(
         backgroundColor: const Color(0xFFC70808),
         onPressed: _getCurrentLocation,
@@ -173,21 +238,16 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ------------------------------------------------------------------
-  // Header Section
-  // ------------------------------------------------------------------
-
+  // --- Header Section (แสดงข้อมูลผู้ใช้) ---
   Widget _buildHeader(BuildContext context) {
     return Stack(
       children: [
-        // Background Wave/ClipPath
         ClipPath(
           child: Container(
-            height: MediaQuery.of(context).size.height * 0.3,
+            height: MediaQuery.of(context).size.height * 0.125,
             decoration: const BoxDecoration(color: Color(0xFFC70808)),
           ),
         ),
-        // Content
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
           child: Column(
@@ -197,10 +257,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'สวัสดีคุณ\nพ่อครูกรัน',
-                    style: TextStyle(
-                      fontSize: 24,
+                  Text(
+                    'สวัสดีคุณ\n${_currentUser?.fullname ?? 'กำลังโหลด...'}',
+                    style: const TextStyle(
+                      fontSize: 30,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                       height: 1.2,
@@ -208,18 +268,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   GestureDetector(
                     onTap: () => _showProfileOptions(context),
-                    child: const CircleAvatar(
+                    child: CircleAvatar(
                       radius: 35,
                       backgroundColor: Colors.white,
-                      backgroundImage: NetworkImage(
-                        'https://picsum.photos/200',
-                      ),
+                      backgroundImage: (_currentUser?.profile != null &&
+                              _currentUser!.profile.isNotEmpty)
+                          ? NetworkImage(_currentUser!.profile)
+                          : const AssetImage('assets/image/default_avatar.png')
+                              as ImageProvider, // ใส่รูป default
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
-              _buildLocationBar(),
             ],
           ),
         ),
@@ -227,47 +287,18 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// สร้างแถบที่อยู่
-  Widget _buildLocationBar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.location_on, color: Colors.white, size: 20),
-          SizedBox(width: 8),
-          Text(
-            'หอพักอาณาจักรฟ้า',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ------------------------------------------------------------------
-  // Icon Buttons Section (แก้ไขการนำทาง)
-  // ------------------------------------------------------------------
-
+  // --- Icon Buttons Section ---
   Widget _buildIconButtons() {
-    final VoidCallback goToPickup = () => Get.to(() => PackagePickupPage(
+    goToPickup() => Get.to(() => PackagePickupPage(
           role: widget.role,
           uid: widget.uid,
         ));
-    // final VoidCallback goToRiderInfo = () => Get.to(() => RiderInfoPage(
-    //       role: widget.role,
-    //       uid: widget.uid,
-    //     ));
-    final VoidCallback goToStatus = () => Get.to(() => OrderStatusPage(
+
+    goToStatus() => Get.to(() => OrderStatusPage(
           role: widget.role,
           uid: widget.uid,
-          orderId: '',
         ));
-    final VoidCallback goToSend = () => Get.to(() => SendPackagePage(
+    goToSend() => Get.to(() => SendPackagePage(
           role: widget.role,
           uid: widget.uid,
         ));
@@ -281,14 +312,9 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               _buildFeatureButton(
                 'พัสดุที่ต้องรับ',
-                'assets/images/package_icon.png',
+                Icons.inventory_2,
                 goToPickup,
               ),
-              // _buildFeatureButton(
-              //   'ข้อมูลไรเดอร์',
-              //   'assets/images/rider_icon.png',
-              //   // goToRiderInfo,
-              // ),
             ],
           ),
           const SizedBox(height: 15),
@@ -297,12 +323,13 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               _buildFeatureButton(
                 'สถานะสินค้า',
-                'assets/images/status_icon.png',
+                Icons.timeline,
                 goToStatus,
               ),
+              const SizedBox(width: 15),
               _buildFeatureButton(
                 'ส่งสินค้า',
-                'assets/images/send_icon.png',
+                Icons.send_rounded,
                 goToSend,
               ),
             ],
@@ -312,9 +339,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// สร้างปุ่มคุณสมบัติ (Feature Button)
-  Widget _buildFeatureButton(
-      String text, String imagePath, VoidCallback onTap) {
+  Widget _buildFeatureButton(String text, IconData icon, VoidCallback onTap) {
     return Expanded(
       child: Card(
         color: Colors.white,
@@ -328,10 +353,10 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(
-                  Icons.delivery_dining,
+                Icon(
+                  icon,
                   size: 40,
-                  color: Color(0xFFC70808),
+                  color: const Color(0xFFC70808),
                 ),
                 const SizedBox(height: 5),
                 Text(
@@ -350,20 +375,18 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ------------------------------------------------------------------
-  // Map Section
-  // ------------------------------------------------------------------
-
+  // --- Map Section (รวม Marker ทั้งหมด) ---
   Widget _buildMapSection(BuildContext context) {
     List<Marker> allMarkers = [
-      ..._fixedMarkers,
+      ..._fixedMarkers, // หมุดถาวร
+      ..._orderMarkers, // หมุดจาก Firestore (real-time)
       if (currentPos != null)
         Marker(
           point: currentPos!,
           width: 40,
           height: 40,
           child: const Tooltip(
-            message: 'ตำแหน่งปัจจุบัน',
+            message: 'ตำแหน่งปัจจุบันของคุณ',
             child: Icon(
               Icons.my_location,
               color: Colors.green,
@@ -413,7 +436,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   TileLayer(
                     urlTemplate:
                         'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=cb153d15cb4e41f59e25cfda6468f1a0',
-                    userAgentPackageName: "com.example.delivery_project",
+                    subdomains: const ['a', 'b', 'c'],
                   ),
                   MarkerLayer(markers: allMarkers),
                 ],
@@ -425,10 +448,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ------------------------------------------------------------------
-  // Bottom Navigation Bar
-  // ------------------------------------------------------------------
-
+  // --- Bottom Navigation Bar ---
   Widget _buildBottomNavigationBar(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
@@ -451,7 +471,7 @@ class _HomeScreenState extends State<HomeScreen> {
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'หน้าแรก'),
           BottomNavigationBarItem(
             icon: Icon(Icons.history),
-            label: 'ประวัติการส่งสินค้า',
+            label: 'ประวัติการส่ง',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.logout),
@@ -461,27 +481,21 @@ class _HomeScreenState extends State<HomeScreen> {
         currentIndex: 0,
         onTap: (index) {
           if (index == 0) {
-            Get.to(() => HomeScreen(
-                  uid: widget.uid,
-                  role: widget.role,
-                ));
+            // อยู่หน้าแรกอยู่แล้ว ไม่ต้องทำอะไร หรือจะ refresh ก็ได้
           } else if (index == 1) {
             Get.to(() => HistoryPage(
                   uid: widget.uid,
                   role: widget.role,
                 ));
           } else if (index == 2) {
-            Get.offAll(() => const SpeedDerApp()); // Log out
+            Get.offAll(() => const SpeedDerApp()); // กลับไปหน้าแรกของแอป
           }
         },
       ),
     );
   }
 
-  // ------------------------------------------------------------------
-  // Profile Options Modal
-  // ------------------------------------------------------------------
-
+  // --- Profile Options Modal ---
   void _showProfileOptions(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -512,12 +526,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 'แก้ไขข้อมูลส่วนตัว',
                 Icons.person_outline,
                 () {
+                  Get.back(); // ปิด Modal ก่อน
                   Get.to(() => EditProfilePage(
                         role: widget.role,
                         uid: widget.uid,
                       ));
                 },
               ),
+              // สามารถเพิ่มปุ่มอื่นๆ ได้ที่นี่
             ],
           ),
         );
@@ -545,18 +561,3 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-
-/*
-//------------------------------------------------------------------
-// Custom Clipper for Header Wave (ไม่ได้ใช้งานในโค้ดนี้)
-//------------------------------------------------------------------
-class HeaderClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    return Path();
-  }
-
-  @override
-  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
-}
-*/
