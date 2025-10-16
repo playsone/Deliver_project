@@ -75,6 +75,39 @@ class _EditProfilePageState extends State<EditProfilePage> {
     return UserModel.fromFirestore(docSnapshot);
   }
 
+  // --- ⭐️ แก้ไข: ปรับ Logic การดึงข้อมูล ---
+  void _initializeData(UserModel user) {
+    if (_isDataInitialized) return;
+    _user = user;
+    _nameController.text = user.fullname;
+    _phoneController.text = user.phone;
+    _profileImageUrl = user.profile;
+
+    if (user.role == 0) {
+      // Logic สำหรับ User ทั่วไป (ดึงที่อยู่ 1 และ 2)
+      _addressController.text = user.defaultAddress ?? '';
+      if (user.defaultGPS != null) {
+        _defaultMarkerPos =
+            LatLng(user.defaultGPS!.latitude, user.defaultGPS!.longitude);
+        _gpsController.text =
+            "${_defaultMarkerPos!.latitude.toStringAsFixed(6)}, ${_defaultMarkerPos!.longitude.toStringAsFixed(6)}";
+      }
+      _address2Controller.text = user.secondAddress ?? '';
+      if (user.secondGPS != null) {
+        _secondMarkerPos =
+            LatLng(user.secondGPS!.latitude, user.secondGPS!.longitude);
+        _gps2Controller.text =
+            "${_secondMarkerPos!.latitude.toStringAsFixed(6)}, ${_secondMarkerPos!.longitude.toStringAsFixed(6)}";
+      }
+    } else if (user.role == 1) {
+      // Logic สำหรับ Rider (ไม่ดึงที่อยู่/GPS)
+      _vehicleRegController.text = user.vehicleNo ?? '';
+      _vehicleImageUrl = user.vehiclePicture ?? '';
+    }
+
+    _isDataInitialized = true;
+  }
+
   Future<String?> _uploadImage(File imageFile) async {
     const String cloudName = 'dvh40wpmm';
     const String uploadPreset = 'gameshop_images';
@@ -98,7 +131,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     return null;
   }
 
-  // ❗️ CORRECTED LOGIC: เพิ่มส่วนจัดการ Re-authentication สำหรับการเปลี่ยนรหัสผ่าน
+  // --- ⭐️ แก้ไข: ปรับ Logic การบันทึกข้อมูล ---
   Future<void> _saveProfile() async {
     if (_passwordController.text.isNotEmpty &&
         _passwordController.text != _password2Controller.text) {
@@ -123,13 +156,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
     }
 
     try {
-      // --- Step 1: อัปเดตข้อมูลใน Firestore (ทำก่อนเพราะไม่ sensitive) ---
       String? newProfileUrl;
       String? newVehicleUrl;
-      if (_profileImageFile != null)
+      if (_profileImageFile != null) {
         newProfileUrl = await _uploadImage(_profileImageFile!);
-      if (_vehicleImageFile != null)
+      }
+      if (_vehicleImageFile != null) {
         newVehicleUrl = await _uploadImage(_vehicleImageFile!);
+      }
 
       final Map<String, dynamic> dataToUpdate = {
         'fullname': _nameController.text
@@ -137,30 +171,30 @@ class _EditProfilePageState extends State<EditProfilePage> {
       if (newProfileUrl != null) dataToUpdate['profile'] = newProfileUrl;
 
       if (widget.role == 0) {
+        // บันทึกข้อมูลสำหรับ User
         dataToUpdate.addAll({
           'defaultAddress': _addressController.text,
           'secondAddress': _address2Controller.text,
         });
-        if (_defaultMarkerPos != null)
+        if (_defaultMarkerPos != null) {
           dataToUpdate['defaultGPS'] = GeoPoint(
               _defaultMarkerPos!.latitude, _defaultMarkerPos!.longitude);
-        if (_secondMarkerPos != null)
+        }
+        if (_secondMarkerPos != null) {
           dataToUpdate['secondGPS'] =
               GeoPoint(_secondMarkerPos!.latitude, _secondMarkerPos!.longitude);
+        }
       } else if (widget.role == 1) {
+        // บันทึกข้อมูลสำหรับ Rider (ไม่มีที่อยู่/GPS)
         dataToUpdate.addAll({
-          'defaultAddress': _addressController.text,
           'vehicle_no': _vehicleRegController.text,
         });
-        if (newVehicleUrl != null)
+        if (newVehicleUrl != null) {
           dataToUpdate['vehicle_picture'] = newVehicleUrl;
-        if (_defaultMarkerPos != null)
-          dataToUpdate['defaultGPS'] = GeoPoint(
-              _defaultMarkerPos!.latitude, _defaultMarkerPos!.longitude);
+        }
       }
       await db.collection('users').doc(_user!.uid).update(dataToUpdate);
 
-      // --- Step 2: พยายามอัปเดตรหัสผ่าน (Sensitive Operation) ---
       if (_passwordController.text.isNotEmpty) {
         await user.updatePassword(_passwordController.text);
       }
@@ -173,7 +207,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
     } on FirebaseAuthException catch (e) {
       Navigator.of(context).pop(); // ปิด Loading ก่อนแสดง Dialog
 
-      // --- Step 3: ดักจับ Error และเรียก Re-authentication ---
       if (e.code == 'requires-recent-login') {
         final currentPassword = await _showReauthDialog();
         if (currentPassword == null || currentPassword.isEmpty) {
@@ -186,8 +219,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
           AuthCredential credential = EmailAuthProvider.credential(
               email: user.email!, password: currentPassword);
           await user.reauthenticateWithCredential(credential);
-
-          // --- Step 4: ลองเปลี่ยนรหัสผ่านอีกครั้งหลัง Re-auth สำเร็จ ---
           await user.updatePassword(_passwordController.text);
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text("บันทึกข้อมูลและอัปเดตรหัสผ่านสำเร็จ!"),
@@ -210,7 +241,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     }
   }
 
-  // ✨ HELPER DIALOG: สำหรับการยืนยันตัวตนซ้ำ
+  // ... (โค้ดส่วนอื่น ๆ ที่ไม่เปลี่ยนแปลง) ...
   Future<String?> _showReauthDialog() async {
     final passwordController = TextEditingController();
     return showDialog<String>(
@@ -253,8 +284,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   Future<void> _openMapPicker({required int target}) async {
     LatLng initialPoint = target == 1
-        ? (_defaultMarkerPos ?? const LatLng(16.245721, 103.231722))
-        : (_secondMarkerPos ?? const LatLng(16.245721, 103.231722));
+        ? (_defaultMarkerPos ?? const LatLng(16.240683, 103.254257))
+        : (_secondMarkerPos ?? const LatLng(16.240683, 103.254257));
 
     LatLng? selectedPoint = await showDialog<LatLng>(
       context: context,
@@ -338,36 +369,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
     );
   }
 
-  void _initializeData(UserModel user) {
-    if (_isDataInitialized) return;
-    _user = user;
-    _nameController.text = user.fullname;
-    _phoneController.text = user.phone;
-    _profileImageUrl = user.profile;
-
-    _addressController.text = user.defaultAddress ?? '';
-    if (user.defaultGPS != null) {
-      _defaultMarkerPos =
-          LatLng(user.defaultGPS!.latitude, user.defaultGPS!.longitude);
-      _gpsController.text =
-          "${_defaultMarkerPos!.latitude.toStringAsFixed(6)}, ${_defaultMarkerPos!.longitude.toStringAsFixed(6)}";
-    }
-
-    if (user.role == 0) {
-      _address2Controller.text = user.secondAddress ?? '';
-      if (user.secondGPS != null) {
-        _secondMarkerPos =
-            LatLng(user.secondGPS!.latitude, user.secondGPS!.longitude);
-        _gps2Controller.text =
-            "${_secondMarkerPos!.latitude.toStringAsFixed(6)}, ${_secondMarkerPos!.longitude.toStringAsFixed(6)}";
-      }
-    } else if (user.role == 1) {
-      _vehicleRegController.text = user.vehicleNo ?? '';
-      _vehicleImageUrl = user.vehiclePicture ?? '';
-    }
-    _isDataInitialized = true;
-  }
-
   //----------- BUILD METHOD & WIDGETS -----------//
   @override
   Widget build(BuildContext context) {
@@ -378,6 +379,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         centerTitle: true,
         backgroundColor: const Color(0xFFC70808),
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: FutureBuilder<UserModel>(
         future: fetchUser(widget.uid),
@@ -396,22 +398,31 @@ class _EditProfilePageState extends State<EditProfilePage> {
           _initializeData(snapshot.data!);
 
           return SingleChildScrollView(
-            child: Column(
-              children: [
-                const SizedBox(height: 20),
-                _buildProfileSection(),
-                if (widget.role == 1) ...[
-                  const SizedBox(height: 15),
-                  const Text("รูปรถ",
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black54)),
-                  const SizedBox(height: 8),
-                  _buildVehicleImageSection(),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40),
+              child: Column(
+                children: [
+                  const SizedBox(height: 20),
+                  _buildProfileSection(),
+                  if (widget.role == 1) ...[
+                    const SizedBox(height: 15),
+                    const Text("รูปรถ",
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black54)),
+                    const SizedBox(height: 8),
+                    _buildVehicleImageSection(),
+                  ],
+                  const SizedBox(height: 20),
+                  _buildCommonFields(),
+                  if (widget.role == 0) _buildUserSpecificFields(),
+                  if (widget.role == 1) _buildRiderSpecificFields(),
+                  const SizedBox(height: 30),
+                  _buildSaveButton(),
+                  const SizedBox(height: 40),
                 ],
-                _buildFormSection(),
-              ],
+              ),
             ),
           );
         },
@@ -463,57 +474,65 @@ class _EditProfilePageState extends State<EditProfilePage> {
     );
   }
 
-  Widget _buildFormSection() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(40, 20, 40, 40),
-      child: Column(
-        children: [
-          _buildTextFieldWithLabel('ชื่อ-สกุล', _nameController),
-          const SizedBox(height: 20),
-          _buildTextFieldWithLabel('หมายเลขโทรศัพท์', _phoneController,
-              isReadOnly: true),
-          const SizedBox(height: 20),
-          _buildTextFieldWithLabel('รหัสผ่านใหม่', _passwordController,
-              isPassword: true),
-          const SizedBox(height: 20),
-          _buildTextFieldWithLabel('ยืนยันรหัสผ่านใหม่', _password2Controller,
-              isPassword: true),
-          const SizedBox(height: 20),
-          if (widget.role == 1) ...[
-            _buildTextFieldWithLabel('เลขทะเบียนรถ', _vehicleRegController),
-            const SizedBox(height: 20),
-          ],
-          _buildTextFieldWithLabel(
-              widget.role == 0 ? 'ที่อยู่หลัก' : 'ที่อยู่', _addressController),
-          const SizedBox(height: 20),
-          _buildTextFieldWithLabel(
-              widget.role == 0 ? 'พิกัด GPS หลัก' : 'พิกัด GPS', _gpsController,
-              isReadOnly: true, onTap: () => _openMapPicker(target: 1)),
-          if (widget.role == 0) ...[
-            const SizedBox(height: 30),
-            _buildTextFieldWithLabel('ที่อยู่รอง', _address2Controller),
-            const SizedBox(height: 20),
-            _buildTextFieldWithLabel('พิกัด GPS รอง', _gps2Controller,
-                isReadOnly: true, onTap: () => _openMapPicker(target: 2)),
-          ],
-          const SizedBox(height: 30),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _saveProfile,
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFC70808),
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10))),
-              child: const Text('บันทึกข้อมูล',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold)),
-            ),
-          ),
-        ],
+  Widget _buildCommonFields() {
+    return Column(
+      children: [
+        _buildTextFieldWithLabel('ชื่อ-สกุล', _nameController),
+        const SizedBox(height: 20),
+        _buildTextFieldWithLabel('หมายเลขโทรศัพท์', _phoneController,
+            isReadOnly: true),
+        const SizedBox(height: 20),
+        _buildTextFieldWithLabel('รหัสผ่านใหม่', _passwordController,
+            isPassword: true),
+        const SizedBox(height: 20),
+        _buildTextFieldWithLabel('ยืนยันรหัสผ่านใหม่', _password2Controller,
+            isPassword: true),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  Widget _buildUserSpecificFields() {
+    return Column(
+      children: [
+        _buildTextFieldWithLabel('ที่อยู่หลัก', _addressController),
+        const SizedBox(height: 20),
+        _buildTextFieldWithLabel('พิกัด GPS หลัก', _gpsController,
+            isReadOnly: true, onTap: () => _openMapPicker(target: 1)),
+        const SizedBox(height: 30),
+        _buildTextFieldWithLabel('ที่อยู่รอง', _address2Controller),
+        const SizedBox(height: 20),
+        _buildTextFieldWithLabel('พิกัด GPS รอง', _gps2Controller,
+            isReadOnly: true, onTap: () => _openMapPicker(target: 2)),
+      ],
+    );
+  }
+
+  // --- ⭐️ แก้ไข: ฟอร์มสำหรับ Rider ---
+  Widget _buildRiderSpecificFields() {
+    return Column(
+      children: [
+        _buildTextFieldWithLabel('เลขทะเบียนรถ', _vehicleRegController),
+        // ลบฟิลด์ที่อยู่และ GPS ออกจากส่วนนี้
+      ],
+    );
+  }
+
+  Widget _buildSaveButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: _saveProfile,
+        style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFC70808),
+            padding: const EdgeInsets.symmetric(vertical: 15),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10))),
+        child: const Text('บันทึกข้อมูล',
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold)),
       ),
     );
   }
@@ -552,7 +571,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
   }
 }
 
-// ✨ NEW: วิดเจ็ตสำหรับแสดงแผนที่ใน Dialog
+// MapPickerModal (ไม่มีการเปลี่ยนแปลง)
 class MapPickerModal extends StatefulWidget {
   final LatLng initialLatLng;
   const MapPickerModal({super.key, required this.initialLatLng});
@@ -592,7 +611,6 @@ class _MapPickerModalState extends State<MapPickerModal> {
           ),
           children: [
             TileLayer(
-              // ใช้ OpenStreetMap ที่ไม่ต้องใช้ API Key
               urlTemplate:
                   'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=cb153d15cb4e41f59e25cfda6468f1a0',
               userAgentPackageName: 'com.example.app',

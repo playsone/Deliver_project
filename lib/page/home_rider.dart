@@ -1,16 +1,15 @@
-// home_rider.dart
+// file: lib/page/home_rider.dart
 
 import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/models/package_model.dart';
-
+import 'package:delivery_project/models/user_model.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 // --- IMPORT MODELS AND PAGES ---
 // !สำคัญ: ตรวจสอบว่า Path ของไฟล์ Model และ Page ถูกต้อง
 import '../models/order_model.dart';
-import '../models/rider_model.dart';
 import 'package:delivery_project/page/edit_profile.dart';
 import 'package:delivery_project/page/index.dart';
 import 'package:delivery_project/page/package_delivery_page.dart';
@@ -24,7 +23,7 @@ class RiderHomeController extends GetxController {
   RiderHomeController({required this.uid, required this.role});
 
   // --- State ---
-  final Rx<RiderModel?> rider = Rx(null);
+  final Rx<UserModel?> rider = Rx(null);
   final db = FirebaseFirestore.instance;
 
   @override
@@ -40,7 +39,7 @@ class RiderHomeController extends GetxController {
           .collection('users')
           .doc(uid)
           .snapshots()
-          .map((doc) => doc.exists ? RiderModel.fromFirestore(doc) : null),
+          .map((doc) => doc.exists ? UserModel.fromFirestore(doc) : null),
     );
   }
 
@@ -49,7 +48,7 @@ class RiderHomeController extends GetxController {
     try {
       // ค้นหางานที่ riderId ตรงกับ uid ของเรา และสถานะยังไม่เสร็จสิ้น
       final querySnapshot = await db
-          .collection('orders') // **แก้ไข:** ใช้ collection 'orders'
+          .collection('orders')
           .where('riderId', isEqualTo: uid)
           .where('currentStatus',
               whereIn: ['accepted', 'picked_up', 'in_transit'])
@@ -89,7 +88,7 @@ class RiderHomeController extends GetxController {
   // Stream สำหรับดึงรายการงานที่ยังว่างอยู่ (pending)
   Stream<List<OrderModel>> getPendingOrdersStream() {
     return db
-        .collection('orders') // **แก้ไข:** ใช้ collection 'orders'
+        .collection('orders')
         .where('currentStatus', isEqualTo: 'pending')
         .snapshots()
         .map((snapshot) =>
@@ -101,9 +100,7 @@ class RiderHomeController extends GetxController {
     Get.dialog(const Center(child: CircularProgressIndicator()),
         barrierDismissible: false);
     try {
-      final orderRef = db
-          .collection('orders')
-          .doc(order.id); // **แก้ไข:** ใช้ collection 'orders'
+      final orderRef = db.collection('orders').doc(order.id);
 
       await orderRef.update({
         'riderId': uid,
@@ -171,8 +168,11 @@ class RiderHomeScreen extends StatelessWidget {
     return Obx(() {
       final riderData = controller.rider.value;
       String riderName = riderData?.fullname ?? 'ไรเดอร์';
-      String profileImageUrl =
-          riderData?.profileUrl ?? 'https://picsum.photos/200';
+
+      // --- แก้ไขจุดนี้ ---
+      // ให้ดึง URL รูปภาพจาก field 'profile' ตาม UserModel ที่ให้มา
+      String profileImageUrl = riderData?.profile ??
+          'https://cdn-icons-png.flaticon.com/512/1144/1144760.png';
 
       return Container(
         decoration: const BoxDecoration(
