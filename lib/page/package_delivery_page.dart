@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloudinary_public/cloudinary_public.dart';
-import 'package:latlong2/latlong.dart';
+// import 'package:latlong2/latlong.dart'; // ไม่ได้ใช้แล้ว จึงเอาออก
 
 // Enum เพื่อจัดการสถานะการจัดส่ง
 enum DeliveryStatus {
@@ -33,26 +33,16 @@ class PackageDeliveryPage extends StatefulWidget {
 }
 
 class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
-  // ไม่จำเป็นต้องใช้ Location และ MapController ในเวอร์ชันนี้
-  // final Location _location = Location();
-  // StreamSubscription<LocationData>? _locationSubscription;
-  // final MapController _mapController = MapController();
-
   String? _currentRiderId;
 
   @override
   void initState() {
     super.initState();
     _currentRiderId = widget.uid;
-    // ไม่จำเป็นต้องเริ่มส่ง location ถ้าไม่ใช้แผนที่
-    // if (_currentRiderId != null) {
-    //   _startSendingLocation(_currentRiderId!);
-    // }
   }
 
   @override
   void dispose() {
-    // _locationSubscription?.cancel();
     super.dispose();
   }
 
@@ -173,19 +163,10 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
                     padding: const EdgeInsets.all(15.0),
                     child: Column(
                       children: [
-                        // *** ส่วนที่แก้ไข: นำแผนที่ออกจากการแสดงผล ***
-                        // _buildMapSection(data, riderId),
-                        // const SizedBox(height: 20),
-
-                        // ส่วนแสดงรูปภาพหลักฐาน (ถ้ามี)
                         _buildEvidenceImage(data),
                         const SizedBox(height: 20),
-
-                        // ส่วนแสดงปุ่ม Action ต่างๆ
                         _buildActionSection(deliveryStatusEnum),
                         const SizedBox(height: 20),
-
-                        // *** ส่วนที่แก้ไข: รวมข้อมูลทั้งหมดไว้ใน Widget เดียว ***
                         _buildDeliveryInfoSection(data),
                       ],
                     ),
@@ -343,7 +324,7 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
     final deliveredUrl = orderData['deliveredImageUrl'] as String?;
 
     if (pickedUpUrl == null && deliveredUrl == null) {
-      return const SizedBox.shrink(); // ถ้าไม่มีรูปภาพ ไม่ต้องแสดงอะไรเลย
+      return const SizedBox.shrink();
     }
 
     return Column(
@@ -376,32 +357,64 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
     ]);
   }
 
-  // *** ส่วนที่แก้ไข: Widget ใหม่สำหรับแสดงข้อมูลทั้งหมด ***
+  // ✅✅✅ ส่วนที่แก้ไข: Widget สำหรับแสดงข้อมูลผู้รับ-ผู้ส่งแบบไดนามิก ✅✅✅
   Widget _buildDeliveryInfoSection(Map<String, dynamic> orderData) {
     final pickupAddress =
         orderData['pickupAddress'] as Map<String, dynamic>? ?? {};
     final deliveryAddress =
         orderData['deliveryAddress'] as Map<String, dynamic>? ?? {};
+    final customerId = orderData['customerId'] as String?; // ID ของผู้ส่ง
 
     return _buildInfoBox(
       title: 'ข้อมูลการจัดส่ง',
       children: [
+        // --- ส่วนแสดงข้อมูลผู้ส่ง (ดึงจาก collection users) ---
         _buildInfoRow(
           icon: Icons.storefront,
           label: 'รับจาก',
           value: pickupAddress['detail'] ?? 'N/A',
         ),
-        _buildInfoRow(
-          icon: Icons.person,
-          label: 'ผู้ส่ง',
-          value: 'คณะวิทยาการสารสนเทศ', // ควรดึงมาจาก data model ถ้ามี
-        ),
-        _buildInfoRow(
-          icon: Icons.phone,
-          label: 'เบอร์ติดต่อ (ผู้ส่ง)',
-          value: '091 949 4532', // ควรดึงมาจาก data model ถ้ามี
-        ),
+        if (customerId != null)
+          StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('users')
+                .doc(customerId)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                // แสดงสถานะกำลังโหลดข้อมูลผู้ส่ง
+                return const Padding(
+                  padding: EdgeInsets.all(8.0),
+                  child: Center(child: LinearProgressIndicator()),
+                );
+              }
+              final senderData =
+                  snapshot.data?.data() as Map<String, dynamic>? ?? {};
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildInfoRow(
+                    icon: Icons.person,
+                    label: 'ผู้ส่ง',
+                    value: senderData['fullname'] ?? 'ไม่มีข้อมูล',
+                  ),
+                  _buildInfoRow(
+                    icon: Icons.phone,
+                    label: 'เบอร์ติดต่อ (ผู้ส่ง)',
+                    value: senderData['phone'] ?? 'ไม่มีข้อมูล',
+                  ),
+                ],
+              );
+            },
+          )
+        else
+          // กรณีไม่มี customerId
+          _buildInfoRow(
+              icon: Icons.person, label: 'ผู้ส่ง', value: 'ไม่มีข้อมูล'),
+
         const Divider(height: 20),
+
+        // --- ส่วนแสดงข้อมูลผู้รับ (ดึงจาก order document) ---
         _buildInfoRow(
           icon: Icons.location_on,
           label: 'ส่งที่',
@@ -417,7 +430,10 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
           label: 'เบอร์ติดต่อ (ผู้รับ)',
           value: deliveryAddress['receiverPhone'] ?? 'N/A',
         ),
+
         const Divider(height: 20),
+
+        // --- ส่วนแสดงข้อมูลสินค้า ---
         _buildInfoRow(
           icon: Icons.inventory_2_outlined,
           label: 'รายละเอียดสินค้า',
