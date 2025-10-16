@@ -1,53 +1,55 @@
+// file: user_model.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class UserModel {
   final String uid;
-  final int role;
   final String phone;
-  final String profile;
+  final String profileUrl; // เปลี่ยนชื่อให้ชัดเจนว่าเป็น URL
   final String fullname;
 
-  // For role 0 (User)
+  // ที่อยู่ของลูกค้า
   final String? defaultAddress;
   final GeoPoint? defaultGPS;
   final String? secondAddress;
   final GeoPoint? secondGPS;
 
-  // For role 1 (Rider)
-  final String? vehicleNo;
-  final String? vehiclePicture;
-  final GeoPoint? gps;
-
   UserModel({
     required this.uid,
-    required this.role,
     required this.phone,
-    required this.profile,
+    required this.profileUrl,
     required this.fullname,
     this.defaultAddress,
     this.defaultGPS,
     this.secondAddress,
     this.secondGPS,
-    this.vehicleNo,
-    this.vehiclePicture,
-    this.gps,
   });
 
+  // แปลงจาก Firestore Document เป็น Object
   factory UserModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     return UserModel(
       uid: data['uid'] ?? '',
-      role: data['role'] ?? 0,
       phone: data['phone'] ?? '',
-      profile: data['profile'] ?? '',
+      profileUrl: data['profileUrl'] ?? '',
       fullname: data['fullname'] ?? '',
       defaultAddress: data['defaultAddress'],
       defaultGPS: data['defaultGPS'],
       secondAddress: data['secondAddress'],
       secondGPS: data['secondGPS'],
-      vehicleNo: data['vehicle_no'],
-      vehiclePicture: data['vehicle_picture'],
-      gps: data['gps'],
     );
+  }
+
+  // แปลงจาก Object เป็น Map เพื่อบันทึกลง Firestore
+  Map<String, dynamic> toMap() {
+    return {
+      'uid': uid,
+      'phone': phone,
+      'profileUrl': profileUrl,
+      'fullname': fullname,
+      'defaultAddress': defaultAddress,
+      'defaultGPS': defaultGPS,
+      'secondAddress': secondAddress,
+      'secondGPS': secondGPS,
+    };
   }
 }
