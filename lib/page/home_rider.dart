@@ -1,11 +1,14 @@
-import 'dart:developer';
+// home_rider.dart
 
+import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:delivery_project/models/package_model.dart';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 // --- IMPORT MODELS AND PAGES ---
-// !สำคัญ: แก้ path ให้ตรงกับโปรเจกต์ของคุณ
+// !สำคัญ: ตรวจสอบว่า Path ของไฟล์ Model และ Page ถูกต้อง
 import '../models/order_model.dart';
 import '../models/rider_model.dart';
 import 'package:delivery_project/page/edit_profile.dart';
@@ -28,7 +31,7 @@ class RiderHomeController extends GetxController {
   void onInit() {
     super.onInit();
 
-    // ✅ 1. ตรวจสอบงานที่ค้างอยู่ก่อนเป็นอันดับแรก
+    // 1. ตรวจสอบงานที่ค้างอยู่ก่อนเป็นอันดับแรก
     _checkAndNavigateToActiveOrder();
 
     // 2. จากนั้นค่อยเริ่มฟังข้อมูลของ Rider ตามปกติ
@@ -41,31 +44,40 @@ class RiderHomeController extends GetxController {
     );
   }
 
-  // ✅ NEW: ฟังก์ชันใหม่สำหรับตรวจสอบและนำทางไปยังงานที่ Rider รับไว้
+  // ฟังก์ชันใหม่สำหรับตรวจสอบและนำทางไปยังงานที่ Rider รับไว้
   Future<void> _checkAndNavigateToActiveOrder() async {
     try {
       // ค้นหางานที่ riderId ตรงกับ uid ของเรา และสถานะยังไม่เสร็จสิ้น
       final querySnapshot = await db
-          .collection('orders')
+          .collection('orders') // **แก้ไข:** ใช้ collection 'orders'
           .where('riderId', isEqualTo: uid)
           .where('currentStatus',
               whereIn: ['accepted', 'picked_up', 'in_transit'])
-          .limit(1) // เอามาแค่งานเดียว เพราะ Rider ควรมีงานค้างได้แค่งานเดียว
+          .limit(1) // เอามาแค่งานเดียว
           .get();
 
       // ถ้าเจองานที่ค้างอยู่
       if (querySnapshot.docs.isNotEmpty) {
         final activeOrderDoc = querySnapshot.docs.first;
-        final orderId = activeOrderDoc.id;
+        final orderModel = OrderModel.fromFirestore(activeOrderDoc);
 
-        log('Rider has an active order: $orderId. Navigating...');
+        log('Rider has an active order: ${orderModel.id}. Navigating...');
 
-        // ใช้ Get.off เพื่อไปหน้า delivery และลบหน้า home ทิ้งจาก stack
-        // Get.off(() => PackageDeliveryPage(
-        //       orderId: orderId,
-        //       uid: uid,
-        //       role: role,
-        //     ));
+        // แปลง OrderModel เป็น Package เพื่อส่งต่อ
+        final package = Package(
+          id: orderModel.id,
+          title: orderModel.orderDetails,
+          location: orderModel.pickupAddress.detail,
+          destination: orderModel.deliveryAddress.detail,
+          imageUrl: orderModel.orderPicture,
+        );
+
+        // ใช้ Get.offAll เพื่อไปหน้า delivery และลบหน้า home ทิ้งจาก stack
+        Get.offAll(() => PackageDeliveryPage(
+              package: package,
+              uid: uid,
+              role: role,
+            ));
       } else {
         log('Rider has no active orders. Showing pending list.');
       }
@@ -74,12 +86,12 @@ class RiderHomeController extends GetxController {
     }
   }
 
-  // Stream สำหรับดึงรายการงานที่ยังว่างอยู่ (pending) จาก collection 'orders'
+  // Stream สำหรับดึงรายการงานที่ยังว่างอยู่ (pending)
   Stream<List<OrderModel>> getPendingOrdersStream() {
-    // หากเจอปัญหาเรื่อง Index ให้สร้าง Composite Index ใน Firebase Console
     return db
-        .collection('orders')
+        .collection('orders') // **แก้ไข:** ใช้ collection 'orders'
         .where('currentStatus', isEqualTo: 'pending')
+        .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) =>
             snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList());
@@ -90,27 +102,34 @@ class RiderHomeController extends GetxController {
     Get.dialog(const Center(child: CircularProgressIndicator()),
         barrierDismissible: false);
     try {
-      final orderRef = db.collection('orders').doc(order.id);
+      final orderRef = db
+          .collection('orders')
+          .doc(order.id); // **แก้ไข:** ใช้ collection 'orders'
 
       await orderRef.update({
         'riderId': uid,
         'currentStatus': 'accepted',
         'statusHistory': FieldValue.arrayUnion([
-          {
-            'status': 'accepted',
-            'timestamp': Timestamp.now(),
-          }
+          {'status': 'accepted', 'timestamp': Timestamp.now()}
         ]),
       });
 
-      Get.back();
+      Get.back(); // ปิด Loading
+
+      final package = Package(
+        id: order.id,
+        title: order.orderDetails,
+        location: order.pickupAddress.detail,
+        destination: order.deliveryAddress.detail,
+        imageUrl: order.orderPicture,
+      );
 
       // เมื่อรับงานสำเร็จ ให้ไปที่หน้า Delivery ทันที
-      // Get.to(() => PackageDeliveryPage(
-      //       orderId: order.id,
-      //       uid: uid,
-      //       role: role,
-      //     ));
+      Get.to(() => PackageDeliveryPage(
+            package: package,
+            uid: uid,
+            role: role,
+          ));
     } catch (e) {
       Get.back();
       Get.snackbar('เกิดข้อผิดพลาด', 'ไม่สามารถรับงานนี้ได้: $e');
@@ -128,7 +147,7 @@ class RiderHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // สร้างและลงทะเบียน Controller เพื่อให้ Widget ใช้งานได้
+    // สร้างและลงทะเบียน Controller
     final controller = Get.put(RiderHomeController(uid: uid, role: role));
 
     return Scaffold(
@@ -151,7 +170,6 @@ class RiderHomeScreen extends StatelessWidget {
   // Header ที่ใช้ Obx เพื่อแสดงข้อมูลจาก Controller แบบ Realtime
   Widget _buildHeader(BuildContext context, RiderHomeController controller) {
     return Obx(() {
-      // ดึงข้อมูล Rider จาก Controller
       final riderData = controller.rider.value;
       String riderName = riderData?.fullname ?? 'ไรเดอร์';
       String profileImageUrl =
@@ -179,7 +197,7 @@ class RiderHomeScreen extends StatelessWidget {
               ),
             ),
             GestureDetector(
-              onTap: () => _showProfileOptions(context),
+              onTap: () => _showProfileOptions(context, uid, role),
               child: CircleAvatar(
                 radius: 30,
                 backgroundImage: NetworkImage(profileImageUrl),
@@ -192,7 +210,6 @@ class RiderHomeScreen extends StatelessWidget {
     });
   }
 
-  // ส่วนหัวของรายการ "รายการงานที่รอการจัดส่ง"
   Widget _buildContentHeader() {
     return Container(
       width: double.infinity,
@@ -205,15 +222,10 @@ class RiderHomeScreen extends StatelessWidget {
           BoxShadow(color: Colors.black12, offset: Offset(0, 2), blurRadius: 4),
         ],
       ),
-      child: const Text(
-        'รายการงานที่รอการจัดส่ง',
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
+      child: const Text('รายการงานที่รอการจัดส่ง',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+              color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
     );
   }
 
@@ -230,11 +242,8 @@ class RiderHomeScreen extends StatelessWidget {
         }
         if (!snapshot.hasData || snapshot.data!.isEmpty) {
           return const Center(
-            child: Text(
-              'ไม่มีงานให้รับในขณะนี้',
-              style: TextStyle(fontSize: 16, color: Colors.grey),
-            ),
-          );
+              child: Text('ไม่มีงานให้รับในขณะนี้',
+                  style: TextStyle(fontSize: 16, color: Colors.grey)));
         }
 
         final orders = snapshot.data!;
@@ -261,7 +270,7 @@ class RiderHomeScreen extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(15.0),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
               width: 80,
@@ -272,8 +281,7 @@ class RiderHomeScreen extends StatelessWidget {
                 image: order.orderPicture != null
                     ? DecorationImage(
                         image: NetworkImage(order.orderPicture!),
-                        fit: BoxFit.cover,
-                      )
+                        fit: BoxFit.cover)
                     : null,
               ),
               child: order.orderPicture == null
@@ -286,16 +294,13 @@ class RiderHomeScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    order.orderDetails,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: Color(0xFFC70808),
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  Text(order.orderDetails,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Color(0xFFC70808)),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis),
                   const SizedBox(height: 5),
                   _buildPackageDetailRow(
                       Icons.store, 'ต้นทาง: ${order.pickupAddress.detail}'),
@@ -304,28 +309,23 @@ class RiderHomeScreen extends StatelessWidget {
                 ],
               ),
             ),
-            // ปุ่ม "รับงาน" ที่เรียกใช้ฟังก์ชันจาก Controller
-            Align(
-              alignment: Alignment.center,
-              child: TextButton(
-                onPressed: () => controller.acceptOrder(order),
-                style: TextButton.styleFrom(
-                  backgroundColor: const Color(0xFF38B000),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('รับงาน',
-                        style: TextStyle(color: Colors.white, fontSize: 14)),
-                    SizedBox(width: 4),
-                    Icon(Icons.arrow_forward_ios,
-                        size: 14, color: Colors.white),
-                  ],
-                ),
+            TextButton(
+              onPressed: () => controller.acceptOrder(order),
+              style: TextButton.styleFrom(
+                backgroundColor: const Color(0xFF38B000),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('รับงาน',
+                      style: TextStyle(color: Colors.white, fontSize: 14)),
+                  SizedBox(width: 4),
+                  Icon(Icons.arrow_forward_ios, size: 14, color: Colors.white),
+                ],
               ),
             ),
           ],
@@ -343,12 +343,9 @@ class RiderHomeScreen extends StatelessWidget {
           Icon(icon, size: 14, color: Colors.grey[600]),
           const SizedBox(width: 5),
           Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(fontSize: 14, color: Colors.black87),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
+              child: Text(text,
+                  style: const TextStyle(fontSize: 14, color: Colors.black87),
+                  overflow: TextOverflow.ellipsis)),
         ],
       ),
     );
@@ -359,11 +356,7 @@ class RiderHomeScreen extends StatelessWidget {
       decoration: const BoxDecoration(
         color: Color(0xFFC70808),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black12,
-            offset: Offset(0, -2),
-            blurRadius: 5,
-          ),
+          BoxShadow(color: Colors.black12, offset: Offset(0, -2), blurRadius: 5)
         ],
       ),
       child: BottomNavigationBar(
@@ -375,26 +368,21 @@ class RiderHomeScreen extends StatelessWidget {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'หน้าแรก'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.history),
-            label: 'ประวัติการส่งสินค้า',
-          ),
+              icon: Icon(Icons.history), label: 'ประวัติการส่ง'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.logout),
-            label: 'ออกจากระบบ',
-          ),
+              icon: Icon(Icons.logout), label: 'ออกจากระบบ'),
         ],
         currentIndex: 0,
         onTap: (index) {
           if (index == 2) {
-            Get.offAll(
-                () => const SpeedDerApp()); // ! แก้ชื่อหน้า Login/Index ของคุณ
+            Get.offAll(() => const SpeedDerApp());
           }
         },
       ),
     );
   }
 
-  void _showProfileOptions(BuildContext context) {
+  void _showProfileOptions(BuildContext context, String uid, int role) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -403,9 +391,7 @@ class RiderHomeScreen extends StatelessWidget {
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(20),
-              topRight: Radius.circular(20),
-            ),
+                topLeft: Radius.circular(20), topRight: Radius.circular(20)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -413,35 +399,21 @@ class RiderHomeScreen extends StatelessWidget {
               const Padding(
                 padding: EdgeInsets.only(top: 10),
                 child: Divider(
-                  indent: 150,
-                  endIndent: 150,
-                  thickness: 4,
-                  color: Colors.grey,
-                ),
+                    indent: 150,
+                    endIndent: 150,
+                    thickness: 4,
+                    color: Colors.grey),
               ),
               _buildOptionButton(
-                context,
-                'แก้ไขข้อมูลส่วนตัว',
-                Icons.person_outline,
-                () {
-                  Get.to(() => EditProfilePage(
-                        uid: uid,
-                        role: role,
-                      ));
-                },
-              ),
-              _buildOptionButton(
-                context,
-                'เปลี่ยนรหัสผ่าน',
-                Icons.lock_outline,
-                () {
-                  Navigator.pop(context);
-                  // TODO: Implement change password page navigation
-                },
-              ),
+                  context, 'แก้ไขข้อมูลส่วนตัว', Icons.person_outline, () {
+                Get.to(() => EditProfilePage(uid: uid, role: role));
+              }),
+              _buildOptionButton(context, 'เปลี่ยนรหัสผ่าน', Icons.lock_outline,
+                  () {
+                Navigator.pop(context);
+              }),
               _buildOptionButton(context, 'ออกจากระบบ', Icons.logout, () {
-                Get.offAll(() =>
-                    const SpeedDerApp()); // ! แก้ชื่อหน้า Login/Index ของคุณ
+                Get.offAll(() => const SpeedDerApp());
               }),
               const SizedBox(height: 20),
             ],
@@ -452,11 +424,7 @@ class RiderHomeScreen extends StatelessWidget {
   }
 
   Widget _buildOptionButton(
-    BuildContext context,
-    String title,
-    IconData icon,
-    VoidCallback onTap,
-  ) {
+      BuildContext context, String title, IconData icon, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
       child: Container(
@@ -465,10 +433,9 @@ class RiderHomeScreen extends StatelessWidget {
           children: [
             Icon(icon, size: 24, color: const Color(0xFFC70808)),
             const SizedBox(width: 15),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
-            ),
+            Text(title,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
           ],
         ),
       ),
