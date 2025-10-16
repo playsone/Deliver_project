@@ -27,25 +27,34 @@ Future<DocumentReference> createOrder({
   required AddressModel delivery,
 }) async {
   final ordersCollection = FirebaseFirestore.instance.collection('orders');
-  final now = Timestamp.now();
-  final initialStatus = StatusHistoryModel(status: 'pending', timestamp: now);
 
-  final newOrder = OrderModel(
-    id: '',
-    customerId: customerId,
-    riderId: null,
-    orderDetails: orderDetails,
-    orderPicture: orderPicture,
-    currentStatus: 'pending',
-    createdAt: now,
-    pickupDatetime: null,
-    deliveryDatetime: null,
-    pickupAddress: pickup,
-    deliveryAddress: delivery,
-    statusHistory: [initialStatus],
-  );
+  // 1. สร้างข้อมูลเป็น Map<String, dynamic> โดยตรง
+  //    แล้วใส่ FieldValue.serverTimestamp() ลงไปในนี้
+  final Map<String, dynamic> newOrderData = {
+    'customerId': customerId,
+    'riderId': null,
+    'orderDetails': orderDetails,
+    'orderPicture': orderPicture,
+    'currentStatus': 'pending',
+    'pickupAddress': pickup.toMap(), // เรียกใช้ .toMap() จาก model
+    'deliveryAddress': delivery.toMap(), // เรียกใช้ .toMap() จาก model
 
-  return await ordersCollection.add(newOrder.toMap());
+    // ⬇️ นี่คือส่วนสำคัญ ⬇️
+    'createdAt': FieldValue.serverTimestamp(), // ใช้ FieldValue ที่นี่
+    'statusHistory': [
+      {
+        'status': 'pending',
+        'timestamp': Timestamp.now(), // และใช้ที่นี่
+      }
+    ],
+
+    // field ที่ยังไม่มีค่า ให้ใส่เป็น null ไว้ก่อน
+    'pickup_datetime': null,
+    'delivery_datetime': null,
+  };
+
+  // 2. ใช้ .add() กับ Map ที่เราสร้างไว้ได้เลย
+  return await ordersCollection.add(newOrderData);
 }
 
 // ------------------------------------------------------------------
