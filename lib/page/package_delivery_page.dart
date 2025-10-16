@@ -1,17 +1,14 @@
 // package_delivery_page.dart
 
 import 'dart:async';
-import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/models/package_model.dart';
 import 'package:delivery_project/page/home_rider.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloudinary_public/cloudinary_public.dart';
-import 'package:latlong2/latlong.dart';
-import 'package:location/location.dart';
+// import 'package:latlong2/latlong.dart'; // ไม่ได้ใช้แล้ว จึงเอาออก
 
 // Enum เพื่อจัดการสถานะการจัดส่ง
 enum DeliveryStatus {
@@ -36,53 +33,20 @@ class PackageDeliveryPage extends StatefulWidget {
 }
 
 class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
-  final Location _location = Location();
-  StreamSubscription<LocationData>? _locationSubscription;
-  final MapController _mapController = MapController();
   String? _currentRiderId;
 
   @override
   void initState() {
     super.initState();
     _currentRiderId = widget.uid;
-    if (_currentRiderId != null) {
-      _startSendingLocation(_currentRiderId!);
-    }
   }
 
   @override
   void dispose() {
-    _locationSubscription?.cancel();
     super.dispose();
   }
 
-  void _startSendingLocation(String riderId) async {
-    bool serviceEnabled = await _location.serviceEnabled();
-    if (!serviceEnabled) {
-      serviceEnabled = await _location.requestService();
-      if (!serviceEnabled) return;
-    }
-
-    PermissionStatus permissionGranted = await _location.hasPermission();
-    if (permissionGranted == PermissionStatus.denied) {
-      permissionGranted = await _location.requestPermission();
-      if (permissionGranted != PermissionStatus.granted) return;
-    }
-
-    _location.changeSettings(interval: 10000, distanceFilter: 10);
-    _locationSubscription =
-        _location.onLocationChanged.listen((currentLocation) {
-      if (currentLocation.latitude != null &&
-          currentLocation.longitude != null) {
-        FirebaseFirestore.instance.collection('users').doc(riderId).update({
-          'gps':
-              GeoPoint(currentLocation.latitude!, currentLocation.longitude!),
-        });
-      }
-    });
-  }
-
-  // ฟังก์ชันกลาง: สำหรับถ่ายรูป, อัปโหลด, และอัปเดตสถานะ
+  // ฟังก์ชันกลาง: สำหรับถ่ายรูป, อัปโหลด, และอัปเดตสถานะ (โค้ดส่วนนี้สมบูรณ์แล้ว)
   Future<void> _captureAndUploadStatusImage({
     required String nextStatus,
     required String imageUrlField,
@@ -99,10 +63,8 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
 
       final cloudinary =
           CloudinaryPublic('dnutmbomv', 'delivery888', cache: false);
-      final response = await cloudinary.uploadFile(
-        CloudinaryFile.fromFile(pickedFile.path,
-            resourceType: CloudinaryResourceType.Image),
-      );
+      final response =
+          await cloudinary.uploadFile(CloudinaryFile.fromFile(pickedFile.path));
       final imageUrl = response.secureUrl;
 
       final orderRef = FirebaseFirestore.instance
@@ -126,28 +88,8 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
         Get.snackbar('เสร็จสิ้น', 'ดำเนินการจัดส่งเสร็จสมบูรณ์!');
       }
     } catch (e) {
-      Get.back();
-      Get.snackbar('เกิดข้อผิดพลาด', 'ไม่สามารถยืนยันการรับสินค้าได้: $e');
-    }
-  }
-
-  Future<void> _updateOrderStatus(String newStatus,
-      {bool isFinal = false}) async {
-    // **แก้ไข:** เปลี่ยนเป็น collection 'orders'
-    final orderRef =
-        FirebaseFirestore.instance.collection('orders').doc(widget.package.id);
-
-    await orderRef.update({
-      'currentStatus': newStatus,
-      //โตงนี้
-      'statusHistory': FieldValue.arrayUnion([
-        {'status': newStatus, 'timestamp': Timestamp.now()}
-      ]),
-    });
-
-    if (isFinal) {
-      Get.offAll(() => RiderHomeScreen(uid: widget.uid, role: widget.role));
-      Get.snackbar('เสร็จสิ้น', 'ดำเนินการจัดส่งเสร็จสมบูรณ์!');
+      if (Get.isDialogOpen ?? false) Get.back();
+      Get.snackbar('เกิดข้อผิดพลาด', 'ไม่สามารถอัปเดตสถานะได้: $e');
     }
   }
 
@@ -176,7 +118,7 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
             .collection('orders')
             .doc(widget.package.id)
             .get();
-        if (doc.exists && doc.data()!['currentStatus'] != 'delivered') {
+        if (doc.exists && doc.data()?['currentStatus'] != 'delivered') {
           Get.dialog(
             AlertDialog(
               title: const Text('ยังไม่สามารถย้อนกลับได้'),
@@ -212,7 +154,6 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
             final data = snapshot.data!.data() as Map<String, dynamic>;
             final currentDbStatus = data['currentStatus'] ?? 'accepted';
             final deliveryStatusEnum = _mapStatusToEnum(currentDbStatus);
-            final riderId = data['riderId'] as String?;
 
             return Column(
               children: [
@@ -222,15 +163,11 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
                     padding: const EdgeInsets.all(15.0),
                     child: Column(
                       children: [
-                        _buildMapSection(data, riderId),
+                        _buildEvidenceImage(data),
                         const SizedBox(height: 20),
                         _buildActionSection(deliveryStatusEnum),
                         const SizedBox(height: 20),
-                        _buildEvidenceImage(data), // แสดงรูปหลักฐาน
-                        const SizedBox(height: 20),
-                        if (riderId != null) _buildRiderInfoSection(riderId),
-                        const SizedBox(height: 20),
-                        _buildPackageInfoSection(data),
+                        _buildDeliveryInfoSection(data),
                       ],
                     ),
                   ),
@@ -239,13 +176,10 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
             );
           },
         ),
-        bottomNavigationBar: _buildBottomNavigationBar(context),
       ),
     );
   }
 
-  // (โค้ด UI Widgets ที่เหลือ)
-  // ...
   Widget _buildStatusTracker(Color primaryColor, DeliveryStatus currentStatus) {
     final List<Map<String, dynamic>> steps = [
       {
@@ -300,71 +234,6 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
             ],
           );
         }).toList(),
-      ),
-    );
-  }
-
-  Widget _buildMapSection(Map<String, dynamic> orderData, String? riderId) {
-    final GeoPoint destinationPoint = orderData['deliveryAddress']['gps'] ??
-        const GeoPoint(16.4746, 102.8247);
-    final destinationLatLng =
-        LatLng(destinationPoint.latitude, destinationPoint.longitude);
-    if (riderId == null) {
-      return Container(
-          height: 250, child: const Center(child: Text("รอข้อมูลไรเดอร์...")));
-    }
-    return Container(
-      height: 250,
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300, width: 2),
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(15),
-        child: StreamBuilder<DocumentSnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('users')
-              .doc(riderId)
-              .snapshots(),
-          builder: (context, riderSnapshot) {
-            LatLng riderLatLng = LatLng(16.4858, 102.8222); // Default position
-            if (riderSnapshot.hasData && riderSnapshot.data!.exists) {
-              final riderData =
-                  riderSnapshot.data!.data() as Map<String, dynamic>;
-              if (riderData.containsKey('gps') &&
-                  riderData['gps'] is GeoPoint) {
-                final geoPoint = riderData['gps'] as GeoPoint;
-                riderLatLng = LatLng(geoPoint.latitude, geoPoint.longitude);
-              }
-            }
-            return FlutterMap(
-              mapController: _mapController,
-              options: MapOptions(
-                initialCenter: riderLatLng,
-                initialZoom: 15.0,
-              ),
-              children: [
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                ),
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: destinationLatLng,
-                      child: const Icon(Icons.location_on,
-                          color: Colors.red, size: 40),
-                    ),
-                    Marker(
-                      point: riderLatLng,
-                      child: const Icon(Icons.two_wheeler,
-                          color: Colors.blue, size: 40),
-                    ),
-                  ],
-                ),
-              ],
-            );
-          },
-        ),
       ),
     );
   }
@@ -454,101 +323,121 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
     final pickedUpUrl = orderData['pickedUpImageUrl'] as String?;
     final deliveredUrl = orderData['deliveredImageUrl'] as String?;
 
+    if (pickedUpUrl == null && deliveredUrl == null) {
+      return const SizedBox.shrink();
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (pickedUpUrl != null || deliveredUrl != null)
-          const Text("รูปภาพหลักฐาน",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         if (pickedUpUrl != null)
-          _buildImageCard('รูปภาพตอนรับของ', pickedUpUrl),
+          _buildImageCard('สถานะ: กำลังจัดส่ง', pickedUpUrl),
         if (deliveredUrl != null)
-          _buildImageCard('รูปภาพตอนส่งของ', deliveredUrl),
+          _buildImageCard('สถานะ: จัดส่งสำเร็จ', deliveredUrl),
       ],
     );
   }
 
   Widget _buildImageCard(String title, String imageUrl) {
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                imageUrl,
-                height: 200,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                loadingBuilder: (context, child, progress) {
-                  return progress == null
-                      ? child
-                      : const Center(child: CircularProgressIndicator());
-                },
-              ),
-            ),
-          ],
+    return _buildInfoBox(title: title, children: [
+      ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.network(
+          imageUrl,
+          height: 200,
+          width: double.infinity,
+          fit: BoxFit.cover,
+          loadingBuilder: (context, child, progress) {
+            return progress == null
+                ? child
+                : const Center(child: CircularProgressIndicator());
+          },
         ),
       ),
-    );
+    ]);
   }
 
-  Widget _buildRiderInfoSection(String riderId) {
-    return StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('users')
-            .doc(riderId)
-            .snapshots(),
-        builder: (context, snapshot) {
-          String riderName = 'กำลังโหลด...';
-          String riderPhone = '...';
-          if (snapshot.hasData && snapshot.data!.exists) {
-            final data = snapshot.data!.data() as Map<String, dynamic>;
-            riderName = data['fullname'] ?? 'ไม่มีชื่อ';
-            riderPhone = data['phone'] ?? 'ไม่มีเบอร์โทร';
-          }
-          return _buildInfoBox(
-            title: 'ข้อมูลคนขับ',
-            children: [
-              _buildInfoRow(
-                icon: Icons.two_wheeler,
-                label: 'ชื่อ',
-                value: riderName,
-              ),
-              _buildInfoRow(
-                icon: Icons.phone,
-                label: 'โทร',
-                value: riderPhone,
-              ),
-            ],
-          );
-        });
-  }
+  // ✅✅✅ ส่วนที่แก้ไข: Widget สำหรับแสดงข้อมูลผู้รับ-ผู้ส่งแบบไดนามิก ✅✅✅
+  Widget _buildDeliveryInfoSection(Map<String, dynamic> orderData) {
+    final pickupAddress =
+        orderData['pickupAddress'] as Map<String, dynamic>? ?? {};
+    final deliveryAddress =
+        orderData['deliveryAddress'] as Map<String, dynamic>? ?? {};
+    final customerId = orderData['customerId'] as String?; // ID ของผู้ส่ง
 
-  Widget _buildPackageInfoSection(Map<String, dynamic> orderData) {
     return _buildInfoBox(
-      title: 'ข้อมูลสินค้า',
+      title: 'ข้อมูลการจัดส่ง',
       children: [
+        // --- ส่วนแสดงข้อมูลผู้ส่ง (ดึงจาก collection users) ---
         _buildInfoRow(
-          icon: Icons.inventory_2_outlined,
-          label: 'สินค้า',
-          value: orderData['orderDetails'] ?? 'N/A',
-        ),
-        _buildInfoRow(
-          icon: Icons.store,
+          icon: Icons.storefront,
           label: 'รับจาก',
-          value: orderData['pickupAddress']['detail'] ?? 'N/A',
+          value: pickupAddress['detail'] ?? 'N/A',
         ),
+        if (customerId != null)
+          StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('users')
+                .doc(customerId)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                // แสดงสถานะกำลังโหลดข้อมูลผู้ส่ง
+                return const Padding(
+                  padding: EdgeInsets.all(8.0),
+                  child: Center(child: LinearProgressIndicator()),
+                );
+              }
+              final senderData =
+                  snapshot.data?.data() as Map<String, dynamic>? ?? {};
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildInfoRow(
+                    icon: Icons.person,
+                    label: 'ผู้ส่ง',
+                    value: senderData['fullname'] ?? 'ไม่มีข้อมูล',
+                  ),
+                  _buildInfoRow(
+                    icon: Icons.phone,
+                    label: 'เบอร์ติดต่อ (ผู้ส่ง)',
+                    value: senderData['phone'] ?? 'ไม่มีข้อมูล',
+                  ),
+                ],
+              );
+            },
+          )
+        else
+          // กรณีไม่มี customerId
+          _buildInfoRow(
+              icon: Icons.person, label: 'ผู้ส่ง', value: 'ไม่มีข้อมูล'),
+
+        const Divider(height: 20),
+
+        // --- ส่วนแสดงข้อมูลผู้รับ (ดึงจาก order document) ---
         _buildInfoRow(
           icon: Icons.location_on,
           label: 'ส่งที่',
-          value: orderData['deliveryAddress']['detail'] ?? 'N/A',
+          value: deliveryAddress['detail'] ?? 'N/A',
+        ),
+        _buildInfoRow(
+          icon: Icons.person_pin,
+          label: 'ผู้รับ',
+          value: deliveryAddress['receiverName'] ?? 'N/A',
+        ),
+        _buildInfoRow(
+          icon: Icons.phone_android,
+          label: 'เบอร์ติดต่อ (ผู้รับ)',
+          value: deliveryAddress['receiverPhone'] ?? 'N/A',
+        ),
+
+        const Divider(height: 20),
+
+        // --- ส่วนแสดงข้อมูลสินค้า ---
+        _buildInfoRow(
+          icon: Icons.inventory_2_outlined,
+          label: 'รายละเอียดสินค้า',
+          value: orderData['orderDetails'] ?? 'N/A',
         ),
       ],
     );
@@ -557,6 +446,7 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
   Widget _buildInfoBox(
       {required String title, required List<Widget> children}) {
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -566,22 +456,15 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: const Color(0xFFC70808),
-              borderRadius: BorderRadius.circular(5),
-            ),
-            child: Text(
-              title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.black87,
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
             ),
           ),
-          const SizedBox(height: 15),
+          const Divider(height: 20),
           ...children,
         ],
       ),
@@ -595,52 +478,25 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 18, color: Colors.grey[700]),
-          const SizedBox(width: 10),
+          Icon(icon, size: 20, color: const Color(0xFFC70808)),
+          const SizedBox(width: 15),
           Expanded(
-            child: Text(
-              '$label: $value',
-              style: const TextStyle(fontSize: 15, color: Colors.black87),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: const TextStyle(fontSize: 16, color: Colors.black87),
+                ),
+              ],
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildBottomNavigationBar(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFFC70808),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black12,
-            offset: Offset(0, -2),
-            blurRadius: 5,
-          ),
-        ],
-      ),
-      child: BottomNavigationBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        selectedItemColor: Colors.white,
-        unselectedItemColor: Colors.white70,
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'หน้าแรก'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.history),
-            label: 'ประวัติการส่งสินค้า',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.logout),
-            label: 'ออกจากระบบ',
-          ),
-        ],
-        currentIndex: 0,
-        onTap: (index) {
-          // ไม่ควรให้กดออกจากหน้านี้โดยตรง
-        },
       ),
     );
   }

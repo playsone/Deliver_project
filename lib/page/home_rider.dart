@@ -15,6 +15,10 @@ import 'package:delivery_project/page/index.dart';
 import 'package:delivery_project/page/package_delivery_page.dart';
 
 // ------------------------------------------------------------------
+// **แก้ไข:** ย้าย Class Package ออกมาไว้ข้างนอกสุด
+// ------------------------------------------------------------------
+
+// ------------------------------------------------------------------
 // Controller (ส่วนจัดการ Logic ทั้งหมดของหน้า Home)
 // ------------------------------------------------------------------
 class RiderHomeController extends GetxController {
@@ -29,7 +33,6 @@ class RiderHomeController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-
     // 1. ตรวจสอบงานที่ค้างอยู่ก่อนเป็นอันดับแรก
     _checkAndNavigateToActiveOrder();
 
@@ -46,16 +49,14 @@ class RiderHomeController extends GetxController {
   // ฟังก์ชันใหม่สำหรับตรวจสอบและนำทางไปยังงานที่ Rider รับไว้
   Future<void> _checkAndNavigateToActiveOrder() async {
     try {
-      // ค้นหางานที่ riderId ตรงกับ uid ของเรา และสถานะยังไม่เสร็จสิ้น
       final querySnapshot = await db
           .collection('orders')
           .where('riderId', isEqualTo: uid)
           .where('currentStatus',
               whereIn: ['accepted', 'picked_up', 'in_transit'])
-          .limit(1) // เอามาแค่งานเดียว
+          .limit(1)
           .get();
 
-      // ถ้าเจองานที่ค้างอยู่
       if (querySnapshot.docs.isNotEmpty) {
         final activeOrderDoc = querySnapshot.docs.first;
         final orderModel = OrderModel.fromFirestore(activeOrderDoc);
