@@ -1,5 +1,7 @@
-import 'dart:async';
-import 'dart:io';
+// package_delivery_page.dart
+
+import 'dart.async';
+import 'dart.io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/models/package_model.dart';
 import 'package:delivery_project/page/home_rider.dart';
@@ -7,7 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:cloudinary_public/cloudinary_public.dart'; // **เพิ่ม:** import สำหรับ Cloudinary
+import 'package:cloudinary_public/cloudinary_public.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:location/location.dart';
 
@@ -85,7 +87,6 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
     });
   }
 
-  // **ส่วนที่แก้ไขหลัก: เปลี่ยนมาใช้ Cloudinary ในการอัปโหลดรูป**
   Future<void> _confirmAndPickupPackage() async {
     final picker = ImagePicker();
     try {
@@ -93,38 +94,28 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
         source: ImageSource.camera,
         maxWidth: 1024,
       );
-
       if (pickedFile == null) return;
 
       Get.dialog(const Center(child: CircularProgressIndicator()),
           barrierDismissible: false);
 
-      // 1. อัปโหลดรูปภาพไปยัง Cloudinary
-      final cloudinary = CloudinaryPublic(
-        'dnutmbomv', // << Cloud Name ของคุณ
-        'delivery888', // << Upload Preset ของคุณ
-        cache: false,
-      );
-
+      final cloudinary = CloudinaryPublic('dnutmbomv', 'delivery888', cache: false);
       final response = await cloudinary.uploadFile(
-        CloudinaryFile.fromFile(
-          pickedFile.path,
-          resourceType: CloudinaryResourceType.Image,
-        ),
+        CloudinaryFile.fromFile(pickedFile.path, resourceType: CloudinaryResourceType.Image),
       );
-
       final imageUrl = response.secureUrl;
 
-      // 2. อัปเดตสถานะใน Firestore
+      // **แก้ไข:** เปลี่ยนเป็น collection 'orders'
       final orderRef = FirebaseFirestore.instance
-          .collection('delivery_orders')
+          .collection('orders')
           .doc(widget.package.id);
 
       await orderRef.update({
         'currentStatus': 'picked_up',
-        'pickupImageUrl': imageUrl, // บันทึก URL รูปที่ถ่ายไว้
+        'pickupImageUrl': imageUrl,
         'statusHistory': FieldValue.arrayUnion([
-          {'status': 'picked_up', 'timestamp': FieldValue.serverTimestamp()}
+          // **แก้ไข:** เปลี่ยนเป็น Timestamp.now()
+          {'status': 'picked_up', 'timestamp': Timestamp.now()}
         ]),
       });
 
@@ -136,16 +127,17 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
     }
   }
 
-  Future<void> _updateOrderStatus(String newStatus,
-      {bool isFinal = false}) async {
+  Future<void> _updateOrderStatus(String newStatus, {bool isFinal = false}) async {
+    // **แก้ไข:** เปลี่ยนเป็น collection 'orders'
     final orderRef = FirebaseFirestore.instance
-        .collection('delivery_orders')
+        .collection('orders')
         .doc(widget.package.id);
 
     await orderRef.update({
       'currentStatus': newStatus,
       'statusHistory': FieldValue.arrayUnion([
-        {'status': newStatus, 'timestamp': FieldValue.serverTimestamp()}
+        // **แก้ไข:** เปลี่ยนเป็น Timestamp.now()
+        {'status': newStatus, 'timestamp': Timestamp.now()}
       ]),
     });
 
@@ -157,16 +149,11 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
 
   DeliveryStatus _mapStatusToEnum(String status) {
     switch (status) {
-      case 'accepted':
-        return DeliveryStatus.accepted;
-      case 'picked_up':
-        return DeliveryStatus.pickedUp;
-      case 'in_transit':
-        return DeliveryStatus.inTransit;
-      case 'delivered':
-        return DeliveryStatus.delivered;
-      default:
-        return DeliveryStatus.accepted;
+      case 'accepted': return DeliveryStatus.accepted;
+      case 'picked_up': return DeliveryStatus.pickedUp;
+      case 'in_transit': return DeliveryStatus.inTransit;
+      case 'delivered': return DeliveryStatus.delivered;
+      default: return DeliveryStatus.accepted;
     }
   }
 
@@ -176,8 +163,9 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
 
     return WillPopScope(
       onWillPop: () async {
+        // **แก้ไข:** เปลี่ยนเป็น collection 'orders'
         final doc = await FirebaseFirestore.instance
-            .collection('delivery_orders')
+            .collection('orders')
             .doc(widget.package.id)
             .get();
         if (doc.exists && doc.data()!['currentStatus'] != 'delivered') {
@@ -186,8 +174,7 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
               title: const Text('ยังไม่สามารถย้อนกลับได้'),
               content: const Text('กรุณาดำเนินการจัดส่งสินค้าให้เสร็จสิ้นก่อน'),
               actions: [
-                TextButton(
-                    onPressed: () => Get.back(), child: const Text('ตกลง'))
+                TextButton(onPressed: () => Get.back(), child: const Text('ตกลง'))
               ],
             ),
           );
@@ -204,8 +191,9 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
           automaticallyImplyLeading: false,
         ),
         body: StreamBuilder<DocumentSnapshot>(
+          // **แก้ไข:** เปลี่ยนเป็น collection 'orders'
           stream: FirebaseFirestore.instance
-              .collection('delivery_orders')
+              .collection('orders')
               .doc(widget.package.id)
               .snapshots(),
           builder: (context, snapshot) {
@@ -248,31 +236,13 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
 
   // (โค้ดส่วน UI ทั้งหมดตั้งแต่ _buildStatusTracker จนสุดไฟล์ สามารถใช้ของเดิมได้เลย)
   // ...
-  // UI Components
   Widget _buildStatusTracker(Color primaryColor, DeliveryStatus currentStatus) {
     final List<Map<String, dynamic>> steps = [
-      {
-        'icon': Icons.check_circle_outline,
-        'status': DeliveryStatus.accepted,
-        'label': 'รับงาน'
-      },
-      {
-        'icon': Icons.inventory_2,
-        'status': DeliveryStatus.pickedUp,
-        'label': 'รับของ'
-      },
-      {
-        'icon': Icons.local_shipping,
-        'status': DeliveryStatus.inTransit,
-        'label': 'จัดส่ง'
-      },
-      {
-        'icon': Icons.task_alt,
-        'status': DeliveryStatus.delivered,
-        'label': 'สำเร็จ'
-      },
+      {'icon': Icons.check_circle_outline, 'status': DeliveryStatus.accepted, 'label': 'รับงาน'},
+      {'icon': Icons.inventory_2, 'status': DeliveryStatus.pickedUp, 'label': 'รับของ'},
+      {'icon': Icons.local_shipping, 'status': DeliveryStatus.inTransit, 'label': 'จัดส่ง'},
+      {'icon': Icons.task_alt, 'status': DeliveryStatus.delivered, 'label': 'สำเร็จ'},
     ];
-
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 15),
       decoration: BoxDecoration(
@@ -313,12 +283,10 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
         const GeoPoint(16.4746, 102.8247);
     final destinationLatLng =
         LatLng(destinationPoint.latitude, destinationPoint.longitude);
-
     if (riderId == null) {
       return Container(
           height: 250, child: const Center(child: Text("รอข้อมูลไรเดอร์...")));
     }
-
     return Container(
       height: 250,
       decoration: BoxDecoration(
@@ -337,14 +305,12 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
             if (riderSnapshot.hasData && riderSnapshot.data!.exists) {
               final riderData =
                   riderSnapshot.data!.data() as Map<String, dynamic>;
-
               if (riderData.containsKey('gps') &&
                   riderData['gps'] is GeoPoint) {
                 final geoPoint = riderData['gps'] as GeoPoint;
                 riderLatLng = LatLng(geoPoint.latitude, geoPoint.longitude);
               }
             }
-
             return FlutterMap(
               mapController: _mapController,
               options: MapOptions(
@@ -396,11 +362,9 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
         ),
       );
     }
-
     String buttonText;
     VoidCallback onPressed;
     IconData? icon;
-
     switch (currentStatus) {
       case DeliveryStatus.accepted:
         buttonText = 'ถ่ายรูปเพื่อยืนยันการรับสินค้า';
@@ -421,7 +385,6 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
         buttonText = '...';
         onPressed = () {};
     }
-
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
@@ -451,13 +414,11 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
         builder: (context, snapshot) {
           String riderName = 'กำลังโหลด...';
           String riderPhone = '...';
-
           if (snapshot.hasData && snapshot.data!.exists) {
             final data = snapshot.data!.data() as Map<String, dynamic>;
             riderName = data['fullname'] ?? 'ไม่มีชื่อ';
             riderPhone = data['phone'] ?? 'ไม่มีเบอร์โทร';
           }
-
           return _buildInfoBox(
             title: 'ข้อมูลคนขับ',
             children: [
