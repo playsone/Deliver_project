@@ -293,7 +293,7 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
             children: [
               TileLayer(
                   urlTemplate:
-                      'https://tile.openstreetmap.org/{z}/{x}/{y}.png'),
+                      'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=cb153d15cb4e41f59e25cfda6468f1a0'),
               MarkerLayer(markers: [
                 Marker(
                     point: pickupLatLng,

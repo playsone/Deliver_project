@@ -139,8 +139,8 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
 
     await orderRef.update({
       'currentStatus': newStatus,
+      //โตงนี้
       'statusHistory': FieldValue.arrayUnion([
-        // **แก้ไข:** เปลี่ยนเป็น Timestamp.now()
         {'status': newStatus, 'timestamp': Timestamp.now()}
       ]),
     });
