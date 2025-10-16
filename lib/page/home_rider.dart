@@ -34,7 +34,7 @@ class RiderHomeController extends GetxController {
     // 2. จากนั้นค่อยเริ่มฟังข้อมูลของ Rider ตามปกติ
     rider.bindStream(
       db
-          .collection('riders')
+          .collection('users')
           .doc(uid)
           .snapshots()
           .map((doc) => doc.exists ? RiderModel.fromFirestore(doc) : null),
@@ -80,7 +80,6 @@ class RiderHomeController extends GetxController {
     return db
         .collection('orders')
         .where('currentStatus', isEqualTo: 'pending')
-        .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) =>
             snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList());
@@ -99,7 +98,7 @@ class RiderHomeController extends GetxController {
         'statusHistory': FieldValue.arrayUnion([
           {
             'status': 'accepted',
-            'timestamp': FieldValue.serverTimestamp(),
+            'timestamp': Timestamp.now(),
           }
         ]),
       });

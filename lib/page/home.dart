@@ -15,7 +15,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:delivery_project/page/edit_profile.dart';
 
 // ** 🚀 เพิ่ม Import สำหรับหน้าใหม่ทั้งหมด **
-import 'package:delivery_project/page/rider_info_page.dart'; // ข้อมูลไรเดอร์
+// import 'package:delivery_project/page/rider_info_page.dart'; // ข้อมูลไรเดอร์
 import 'package:delivery_project/page/package_pickup_page.dart'; // พัสดุที่ต้องรับ
 import 'package:delivery_project/page/order_status_page.dart'; // สถานะสินค้า
 import 'package:delivery_project/page/send_package_page.dart'; // ส่งสินค้า
@@ -258,10 +258,10 @@ class _HomeScreenState extends State<HomeScreen> {
           role: widget.role,
           uid: widget.uid,
         ));
-    final VoidCallback goToRiderInfo = () => Get.to(() => RiderInfoPage(
-          role: widget.role,
-          uid: widget.uid,
-        ));
+    // final VoidCallback goToRiderInfo = () => Get.to(() => RiderInfoPage(
+    //       role: widget.role,
+    //       uid: widget.uid,
+    //     ));
     final VoidCallback goToStatus = () => Get.to(() => OrderStatusPage(
           role: widget.role,
           uid: widget.uid,
@@ -284,11 +284,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 'assets/images/package_icon.png',
                 goToPickup,
               ),
-              _buildFeatureButton(
-                'ข้อมูลไรเดอร์',
-                'assets/images/rider_icon.png',
-                goToRiderInfo,
-              ),
+              // _buildFeatureButton(
+              //   'ข้อมูลไรเดอร์',
+              //   'assets/images/rider_icon.png',
+              //   // goToRiderInfo,
+              // ),
             ],
           ),
           const SizedBox(height: 15),
