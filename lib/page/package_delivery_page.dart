@@ -45,7 +45,7 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
     super.dispose();
   }
 
-  // ฟังก์ชันกลาง: สำหรับถ่ายรูป, อัปโหลด, และอัปเดตสถานะ (โค้ดส่วนนี้สมบูรณ์แล้ว)
+  // ฟังก์ชันกลาง: สำหรับถ่ายรูป, อัปโหลด, และอัปเดตสถานะ
   Future<void> _captureAndUploadStatusImage({
     required String nextStatus,
     required String imageUrlField,
@@ -70,6 +70,7 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
           .collection('orders')
           .doc(widget.package.id);
 
+      // คำสั่งนี้จะสร้างฟิลด์ใหม่ให้เองถ้ายังไม่มี
       await orderRef.update({
         'currentStatus': nextStatus,
         imageUrlField: imageUrl,
@@ -220,7 +221,6 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
     );
   }
 
-  // ✅✅✅ ส่วนที่ 1: แก้ไขตรรกะของปุ่ม "เริ่มนำส่ง" ✅✅✅
   Widget _buildActionSection(DeliveryStatus currentStatus) {
     if (currentStatus == DeliveryStatus.delivered) {
       return Container(
@@ -253,8 +253,7 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
             );
         break;
       case DeliveryStatus.pickedUp:
-        // เปลี่ยนจากอัปเดตสถานะตรงๆ เป็นการเรียกฟังก์ชันถ่ายรูป
-        buttonText = 'ถ่ายรูปเพื่อเริ่มนำส่ง'; // เปลี่ยนข้อความปุ่ม
+        buttonText = 'ถ่ายรูปเพื่อเริ่มนำส่ง';
         icon = Icons.local_shipping;
         onPressed = () => _captureAndUploadStatusImage(
               nextStatus: 'in_transit',
@@ -295,14 +294,11 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
     );
   }
 
-  // ✅✅✅ ส่วนที่ 2: แก้ไขการแสดงผลรูปภาพ ✅✅✅
   Widget _buildEvidenceImage(Map<String, dynamic> orderData) {
     final pickedUpUrl = orderData['pickedUpImageUrl'] as String?;
-    final inTransitUrl =
-        orderData['inTransitImageUrl'] as String?; // ดึง URL ใหม่
+    final inTransitUrl = orderData['inTransitImageUrl'] as String?;
     final deliveredUrl = orderData['deliveredImageUrl'] as String?;
 
-    // ถ้าไม่มีรูปภาพใดๆ เลย ก็ไม่ต้องแสดง Widget นี้
     if (pickedUpUrl == null && inTransitUrl == null && deliveredUrl == null) {
       return const SizedBox.shrink();
     }
@@ -313,7 +309,7 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
         if (pickedUpUrl != null)
           _buildImageCard('รูปภาพตอนรับของ', pickedUpUrl),
         if (inTransitUrl != null)
-          _buildImageCard('รูปภาพตอนเริ่มนำส่ง', inTransitUrl), // แสดงรูปใหม่
+          _buildImageCard('รูปภาพตอนเริ่มนำส่ง', inTransitUrl),
         if (deliveredUrl != null)
           _buildImageCard('รูปภาพตอนจัดส่งสำเร็จ', deliveredUrl),
       ],
@@ -330,9 +326,26 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
           width: double.infinity,
           fit: BoxFit.cover,
           loadingBuilder: (context, child, progress) {
-            return progress == null
-                ? child
-                : const Center(child: CircularProgressIndicator());
+            if (progress == null) return child;
+            return const SizedBox(
+              height: 200,
+              child: Center(child: CircularProgressIndicator()),
+            );
+          },
+          errorBuilder: (context, error, stackTrace) {
+            return const SizedBox(
+              height: 200,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.error_outline, color: Colors.red, size: 50),
+                    SizedBox(height: 8),
+                    Text('ไม่สามารถโหลดรูปภาพได้'),
+                  ],
+                ),
+              ),
+            );
           },
         ),
       ),
@@ -363,7 +376,7 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
             builder: (context, snapshot) {
               if (!snapshot.hasData) {
                 return const Padding(
-                  padding: EdgeInsets.all(8.0),
+                  padding: EdgeInsets.symmetric(vertical: 8.0),
                   child: Center(child: LinearProgressIndicator()),
                 );
               }
