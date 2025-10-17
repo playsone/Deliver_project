@@ -75,7 +75,11 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
         'currentStatus': nextStatus,
         imageUrlField: imageUrl,
         'statusHistory': FieldValue.arrayUnion([
-          {'status': nextStatus, 'timestamp': Timestamp.now()}
+          {
+            'imgOfStatus': imageUrl,
+            'status': nextStatus,
+            'timestamp': Timestamp.now()
+          }
         ]),
       });
 
