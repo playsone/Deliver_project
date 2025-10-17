@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloudinary_public/cloudinary_public.dart';
-// import 'package:latlong2/latlong.dart'; // ไม่ได้ใช้แล้ว จึงเอาออก
 
 // Enum เพื่อจัดการสถานะการจัดส่ง
 enum DeliveryStatus {
@@ -163,9 +162,9 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
                     padding: const EdgeInsets.all(15.0),
                     child: Column(
                       children: [
-                        _buildEvidenceImage(data),
-                        const SizedBox(height: 20),
                         _buildActionSection(deliveryStatusEnum),
+                        const SizedBox(height: 20),
+                        _buildEvidenceImage(data),
                         const SizedBox(height: 20),
                         _buildDeliveryInfoSection(data),
                       ],
@@ -182,26 +181,10 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
 
   Widget _buildStatusTracker(Color primaryColor, DeliveryStatus currentStatus) {
     final List<Map<String, dynamic>> steps = [
-      {
-        'icon': Icons.check_circle_outline,
-        'status': DeliveryStatus.accepted,
-        'label': 'รับงาน'
-      },
-      {
-        'icon': Icons.inventory_2,
-        'status': DeliveryStatus.pickedUp,
-        'label': 'รับของ'
-      },
-      {
-        'icon': Icons.local_shipping,
-        'status': DeliveryStatus.inTransit,
-        'label': 'จัดส่ง'
-      },
-      {
-        'icon': Icons.task_alt,
-        'status': DeliveryStatus.delivered,
-        'label': 'สำเร็จ'
-      },
+      {'icon': Icons.check_circle_outline, 'label': 'รับงาน'},
+      {'icon': Icons.inventory_2, 'label': 'รับของ'},
+      {'icon': Icons.local_shipping, 'label': 'จัดส่ง'},
+      {'icon': Icons.task_alt, 'label': 'สำเร็จ'},
     ];
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 15),
@@ -214,30 +197,30 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: steps.map((step) {
-          bool isActive =
-              currentStatus.index >= (step['status'] as DeliveryStatus).index;
+        children: List.generate(steps.length, (index) {
+          bool isActive = currentStatus.index >= index;
           return Column(
             children: [
               Icon(
-                step['icon'] as IconData,
+                steps[index]['icon'] as IconData,
                 color: isActive ? Colors.white : Colors.white54,
                 size: 30,
               ),
               const SizedBox(height: 4),
               Text(
-                step['label'],
+                steps[index]['label'],
                 style: TextStyle(
                     color: isActive ? Colors.white : Colors.white54,
                     fontSize: 12),
               ),
             ],
           );
-        }).toList(),
+        }),
       ),
     );
   }
 
+  // ✅✅✅ ส่วนที่ 1: แก้ไขตรรกะของปุ่ม "เริ่มนำส่ง" ✅✅✅
   Widget _buildActionSection(DeliveryStatus currentStatus) {
     if (currentStatus == DeliveryStatus.delivered) {
       return Container(
@@ -270,20 +253,13 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
             );
         break;
       case DeliveryStatus.pickedUp:
-        buttonText = 'เริ่มนำส่ง';
+        // เปลี่ยนจากอัปเดตสถานะตรงๆ เป็นการเรียกฟังก์ชันถ่ายรูป
+        buttonText = 'ถ่ายรูปเพื่อเริ่มนำส่ง'; // เปลี่ยนข้อความปุ่ม
         icon = Icons.local_shipping;
-        onPressed = () async {
-          final orderRef = FirebaseFirestore.instance
-              .collection('orders')
-              .doc(widget.package.id);
-          await orderRef.update({
-            'currentStatus': 'in_transit',
-            'statusHistory': FieldValue.arrayUnion([
-              {'status': 'in_transit', 'timestamp': Timestamp.now()}
-            ]),
-          });
-          Get.snackbar('อัปเดต', 'เริ่มนำส่งสินค้าแล้ว');
-        };
+        onPressed = () => _captureAndUploadStatusImage(
+              nextStatus: 'in_transit',
+              imageUrlField: 'inTransitImageUrl', // บันทึกลงฟิลด์ใหม่
+            );
         break;
       case DeliveryStatus.inTransit:
         buttonText = 'ถ่ายรูปยืนยันการส่งสำเร็จ';
@@ -319,11 +295,15 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
     );
   }
 
+  // ✅✅✅ ส่วนที่ 2: แก้ไขการแสดงผลรูปภาพ ✅✅✅
   Widget _buildEvidenceImage(Map<String, dynamic> orderData) {
     final pickedUpUrl = orderData['pickedUpImageUrl'] as String?;
+    final inTransitUrl =
+        orderData['inTransitImageUrl'] as String?; // ดึง URL ใหม่
     final deliveredUrl = orderData['deliveredImageUrl'] as String?;
 
-    if (pickedUpUrl == null && deliveredUrl == null) {
+    // ถ้าไม่มีรูปภาพใดๆ เลย ก็ไม่ต้องแสดง Widget นี้
+    if (pickedUpUrl == null && inTransitUrl == null && deliveredUrl == null) {
       return const SizedBox.shrink();
     }
 
@@ -331,9 +311,11 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (pickedUpUrl != null)
-          _buildImageCard('สถานะ: กำลังจัดส่ง', pickedUpUrl),
+          _buildImageCard('รูปภาพตอนรับของ', pickedUpUrl),
+        if (inTransitUrl != null)
+          _buildImageCard('รูปภาพตอนเริ่มนำส่ง', inTransitUrl), // แสดงรูปใหม่
         if (deliveredUrl != null)
-          _buildImageCard('สถานะ: จัดส่งสำเร็จ', deliveredUrl),
+          _buildImageCard('รูปภาพตอนจัดส่งสำเร็จ', deliveredUrl),
       ],
     );
   }
@@ -357,18 +339,16 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
     ]);
   }
 
-  // ✅✅✅ ส่วนที่แก้ไข: Widget สำหรับแสดงข้อมูลผู้รับ-ผู้ส่งแบบไดนามิก ✅✅✅
   Widget _buildDeliveryInfoSection(Map<String, dynamic> orderData) {
     final pickupAddress =
         orderData['pickupAddress'] as Map<String, dynamic>? ?? {};
     final deliveryAddress =
         orderData['deliveryAddress'] as Map<String, dynamic>? ?? {};
-    final customerId = orderData['customerId'] as String?; // ID ของผู้ส่ง
+    final customerId = orderData['customerId'] as String?;
 
     return _buildInfoBox(
       title: 'ข้อมูลการจัดส่ง',
       children: [
-        // --- ส่วนแสดงข้อมูลผู้ส่ง (ดึงจาก collection users) ---
         _buildInfoRow(
           icon: Icons.storefront,
           label: 'รับจาก',
@@ -382,7 +362,6 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
                 .snapshots(),
             builder: (context, snapshot) {
               if (!snapshot.hasData) {
-                // แสดงสถานะกำลังโหลดข้อมูลผู้ส่ง
                 return const Padding(
                   padding: EdgeInsets.all(8.0),
                   child: Center(child: LinearProgressIndicator()),
@@ -408,13 +387,9 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
             },
           )
         else
-          // กรณีไม่มี customerId
           _buildInfoRow(
               icon: Icons.person, label: 'ผู้ส่ง', value: 'ไม่มีข้อมูล'),
-
         const Divider(height: 20),
-
-        // --- ส่วนแสดงข้อมูลผู้รับ (ดึงจาก order document) ---
         _buildInfoRow(
           icon: Icons.location_on,
           label: 'ส่งที่',
@@ -430,10 +405,7 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
           label: 'เบอร์ติดต่อ (ผู้รับ)',
           value: deliveryAddress['receiverPhone'] ?? 'N/A',
         ),
-
         const Divider(height: 20),
-
-        // --- ส่วนแสดงข้อมูลสินค้า ---
         _buildInfoRow(
           icon: Icons.inventory_2_outlined,
           label: 'รายละเอียดสินค้า',
