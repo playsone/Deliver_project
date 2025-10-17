@@ -3,7 +3,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-// import 'package:delivery_project/page/order_status_page.dart'; // อาจต้อง Import หน้ารายละเอียดสถานะหากมี
+// ต้องแน่ใจว่าคุณมีไฟล์นี้:
+import 'package:delivery_project/page/order_status_page.dart';
 
 // Constants (อ้างอิงจากธีมหลัก)
 const Color _primaryColor = Color(0xFFC70808);
@@ -21,6 +22,9 @@ class PackageModel {
   final String? riderId;
   final String orderDetails;
   final String? deliveredImageUrl;
+  // NEW: เพิ่มข้อมูลผู้ส่ง/ไรเดอร์เข้ามาใน Model สำหรับการกรอง Client-side
+  UserInfo? senderInfo;
+  UserInfo? riderInfo;
 
   PackageModel({
     required this.id,
@@ -31,6 +35,8 @@ class PackageModel {
     this.riderId,
     required this.orderDetails,
     this.deliveredImageUrl,
+    this.senderInfo,
+    this.riderInfo,
   });
 
   factory PackageModel.fromFirestore(DocumentSnapshot doc) {
@@ -70,13 +76,23 @@ class PackageModel {
 }
 
 // ------------------------------------------------------------------
+// User Info Model (สำหรับดึงชื่อและเบอร์โทร)
+// ------------------------------------------------------------------
+class UserInfo {
+  final String name;
+  final String phone;
+  UserInfo(this.name, this.phone);
+}
+
+// ------------------------------------------------------------------
 // Controller (สำหรับการจัดการข้อมูลและการค้นหา)
 // ------------------------------------------------------------------
 class PackagePickupController extends GetxController {
   final String uid;
   final RxString userPhone = ''.obs;
   final TextEditingController searchController = TextEditingController();
-  final RxString searchText = ''.obs; // NEW: ตัวแปรเก็บคำค้นหาที่ใช้จริง
+  final RxString searchText = ''.obs;
+  final RxBool isSearching = false.obs; // สถานะการโหลดค้นหา
 
   PackagePickupController(this.uid);
 
@@ -105,10 +121,13 @@ class PackagePickupController extends GetxController {
     }
   }
 
-  // NEW: ฟังก์ชันที่ถูกเรียกเมื่อกดปุ่มค้นหา
-  void performSearch() {
+  // ฟังก์ชันที่ถูกเรียกเมื่อกดปุ่มค้นหา
+  Future<void> performSearch() async {
+    isSearching.value = true;
+    // ใช้ delay สั้นๆ เพื่อให้ UI มีเวลาแสดงสถานะกำลังโหลด
+    await Future.delayed(const Duration(milliseconds: 100));
     searchText.value = searchController.text.trim();
-    // เมื่อ searchText เปลี่ยน StreamBuilder จะทำงานเอง
+    isSearching.value = false;
   }
 
   // 1. ฟังก์ชัน Stream สำหรับดึงพัสดุที่ถูกส่งมายังผู้ใช้คนนี้ (ผ่านเบอร์โทร)
@@ -117,34 +136,29 @@ class PackagePickupController extends GetxController {
       return Stream.empty();
     }
 
-    // ค้นหาพัสดุทั้งหมดที่มี receiverPhone ตรงกับเบอร์โทรศัพท์ของผู้ใช้
     final baseQuery = FirebaseFirestore.instance
         .collection('orders')
         .where('deliveryAddress.receiverPhone', isEqualTo: userPhone.value)
         .orderBy('createdAt', descending: true);
 
-    // !!! ข้อจำกัด: Firestore ไม่รองรับการค้นหาแบบ 'contains' หรือ 'startswith'
-    // ในหลาย Field พร้อมกันโดยไม่มี Index ที่ซับซ้อน หรือการค้นหาแบบ Full-text search
-    // ดังนั้นโค้ดนี้จะดึงข้อมูลทั้งหมดแล้วมา Filter ใน Flutter (Client-side)
-    // หรือใช้แค่ Base Query และ Filter Client-side เพื่อการใช้งานที่ง่ายขึ้น
-
     return baseQuery.snapshots();
   }
 
-  // 2. ฟังก์ชันสำหรับดึงชื่อผู้ใช้ (ผู้ส่ง/ไรเดอร์) จาก UID (เหมือนเดิม)
-  Future<String> getUserName(String userId, String defaultName) async {
-    if (userId.isEmpty) return defaultName;
+  // 2. ฟังก์ชันสำหรับดึงชื่อและเบอร์โทรผู้ใช้ (ผู้ส่ง/ไรเดอร์) จาก UID
+  Future<UserInfo> getUserInfo(String? userId, String defaultName) async {
+    if (userId == null || userId.isEmpty) return UserInfo(defaultName, '-');
     try {
       final doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(userId)
           .get();
       if (doc.exists) {
-        return doc.data()?['fullname'] ?? defaultName;
+        return UserInfo(doc.data()?['fullname'] ?? defaultName,
+            doc.data()?['phone'] ?? '-');
       }
-      return defaultName;
+      return UserInfo(defaultName, '-');
     } catch (e) {
-      return defaultName;
+      return UserInfo(defaultName, '-');
     }
   }
 
@@ -204,16 +218,24 @@ class PackagePickupPage extends StatelessWidget {
                 [
                   _buildSearchBar(controller), // Pass controller
                   const SizedBox(height: 20),
-                  // ใช้ Obx เพื่อรอให้ userPhone ถูกโหลดก่อน และรอคำค้นหา
+                  // ใช้ Obx เพื่อรอให้ userPhone ถูกโหลดก่อน และจัดการสถานะค้นหา
                   Obx(() {
-                    if (controller.userPhone.value.isEmpty) {
+                    // ตรวจสอบสถานะโหลด: 1. กำลังดึงเบอร์โทรผู้ใช้, 2. กำลังทำการค้นหา
+                    if (controller.userPhone.value.isEmpty ||
+                        controller.isSearching.value) {
                       return const Center(
                           child: Padding(
                         padding: EdgeInsets.only(top: 50),
-                        child: CircularProgressIndicator(color: _primaryColor),
+                        child: Column(
+                          children: [
+                            CircularProgressIndicator(color: _primaryColor),
+                            SizedBox(height: 10),
+                            Text('กำลังโหลดข้อมูล...')
+                          ],
+                        ),
                       ));
                     }
-                    // เรียกใช้ StreamBuilder ภายใน Obx
+                    // เรียกใช้ StreamBuilder
                     return _buildPackagesList(controller);
                   }),
                 ],
@@ -257,92 +279,30 @@ class PackagePickupPage extends StatelessWidget {
             .toList();
         final filterText = controller.searchText.value.toLowerCase();
 
-        // **Client-side Filtering Logic**
-        final filteredPackages = allPackages.where((package) {
-          if (filterText.isEmpty) return true;
-
-          // Check Order Details (ชื่อสินค้า)
-          if (package.orderDetails.toLowerCase().contains(filterText))
-            return true;
-
-          // Check Package ID (หมายเลขพัสดุ)
-          if (package.id.toLowerCase().contains(filterText)) return true;
-
-          // Note: ค้นหาเบอร์โทรผู้ส่งทำได้ยากกว่า เพราะต้องดึงเบอร์โทรของผู้ส่ง (customerId) จาก Collection 'users'
-          // และนำมาเปรียบเทียบทีละรายการ ซึ่งทำได้แต่ช้า/ซับซ้อน
-          // สำหรับโค้ดนี้จะค้นหาแค่ ชื่อสินค้าและรหัสพัสดุ
-
-          return false;
-        }).toList();
-
-        if (filteredPackages.isEmpty) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.only(top: 50.0),
-              child: Text(
-                'ไม่พบรายการพัสดุที่ตรงกับคำค้นหา',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-              ),
-            ),
+        // ถ้ามีคำค้นหา จะต้องทำการดึงข้อมูลผู้ส่ง/ไรเดอร์ล่วงหน้าเพื่อใช้ในการกรอง
+        if (filterText.isNotEmpty) {
+          return FutureBuilder<List<PackageModel>>(
+            future: _fetchNamesAndFilter(controller, allPackages, filterText),
+            builder: (context, filterSnapshot) {
+              if (filterSnapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                    child: CircularProgressIndicator(color: Colors.orange));
+              }
+              final filteredPackages = filterSnapshot.data ?? [];
+              return _buildFilteredPackageList(controller, filteredPackages);
+            },
           );
         }
 
+        // หากไม่มีคำค้นหา: แสดงรายการทั้งหมด และใช้ FutureBuilder ภายในรายการเพื่อดึงชื่อ/เบอร์โทร
         return Column(
-          children: filteredPackages.map((package) {
-            String statusText;
-            Color statusColor;
-            bool showConfirmButton = false;
-
-            switch (package.currentStatus) {
-              case 'pending':
-                statusText = 'รอไรเดอร์รับงาน';
-                statusColor = Colors.blueGrey;
-                break;
-              case 'assigned':
-                statusText = 'ไรเดอร์รับงานแล้ว';
-                statusColor = Colors.orange;
-                break;
-              case 'picked_up':
-                statusText = 'รับพัสดุแล้ว';
-                statusColor = Colors.amber.shade800;
-                break;
-              case 'in_transit':
-                statusText = 'กำลังนำส่ง';
-                statusColor = Colors.amber.shade800;
-                break;
-              case 'delivered':
-                statusText = 'จัดส่งสำเร็จ';
-                statusColor = Colors.green;
-                showConfirmButton = true; // แสดงปุ่มให้ผู้รับยืนยัน
-                break;
-              case 'completed':
-                statusText =
-                    'ได้รับสินค้าแล้ว ✔️'; // สถานะสุดท้ายที่ผู้รับต้องการเห็น
-                statusColor = Colors.teal;
-                break;
-              default:
-                statusText = 'สถานะไม่ทราบ';
-                statusColor = Colors.grey;
-            }
-
+          children: allPackages.map((package) {
             return FutureBuilder<Map<String, String>>(
               future:
                   _fetchNames(controller, package.customerId, package.riderId),
               builder: (context, nameSnapshot) {
-                String senderName =
-                    nameSnapshot.data?['sender'] ?? 'กำลังโหลด...';
-                String riderName =
-                    nameSnapshot.data?['rider'] ?? 'ยังไม่มีไรเดอร์';
-
-                return _buildPackageItem(
-                  package,
-                  statusText,
-                  statusColor,
-                  showConfirmButton,
-                  senderName,
-                  riderName,
-                  controller.confirmPackageReception,
-                );
+                return _buildPackageItemFromFuture(
+                    package, nameSnapshot, controller);
               },
             );
           }).toList(),
@@ -351,14 +311,172 @@ class PackagePickupPage extends StatelessWidget {
     );
   }
 
-  // ดึงชื่อผู้ส่งและไรเดอร์พร้อมกัน
+  /// **NEW: ฟังก์ชันที่ขาดหายไป**
+  /// ดึงชื่อผู้ส่งและไรเดอร์พร้อมกัน
   Future<Map<String, String>> _fetchNames(PackagePickupController controller,
       String customerId, String? riderId) async {
-    final senderName = await controller.getUserName(customerId, 'ผู้ส่ง');
-    final riderName = riderId != null
-        ? await controller.getUserName(riderId, 'ไรเดอร์')
-        : 'ยังไม่มีไรเดอร์';
-    return {'sender': senderName, 'rider': riderName};
+    final senderInfo = await controller.getUserInfo(customerId, 'ผู้ส่ง');
+    final riderInfo = riderId != null
+        ? await controller.getUserInfo(riderId, 'ไรเดอร์')
+        : UserInfo('ยังไม่มีไรเดอร์', '-');
+
+    return {
+      // ใช้ '|' เป็นตัวคั่นเพื่อให้สามารถแยกชื่อและเบอร์โทรใน UI ได้
+      'sender': '${senderInfo.name}|${senderInfo.phone}',
+      'rider': '${riderInfo.name}|${riderInfo.phone}',
+    };
+  }
+
+  // NEW: ฟังก์ชันที่ใช้ดึงชื่อผู้ส่ง/ไรเดอร์ และกรองข้อมูล
+  Future<List<PackageModel>> _fetchNamesAndFilter(
+      PackagePickupController controller,
+      List<PackageModel> allPackages,
+      String filterText) async {
+    final filteredList = <PackageModel>[];
+    final lowerCaseFilter = filterText.toLowerCase();
+
+    for (var package in allPackages) {
+      // ดึงข้อมูลผู้ส่ง/ไรเดอร์
+      final senderInfo =
+          await controller.getUserInfo(package.customerId, 'ผู้ส่ง');
+      final riderInfo = package.riderId != null
+          ? await controller.getUserInfo(package.riderId, 'ไรเดอร์')
+          : UserInfo('ยังไม่มีไรเดอร์', '-');
+
+      // ตรวจสอบเงื่อนไขการค้นหา
+      bool matches = false;
+
+      // 1. ตรวจสอบรหัสพัสดุ
+      if (package.id.toLowerCase().contains(lowerCaseFilter)) matches = true;
+
+      // 2. ตรวจสอบชื่อ/เบอร์โทรผู้ส่ง
+      if (senderInfo.name.toLowerCase().contains(lowerCaseFilter) ||
+          senderInfo.phone.contains(lowerCaseFilter)) matches = true;
+
+      // 3. ตรวจสอบชื่อ/เบอร์โทรไรเดอร์
+      if (riderInfo.name.toLowerCase().contains(lowerCaseFilter) ||
+          riderInfo.phone.contains(lowerCaseFilter)) matches = true;
+
+      // 4. ตรวจสอบรายละเอียดสินค้า
+      if (package.orderDetails.toLowerCase().contains(lowerCaseFilter))
+        matches = true;
+
+      if (matches) {
+        // อัปเดต Model ด้วยข้อมูลผู้ส่ง/ไรเดอร์ที่เพิ่งดึงมา เพื่อให้ UI ใช้ได้ทันที
+        package.senderInfo = senderInfo;
+        package.riderInfo = riderInfo;
+        filteredList.add(package);
+      }
+    }
+    return filteredList;
+  }
+
+  // NEW: ฟังก์ชันที่สร้างรายการเมื่อมีการค้นหา
+  Widget _buildFilteredPackageList(
+      PackagePickupController controller, List<PackageModel> filteredPackages) {
+    if (filteredPackages.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.only(top: 50.0),
+          child: Text(
+            'ไม่พบรายการพัสดุที่ตรงกับคำค้นหา',
+            style: TextStyle(fontSize: 16, color: Colors.grey),
+          ),
+        ),
+      );
+    }
+    return Column(
+      children: filteredPackages.map((package) {
+        // ใช้ข้อมูลที่ถูกตั้งค่าไว้ใน _fetchNamesAndFilter แล้ว
+        final senderInfo = package.senderInfo!;
+        final riderInfo = package.riderInfo!;
+        return _buildPackageItem(
+          package,
+          _getStatusText(package.currentStatus),
+          _getStatusColor(package.currentStatus),
+          package.currentStatus == 'delivered',
+          senderInfo.name,
+          senderInfo.phone,
+          riderInfo.name,
+          riderInfo.phone,
+          controller.confirmPackageReception,
+          uid,
+          role,
+        );
+      }).toList(),
+    );
+  }
+
+  // NEW: ฟังก์ชันย่อยสำหรับสร้าง Item (กรณีไม่มีการค้นหา)
+  Widget _buildPackageItemFromFuture(
+    PackageModel package,
+    AsyncSnapshot<Map<String, String>> nameSnapshot,
+    PackagePickupController controller,
+  ) {
+    if (nameSnapshot.connectionState == ConnectionState.waiting) {
+      // แสดงสถานะโหลดเฉพาะรายการเดียว
+      return const Center(
+          child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 10),
+              child: LinearProgressIndicator()));
+    }
+
+    String senderInfo = nameSnapshot.data?['sender'] ?? 'กำลังโหลด...';
+    String riderInfo = nameSnapshot.data?['rider'] ?? 'กำลังโหลด...';
+
+    final senderParts = senderInfo.split('|');
+    final riderParts = riderInfo.split('|');
+
+    return _buildPackageItem(
+      package,
+      _getStatusText(package.currentStatus),
+      _getStatusColor(package.currentStatus),
+      package.currentStatus == 'delivered',
+      senderParts[0],
+      senderParts.length > 1 ? senderParts[1] : '-',
+      riderParts[0],
+      riderParts.length > 1 ? riderParts[1] : '-',
+      controller.confirmPackageReception,
+      uid,
+      role,
+    );
+  }
+
+  // NEW: Helper สำหรับดึง Status Text
+  String _getStatusText(String status) {
+    switch (status) {
+      case 'pending':
+        return 'รอไรเดอร์รับงาน';
+      case 'assigned':
+        return 'ไรเดอร์รับงานแล้ว';
+      case 'picked_up':
+        return 'รับพัสดุแล้ว';
+      case 'in_transit':
+        return 'กำลังนำส่ง';
+      case 'delivered':
+        return 'จัดส่งสำเร็จ';
+      case 'completed':
+        return 'ได้รับสินค้าแล้ว ✔️';
+      default:
+        return 'สถานะไม่ทราบ';
+    }
+  }
+
+  // NEW: Helper สำหรับดึง Status Color
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'pending':
+      case 'assigned':
+        return Colors.orange;
+      case 'picked_up':
+      case 'in_transit':
+        return Colors.amber.shade800;
+      case 'delivered':
+      case 'completed':
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
   }
 
   // 5. Widget แสดงรายการพัสดุ (ปรับปรุงให้แสดงชื่อผู้ส่ง/ไรเดอร์ + รูปหลักฐาน)
@@ -368,8 +486,12 @@ class PackagePickupPage extends StatelessWidget {
       Color statusColor,
       bool showConfirmButton,
       String senderName,
+      String senderPhone,
       String riderName,
-      Function(String) onConfirm) {
+      String riderPhone,
+      Function(String) onConfirm,
+      String currentUid,
+      int currentRole) {
     // ตรวจสอบว่าควรแสดงรูปหลักฐานหรือไม่ (สำหรับ delivered/completed)
     final bool showDeliveredImage = (package.currentStatus == 'delivered' ||
             package.currentStatus == 'completed') &&
@@ -381,28 +503,24 @@ class PackagePickupPage extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: InkWell(
         onTap: () {
-          // สามารถเปลี่ยนตรงนี้ให้ไปหน้า OrderStatusPage ได้ หากคุณมีไฟล์นั้น
-          Get.snackbar(
-              'รายละเอียด', 'เปิดหน้าเพื่อดูรายละเอียดพัสดุ ${package.id}');
+          // ไปหน้า OrderStatusPage เมื่อกด
+          Get.to(() => OrderStatusPage(
+              orderId: package.id, uid: currentUid, role: currentRole));
         },
         child: Padding(
           padding: const EdgeInsets.all(15.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ------------------ แถวหลัก (ปลายทาง/สถานะ) ------------------
+              // ------------------ แถวหลัก (สถานะ) ------------------
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: Text(
-                      'จัดส่งถึง: ${package.destination}',
-                      style: const TextStyle(
+                  const Text('พัสดุที่ได้รับ',
+                      style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: _primaryColor),
-                    ),
-                  ),
+                          color: _primaryColor)),
                   Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -420,11 +538,19 @@ class PackagePickupPage extends StatelessWidget {
               const Divider(),
 
               // ------------------ รายละเอียดพัสดุ/ผู้ติดต่อ ------------------
+              // รายละเอียดสินค้า
               _buildDetailRow(Icons.inventory_2_outlined,
-                  'สินค้า: ${package.orderDetails}'), // รายละเอียดสินค้า
-              _buildDetailRow(Icons.person, 'ผู้ส่ง: $senderName'),
+                  'รายละเอียดสินค้า: ${package.orderDetails}'),
+
+              // ผู้ส่ง
               _buildDetailRow(
-                  Icons.two_wheeler_outlined, 'ไรเดอร์: $riderName'),
+                  Icons.person, 'ผู้ส่ง: $senderName (Tel: $senderPhone)'),
+
+              // ไรเดอร์
+              _buildDetailRow(Icons.two_wheeler_outlined,
+                  'ไรเดอร์: $riderName (Tel: $riderPhone)'),
+
+              // รหัสพัสดุ
               _buildDetailRow(Icons.qr_code, 'รหัสพัสดุ: ${package.id}'),
 
               // ------------------ รูปภาพหลักฐาน (ถ้ามี) ------------------
@@ -533,7 +659,7 @@ class PackagePickupPage extends StatelessWidget {
       child: TextField(
         controller: controller.searchController,
         decoration: InputDecoration(
-          hintText: 'ค้นหาด้วยชื่อสินค้า หรือ รหัสพัสดุ',
+          hintText: 'ค้นหาด้วยชื่อ/เบอร์โทร หรือ รหัสพัสดุ',
           border: InputBorder.none,
           prefixIcon: const Icon(Icons.search, color: _primaryColor),
           suffixIcon: IconButton(
