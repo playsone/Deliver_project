@@ -37,6 +37,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  rxdart: ^0.27.7 # <-- เพิ่มบรรทัดนี้ หรือใช้เวอร์ชันล่าสุด
 
 flutter:
   uses-material-design: true
