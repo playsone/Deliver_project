@@ -5,9 +5,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/models/package_model.dart';
 import 'package:delivery_project/page/home_rider.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloudinary_public/cloudinary_public.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:location/location.dart';
 
 // Enum เพื่อจัดการสถานะการจัดส่ง
 enum DeliveryStatus {
@@ -32,23 +35,60 @@ class PackageDeliveryPage extends StatefulWidget {
 }
 
 class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
+  // นำตัวแปรสำหรับแผนที่และตำแหน่งกลับมา
+  final Location _location = Location();
+  StreamSubscription<LocationData>? _locationSubscription;
+  final MapController _mapController = MapController();
   String? _currentRiderId;
 
   @override
   void initState() {
     super.initState();
     _currentRiderId = widget.uid;
+    // เริ่มส่งตำแหน่งเมื่อหน้านี้ถูกเปิด
+    if (_currentRiderId != null) {
+      _startSendingLocation(_currentRiderId!);
+    }
   }
 
   @override
   void dispose() {
+    // หยุดการส่งตำแหน่งเมื่อออกจากหน้านี้
+    _locationSubscription?.cancel();
     super.dispose();
+  }
+
+  // ฟังก์ชันสำหรับเริ่มติดตามและส่งตำแหน่งของไรเดอร์
+  void _startSendingLocation(String riderId) async {
+    bool serviceEnabled = await _location.serviceEnabled();
+    if (!serviceEnabled) {
+      serviceEnabled = await _location.requestService();
+      if (!serviceEnabled) return;
+    }
+
+    PermissionStatus permissionGranted = await _location.hasPermission();
+    if (permissionGranted == PermissionStatus.denied) {
+      permissionGranted = await _location.requestPermission();
+      if (permissionGranted != PermissionStatus.granted) return;
+    }
+
+    _location.changeSettings(
+        interval: 10000, distanceFilter: 10); // อัปเดตทุก 10 วินาที
+    _locationSubscription =
+        _location.onLocationChanged.listen((currentLocation) {
+      if (currentLocation.latitude != null &&
+          currentLocation.longitude != null) {
+        FirebaseFirestore.instance.collection('users').doc(riderId).update({
+          'gps':
+              GeoPoint(currentLocation.latitude!, currentLocation.longitude!),
+        });
+      }
+    });
   }
 
   // ฟังก์ชันกลาง: สำหรับถ่ายรูป, อัปโหลด, และอัปเดตสถานะ
   Future<void> _captureAndUploadStatusImage({
-    required String nextStatus,
-    required String imageUrlField,
+    required String statusToUpdate,
     bool isFinal = false,
   }) async {
     final picker = ImagePicker();
@@ -70,17 +110,29 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
           .collection('orders')
           .doc(widget.package.id);
 
-      // คำสั่งนี้จะสร้างฟิลด์ใหม่ให้เองถ้ายังไม่มี
-      await orderRef.update({
-        'currentStatus': nextStatus,
-        imageUrlField: imageUrl,
-        'statusHistory': FieldValue.arrayUnion([
-          {
-            'imgOfStatus': imageUrl,
-            'status': nextStatus,
-            'timestamp': Timestamp.now()
-          }
-        ]),
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final snapshot = await transaction.get(orderRef);
+        if (!snapshot.exists) {
+          throw Exception("Document does not exist!");
+        }
+
+        List<dynamic> statusHistory =
+            List<dynamic>.from(snapshot.data()!['statusHistory']);
+
+        int indexToUpdate = statusHistory
+            .indexWhere((history) => history['status'] == statusToUpdate);
+
+        if (indexToUpdate != -1) {
+          Map<String, dynamic> historyEntry =
+              Map<String, dynamic>.from(statusHistory[indexToUpdate]);
+          historyEntry['imgOfStatus'] = imageUrl;
+          statusHistory[indexToUpdate] = historyEntry;
+        }
+
+        transaction.update(orderRef, {
+          'currentStatus': statusToUpdate,
+          'statusHistory': statusHistory,
+        });
       });
 
       Get.back();
@@ -123,16 +175,21 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
             .doc(widget.package.id)
             .get();
         if (doc.exists && doc.data()?['currentStatus'] != 'delivered') {
-          Get.dialog(
-            AlertDialog(
-              title: const Text('ยังไม่สามารถย้อนกลับได้'),
-              content: const Text('กรุณาดำเนินการจัดส่งสินค้าให้เสร็จสิ้นก่อน'),
-              actions: [
-                TextButton(
-                    onPressed: () => Get.back(), child: const Text('ตกลง'))
-              ],
-            ),
-          );
+          Get.dialog(/* ... */ AlertDialog(
+            title: const Text('ยืนยันการออก'),
+            content: const Text(
+                'คุณยังไม่ได้จัดส่งพัสดุนี้เสร็จสมบูรณ์ ต้องการออกจากหน้านี้หรือไม่?'),
+            actions: [
+              TextButton(
+                onPressed: () => Get.back(result: false),
+                child: const Text('ยกเลิก'),
+              ),
+              TextButton(
+                onPressed: () => Get.back(result: true),
+                child: const Text('ออก'),
+              ),
+            ],
+          ));
           return false;
         }
         return true;
@@ -167,6 +224,9 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
                     padding: const EdgeInsets.all(15.0),
                     child: Column(
                       children: [
+                        // นำแผนที่กลับมาแสดงผล
+                        _buildMapSection(data),
+                        const SizedBox(height: 20),
                         _buildActionSection(deliveryStatusEnum),
                         const SizedBox(height: 20),
                         _buildEvidenceImage(data),
@@ -183,6 +243,117 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
       ),
     );
   }
+
+  // ✅✅✅ ส่วนที่แก้ไข: Widget แสดงแผนที่ ✅✅✅
+  Widget _buildMapSection(Map<String, dynamic> orderData) {
+    final riderId = orderData['riderId'] as String?;
+    if (riderId == null) {
+      return const SizedBox(
+        height: 250,
+        child: Center(child: Text("รอข้อมูลไรเดอร์...")),
+      );
+    }
+
+    final currentStatus =
+        _mapStatusToEnum(orderData['currentStatus'] ?? 'accepted');
+
+    // ดึงพิกัดของผู้ส่งและผู้รับ
+    final GeoPoint pickupPoint =
+        orderData['pickupAddress']['gps'] ?? const GeoPoint(0, 0);
+    final LatLng pickupLatLng =
+        LatLng(pickupPoint.latitude, pickupPoint.longitude);
+
+    final GeoPoint deliveryPoint =
+        orderData['deliveryAddress']['gps'] ?? const GeoPoint(0, 0);
+    final LatLng deliveryLatLng =
+        LatLng(deliveryPoint.latitude, deliveryPoint.longitude);
+
+    // -- ตรรกะสำคัญ: เลือกเป้าหมายตามสถานะ --
+    LatLng targetLatLng;
+    IconData targetIcon;
+    Color targetColor;
+
+    if (currentStatus == DeliveryStatus.accepted ||
+        currentStatus == DeliveryStatus.pickedUp) {
+      // ถ้ากำลังจะไปรับของ ให้ปักหมุดที่ "ผู้ส่ง"
+      targetLatLng = pickupLatLng;
+      targetIcon = Icons.store;
+      targetColor = Colors.orange;
+    } else {
+      // ถ้ากำลังไปส่งของ ให้ปักหมุดที่ "ผู้รับ"
+      targetLatLng = deliveryLatLng;
+      targetIcon = Icons.location_on;
+      targetColor = Colors.red;
+    }
+
+    return Container(
+      height: 250,
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300, width: 2),
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(15),
+        child: StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('users')
+              .doc(riderId)
+              .snapshots(),
+          builder: (context, riderSnapshot) {
+            LatLng riderLatLng =
+                targetLatLng; // ให้ตำแหน่งเริ่มต้นเป็นตำแหน่งเป้าหมาย
+
+            if (riderSnapshot.hasData && riderSnapshot.data!.exists) {
+              final riderData =
+                  riderSnapshot.data!.data() as Map<String, dynamic>;
+              final geoPoint = riderData['gps'] as GeoPoint?;
+              if (geoPoint != null) {
+                riderLatLng = LatLng(geoPoint.latitude, geoPoint.longitude);
+              }
+            }
+
+            return FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: riderLatLng,
+                initialZoom: 15.0,
+              ),
+              children: [
+                TileLayer(
+                  // -- ใช้แผนที่ Thunderforest --
+                  urlTemplate:
+                      'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=cb153d15cb4e41f59e25cfda6468f1a0',
+                  userAgentPackageName:
+                      'com.example.app', // ควรเปลี่ยนเป็น package name ของคุณ
+                ),
+                MarkerLayer(
+                  markers: [
+                    // หมุดเป้าหมาย (ผู้ส่ง หรือ ผู้รับ)
+                    Marker(
+                      point: targetLatLng,
+                      width: 80,
+                      height: 80,
+                      child: Icon(targetIcon, color: targetColor, size: 40),
+                    ),
+                    // หมุดตำแหน่งของไรเดอร์
+                    Marker(
+                      point: riderLatLng,
+                      width: 80,
+                      height: 80,
+                      child: const Icon(Icons.two_wheeler,
+                          color: Colors.blue, size: 40),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  // ... (โค้ดส่วนที่เหลือทั้งหมดเหมือนเดิม) ...
 
   Widget _buildStatusTracker(Color primaryColor, DeliveryStatus currentStatus) {
     final List<Map<String, dynamic>> steps = [
@@ -252,24 +423,21 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
         buttonText = 'ถ่ายรูปยืนยันการรับของ';
         icon = Icons.camera_alt;
         onPressed = () => _captureAndUploadStatusImage(
-              nextStatus: 'picked_up',
-              imageUrlField: 'pickedUpImageUrl',
+              statusToUpdate: 'picked_up',
             );
         break;
       case DeliveryStatus.pickedUp:
         buttonText = 'ถ่ายรูปเพื่อเริ่มนำส่ง';
         icon = Icons.local_shipping;
         onPressed = () => _captureAndUploadStatusImage(
-              nextStatus: 'in_transit',
-              imageUrlField: 'inTransitImageUrl', // บันทึกลงฟิลด์ใหม่
+              statusToUpdate: 'in_transit',
             );
         break;
       case DeliveryStatus.inTransit:
         buttonText = 'ถ่ายรูปยืนยันการส่งสำเร็จ';
         icon = Icons.photo_camera;
         onPressed = () => _captureAndUploadStatusImage(
-              nextStatus: 'delivered',
-              imageUrlField: 'deliveredImageUrl',
+              statusToUpdate: 'delivered',
               isFinal: true,
             );
         break;
@@ -299,25 +467,37 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
   }
 
   Widget _buildEvidenceImage(Map<String, dynamic> orderData) {
-    final pickedUpUrl = orderData['pickedUpImageUrl'] as String?;
-    final inTransitUrl = orderData['inTransitImageUrl'] as String?;
-    final deliveredUrl = orderData['deliveredImageUrl'] as String?;
+    final statusHistory = orderData['statusHistory'] as List<dynamic>? ?? [];
 
-    if (pickedUpUrl == null && inTransitUrl == null && deliveredUrl == null) {
+    final imagesToShow = statusHistory.where((history) {
+      final imgUrl = history['imgOfStatus'] as String?;
+      return imgUrl != null && imgUrl.isNotEmpty;
+    }).toList();
+
+    if (imagesToShow.isEmpty) {
       return const SizedBox.shrink();
     }
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (pickedUpUrl != null)
-          _buildImageCard('รูปภาพตอนรับของ', pickedUpUrl),
-        if (inTransitUrl != null)
-          _buildImageCard('รูปภาพตอนเริ่มนำส่ง', inTransitUrl),
-        if (deliveredUrl != null)
-          _buildImageCard('รูปภาพตอนจัดส่งสำเร็จ', deliveredUrl),
-      ],
+      children: imagesToShow.map((history) {
+        final status = history['status'] as String? ?? '';
+        final imageUrl = history['imgOfStatus'] as String;
+        return _buildImageCard(_translateStatusToImageTitle(status), imageUrl);
+      }).toList(),
     );
+  }
+
+  String _translateStatusToImageTitle(String status) {
+    switch (status) {
+      case 'picked_up':
+        return 'รูปภาพตอนรับของ';
+      case 'in_transit':
+        return 'รูปภาพตอนเริ่มนำส่ง';
+      case 'delivered':
+        return 'รูปภาพตอนจัดส่งสำเร็จ';
+      default:
+        return 'รูปภาพหลักฐาน';
+    }
   }
 
   Widget _buildImageCard(String title, String imageUrl) {
