@@ -138,8 +138,7 @@ class PackagePickupController extends GetxController {
 
     final baseQuery = FirebaseFirestore.instance
         .collection('orders')
-        .where('deliveryAddress.receiverPhone', isEqualTo: userPhone.value)
-        .orderBy('createdAt', descending: true);
+        .where('deliveryAddress.receiverPhone', isEqualTo: userPhone.value);
 
     return baseQuery.snapshots();
   }

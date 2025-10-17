@@ -243,14 +243,18 @@ class SendPackagePage extends StatelessWidget {
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
                   Obx(() {
-                    if (controller.step.value == 1)
+                    if (controller.step.value == 1) {
                       return _buildStepOneForm(context, controller);
-                    if (controller.step.value == 2)
+                    }
+                    if (controller.step.value == 2) {
                       return _buildStepTwoConfirmation(context, controller);
-                    if (controller.step.value == 3)
+                    }
+                    if (controller.step.value == 3) {
                       return _buildStepThreeFinalConfirmation(controller);
-                    if (controller.step.value == 4)
+                    }
+                    if (controller.step.value == 4) {
                       return _buildStepFourSuccess();
+                    }
                     return const SizedBox.shrink();
                   }),
                 ]),
@@ -273,9 +277,9 @@ class SendPackagePage extends StatelessWidget {
       foregroundColor: Colors.white,
       leading: IconButton(
           icon: const Icon(Icons.arrow_back), onPressed: controller.goBack),
-      flexibleSpace: FlexibleSpaceBar(
-        titlePadding: const EdgeInsets.only(left: 60, bottom: 12),
-        title: const Text('สร้างรายการส่งของ',
+      flexibleSpace: const FlexibleSpaceBar(
+        titlePadding: EdgeInsets.only(left: 60, bottom: 12),
+        title: Text('สร้างรายการส่งของ',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
       ),
     );

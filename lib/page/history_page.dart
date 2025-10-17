@@ -1,12 +1,13 @@
 // file: lib/page/history_page.dart
 
+import 'package:async/async.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/page/home.dart';
 import 'package:delivery_project/page/index.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/intl.dart';
 
 // Constants
 const Color _primaryColor = Color(0xFFC70808);
@@ -61,17 +62,27 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
-  // ===================================================================
-  // == WIDGETS สำหรับแสดง "หน้ารายการประวัติ" ==
-  // ===================================================================
-
+  /// Widget สำหรับแสดง "หน้ารายการประวัติ"
   Widget _buildOrderListView() {
+    // Stream 1: ออเดอร์ที่ user เป็น "ลูกค้า" และส่งสำเร็จแล้ว
+    final customerStream = FirebaseFirestore.instance
+        .collection('orders')
+        .where('customerId', isEqualTo: widget.uid)
+        .where('currentStatus', isEqualTo: 'delivered')
+        .snapshots();
+
+    // Stream 2: ออเดอร์ที่ user เป็น "ไรเดอร์" และส่งสำเร็จแล้ว
+    final riderStream = FirebaseFirestore.instance
+        .collection('orders')
+        .where('riderId', isEqualTo: widget.uid)
+        .where('currentStatus', isEqualTo: 'delivered')
+        .snapshots();
+
+    // รวม 2 Streams เข้าด้วยกัน
+    final mergedStream = StreamGroup.merge([customerStream, riderStream]);
+
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('orders')
-          .where('customerId', isEqualTo: widget.uid)
-          .where('currentStatus', isEqualTo: 'delivered')
-          .snapshots(),
+      stream: mergedStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -83,7 +94,17 @@ class _HistoryPageState extends State<HistoryPage> {
           return const Center(child: Text('ยังไม่มีประวัติการส่งสินค้า'));
         }
 
-        final orderDocs = snapshot.data!.docs;
+        // ใช้ Map เพื่อกรองรายการที่ซ้ำซ้อน (ถ้ามี)
+        final uniqueDocs = {for (var doc in snapshot.data!.docs) doc.id: doc};
+        final orderDocs = uniqueDocs.values.toList();
+
+        // เรียงตามวันที่สร้างล่าสุด
+        orderDocs.sort((a, b) {
+          final aTime = (a.data() as Map)['createdAt'] as Timestamp?;
+          final bTime = (b.data() as Map)['createdAt'] as Timestamp?;
+          if (aTime == null || bTime == null) return 0;
+          return bTime.compareTo(aTime);
+        });
 
         return ListView.builder(
           padding: const EdgeInsets.all(10),
@@ -92,18 +113,15 @@ class _HistoryPageState extends State<HistoryPage> {
             final doc = orderDocs[index];
             final data = doc.data() as Map<String, dynamic>;
 
-            final deliveryAddress =
-                data['deliveryAddress'] as Map<String, dynamic>? ?? {};
-            final timestamp = (data['createdAt'] as Timestamp?)?.toDate();
-            final formattedDate = timestamp != null
-                ? DateFormat('dd MMM yyyy', 'th').format(timestamp)
-                : '';
-
-            return _buildHistoryItem(
+            // ส่งข้อมูลทั้งหมดไปให้ Widget ใหม่จัดการ
+            return HistoryListItem(
+              orderData: data,
               orderId: doc.id,
-              receiverName:
-                  deliveryAddress['receiverName'] ?? 'ไม่มีชื่อผู้รับ',
-              date: formattedDate,
+              onTap: () {
+                setState(() {
+                  _selectedOrderId = doc.id;
+                });
+              },
             );
           },
         );
@@ -111,61 +129,7 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
-  Widget _buildHistoryItem({
-    required String orderId,
-    required String receiverName,
-    required String date,
-  }) {
-    return InkWell(
-      onTap: () {
-        setState(() {
-          _selectedOrderId = orderId;
-        });
-      },
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        padding: const EdgeInsets.all(15),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: [
-            BoxShadow(color: Colors.grey.withOpacity(0.3), blurRadius: 5),
-          ],
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.task_alt, size: 40, color: Colors.green),
-            const SizedBox(width: 15),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'ส่งถึง: $receiverName',
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'วันที่: $date',
-                    style: const TextStyle(color: Colors.grey, fontSize: 14),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 16),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ===================================================================
-  // == WIDGETS สำหรับแสดง "หน้ารายละเอียดประวัติ" ==
-  // ===================================================================
-
-  // --- ⭐️ แก้ไข: เพิ่ม StreamBuilder สำหรับดึงข้อมูล Rider ---
+  /// Widget สำหรับแสดง "หน้ารายละเอียดประวัติ"
   Widget _buildOrderDetailView(String orderId) {
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
@@ -183,12 +147,10 @@ class _HistoryPageState extends State<HistoryPage> {
         final orderData = orderSnapshot.data!.data() as Map<String, dynamic>;
         final riderId = orderData['riderId'] as String?;
 
-        // ถ้ายังไม่มี Rider ให้แสดงข้อมูลออเดอร์ไปก่อน
         if (riderId == null || riderId.isEmpty) {
           return _buildContent(orderData, null);
         }
 
-        // ถ้ามี Rider ID, ให้ดึงข้อมูลของ Rider มาด้วย
         return StreamBuilder<DocumentSnapshot>(
           stream: FirebaseFirestore.instance
               .collection('users')
@@ -204,7 +166,6 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
-  // --- ⭐️ แก้ไข: เพิ่ม riderData เป็นพารามิเตอร์ ---
   Widget _buildContent(
       Map<String, dynamic> orderData, Map<String, dynamic>? riderData) {
     return SingleChildScrollView(
@@ -212,8 +173,7 @@ class _HistoryPageState extends State<HistoryPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 20),
-          _buildCurrentStatusHeader(
-              orderData, riderData), // ส่ง riderData ไปด้วย
+          _buildCurrentStatusHeader(orderData, riderData),
           _buildStatusTimeline(orderData['statusHistory'] ?? []),
           const SizedBox(height: 20),
         ],
@@ -221,7 +181,6 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
-  // --- ⭐️ แก้ไข: เพิ่ม riderData และเรียก Widget แสดงข้อมูล Rider ---
   Widget _buildCurrentStatusHeader(
       Map<String, dynamic> orderData, Map<String, dynamic>? riderData) {
     final status = orderData['currentStatus'] ?? 'unknown';
@@ -265,13 +224,10 @@ class _HistoryPageState extends State<HistoryPage> {
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           Text('ชื่อ: $receiverName'),
           Text('เบอร์โทร: $receiverPhone'),
-
-          // --- ⭐️ เพิ่ม: เรียกใช้ Widget แสดงข้อมูล Rider ---
           if (riderData != null) ...[
             const Divider(height: 20),
             _buildRiderInfoSection(riderData),
           ],
-
           const Divider(height: 20),
           const Text('ประวัติการจัดส่ง',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -280,17 +236,15 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
-  // --- ⭐️ เพิ่ม: Widget ใหม่สำหรับแสดงข้อมูล Rider ---
   Widget _buildRiderInfoSection(Map<String, dynamic> riderData) {
     final riderName = riderData['fullname'] ?? 'ไม่มีข้อมูล';
     final riderPhone = riderData['phone'] ?? '-';
-    final vehicleNo = riderData['vehicle_no'] ??
-        '-'; // ตรวจสอบ field name ให้ตรงกับ Firestore
+    final vehicleNo = riderData['vehicle_no'] ?? '-';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('ข้อมูลไรเดอร์',
+        const Text('ข้อมูลผู้จัดส่ง (ไรเดอร์)',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         Text('ชื่อ: $riderName'),
         Text('เบอร์โทร: $riderPhone'),
@@ -299,7 +253,6 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
-  // (โค้ดส่วนที่เหลือไม่มีการเปลี่ยนแปลง)
   Widget _buildStatusTimeline(List<dynamic> statusHistory) {
     if (statusHistory.isEmpty) {
       return const Center(child: Text('ไม่มีประวัติสถานะ'));
@@ -491,6 +444,112 @@ class _HistoryPageState extends State<HistoryPage> {
             Get.offAll(() => const SpeedDerApp());
           }
         },
+      ),
+    );
+  }
+}
+
+/// Widget ใหม่สำหรับแสดงผลแต่ละรายการใน List อย่างมีประสิทธิภาพ
+class HistoryListItem extends StatefulWidget {
+  final Map<String, dynamic> orderData;
+  final String orderId;
+  final VoidCallback onTap;
+
+  const HistoryListItem({
+    super.key,
+    required this.orderData,
+    required this.orderId,
+    required this.onTap,
+  });
+
+  @override
+  State<HistoryListItem> createState() => _HistoryListItemState();
+}
+
+class _HistoryListItemState extends State<HistoryListItem> {
+  String _riderName = 'กำลังโหลด...';
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchRiderName();
+  }
+
+  /// ฟังก์ชันสำหรับดึงชื่อไรเดอร์แค่ครั้งเดียว
+  Future<void> _fetchRiderName() async {
+    final riderId = widget.orderData['riderId'] as String?;
+    if (riderId == null || riderId.isEmpty) {
+      if (mounted) setState(() => _riderName = 'ไม่มีข้อมูล');
+      return;
+    }
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(riderId)
+          .get();
+      if (doc.exists && mounted) {
+        setState(() {
+          _riderName = doc.data()?['fullname'] ?? 'ไม่มีชื่อ';
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _riderName = 'ผิดพลาด');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final deliveryAddress =
+        widget.orderData['deliveryAddress'] as Map<String, dynamic>? ?? {};
+    final timestamp = (widget.orderData['createdAt'] as Timestamp?)?.toDate();
+    final formattedDate = timestamp != null
+        ? DateFormat('dd MMM yyyy', 'th').format(timestamp)
+        : '';
+    final receiverName = deliveryAddress['receiverName'] ?? 'ไม่มีชื่อผู้รับ';
+
+    return InkWell(
+      onTap: widget.onTap,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: [
+            BoxShadow(color: Colors.grey.withOpacity(0.3), blurRadius: 5),
+          ],
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.task_alt, size: 40, color: Colors.green),
+            const SizedBox(width: 15),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'ส่งถึง: $receiverName',
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'จัดส่งโดย: $_riderName', // <-- แสดงชื่อไรเดอร์
+                    style: const TextStyle(color: Colors.black54, fontSize: 14),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'วันที่: $formattedDate',
+                    style: const TextStyle(color: Colors.grey, fontSize: 14),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 16),
+          ],
+        ),
       ),
     );
   }
