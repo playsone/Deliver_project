@@ -84,8 +84,6 @@ class PackagePickupController extends GetxController {
     return FirebaseFirestore.instance
         .collection('orders')
         .where('deliveryAddress.receiverPhone', isEqualTo: userPhone.value)
-        // แสดงรายการใหม่สุดก่อน
-        .orderBy('createdAt', descending: true)
         .snapshots();
   }
 
