@@ -5,12 +5,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class StatusHistoryModel {
   final String status;
   final Timestamp timestamp;
-  final String? imageUrl; // << เพิ่ม: ลิงก์รูปภาพสำหรับสถานะนี้ (อาจไม่มีก็ได้)
+  final String? imgOfStatus; // << แก้ไข: เปลี่ยนจาก imageUrl เป็น imgOfStatus
 
   StatusHistoryModel({
     required this.status,
     required this.timestamp,
-    this.imageUrl, // << เพิ่มใน constructor
+    this.imgOfStatus, // << แก้ไข: เปลี่ยนใน constructor
   });
 
   // แปลงจาก Map ที่อยู่ใน Firestore
@@ -18,7 +18,8 @@ class StatusHistoryModel {
     return StatusHistoryModel(
       status: map['status'] ?? 'unknown',
       timestamp: map['timestamp'] ?? Timestamp.now(),
-      imageUrl: map['imageUrl'], // << ดึงข้อมูล imageUrl จาก Map
+      imgOfStatus:
+          map['imgOfStatus'], // << แก้ไข: ดึงข้อมูลจาก field ที่ถูกต้อง
     );
   }
 
@@ -27,7 +28,7 @@ class StatusHistoryModel {
     return {
       'status': status,
       'timestamp': timestamp,
-      'imageUrl': imageUrl, // << เพิ่ม imageUrl ตอนบันทึก
+      'imgOfStatus': imgOfStatus, // << แก้ไข: ใช้ชื่อ field ที่ถูกต้องตอนบันทึก
     };
   }
 }

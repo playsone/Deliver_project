@@ -37,18 +37,21 @@ class PackageModel {
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
 
     String sourceDetail = data['pickupAddress']?['detail'] ?? 'ไม่ระบุต้นทาง';
-    String destinationDetail = data['deliveryAddress']?['detail'] ?? 'ไม่ระบุปลายทาง';
-    
+    String destinationDetail =
+        data['deliveryAddress']?['detail'] ?? 'ไม่ระบุปลายทาง';
+
     // ดึง Delivered Image URL
     String? deliveredImgUrl;
-    if (data['currentStatus'] == 'delivered' || data['currentStatus'] == 'completed') {
+    if (data['currentStatus'] == 'delivered' ||
+        data['currentStatus'] == 'completed') {
       deliveredImgUrl = data['deliveredImageUrl'];
-      
+
       // หรือค้นหาจาก statusHistory (กรณีที่ใช้ delivered เป็นสถานะสุดท้ายที่มีรูป)
       if (deliveredImgUrl == null && data['statusHistory'] is List) {
         final deliveredEntry = (data['statusHistory'] as List).firstWhereOrNull(
-          (h) => h['status'] == 'delivered' && h['imgOfStatus']?.isNotEmpty == true
-        );
+            (h) =>
+                h['status'] == 'delivered' &&
+                h['imgOfStatus']?.isNotEmpty == true);
         deliveredImgUrl = deliveredEntry?['imgOfStatus'];
       }
     }
@@ -82,17 +85,12 @@ class PackagePickupController extends GetxController {
     _fetchUserPhone();
     super.onInit();
   }
-  
-  @override
-  void onClose() {
-    searchController.dispose();
-    super.onClose();
-  }
 
   // ดึงเบอร์โทรศัพท์ของผู้ใช้ปัจจุบัน
   Future<void> _fetchUserPhone() async {
     try {
-      final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final doc =
+          await FirebaseFirestore.instance.collection('users').doc(uid).get();
       if (doc.exists) {
         userPhone.value = doc.data()?['phone'] ?? '';
       }
@@ -100,38 +98,27 @@ class PackagePickupController extends GetxController {
       print('Error fetching user phone: $e');
     }
   }
-  
-  // NEW: ฟังก์ชันที่ถูกเรียกเมื่อกดปุ่มค้นหา
-  void performSearch() {
-    searchText.value = searchController.text.trim();
-    // เมื่อ searchText เปลี่ยน StreamBuilder จะทำงานเอง
-  }
 
   // 1. ฟังก์ชัน Stream สำหรับดึงพัสดุที่ถูกส่งมายังผู้ใช้คนนี้ (ผ่านเบอร์โทร)
   Stream<QuerySnapshot> getRecipientPackagesStream() {
     if (userPhone.value.isEmpty) {
       return Stream.empty();
     }
-    
     // ค้นหาพัสดุทั้งหมดที่มี receiverPhone ตรงกับเบอร์โทรศัพท์ของผู้ใช้
     final baseQuery = FirebaseFirestore.instance
         .collection('orders')
         .where('deliveryAddress.receiverPhone', isEqualTo: userPhone.value)
-        .orderBy('createdAt', descending: true);
-
-    // !!! ข้อจำกัด: Firestore ไม่รองรับการค้นหาแบบ 'contains' หรือ 'startswith'
-    // ในหลาย Field พร้อมกันโดยไม่มี Index ที่ซับซ้อน หรือการค้นหาแบบ Full-text search
-    // ดังนั้นโค้ดนี้จะดึงข้อมูลทั้งหมดแล้วมา Filter ใน Flutter (Client-side)
-    // หรือใช้แค่ Base Query และ Filter Client-side เพื่อการใช้งานที่ง่ายขึ้น
-
-    return baseQuery.snapshots();
+        .snapshots();
   }
 
   // 2. ฟังก์ชันสำหรับดึงชื่อผู้ใช้ (ผู้ส่ง/ไรเดอร์) จาก UID (เหมือนเดิม)
   Future<String> getUserName(String userId, String defaultName) async {
     if (userId.isEmpty) return defaultName;
     try {
-      final doc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .get();
       if (doc.exists) {
         return doc.data()?['fullname'] ?? defaultName;
       }
@@ -140,12 +127,15 @@ class PackagePickupController extends GetxController {
       return defaultName;
     }
   }
-  
-  // 3. ฟังก์ชันสำหรับอัพเดทสถานะเป็น 'completed' (เหมือนเดิม)
+
+  // 3. ฟังก์ชันสำหรับอัพเดทสถานะเป็น 'completed'
   Future<void> confirmPackageReception(String orderId) async {
-    Get.dialog(const Center(child: CircularProgressIndicator(color: _primaryColor)), barrierDismissible: false);
+    Get.dialog(
+        const Center(child: CircularProgressIndicator(color: _primaryColor)),
+        barrierDismissible: false);
     try {
-      final orderRef = FirebaseFirestore.instance.collection('orders').doc(orderId);
+      final orderRef =
+          FirebaseFirestore.instance.collection('orders').doc(orderId);
 
       await orderRef.update({
         'currentStatus': 'completed',
@@ -199,9 +189,9 @@ class PackagePickupPage extends StatelessWidget {
                     if (controller.userPhone.value.isEmpty) {
                       return const Center(
                           child: Padding(
-                            padding: EdgeInsets.only(top: 50),
-                            child: CircularProgressIndicator(color: _primaryColor),
-                          ));
+                        padding: EdgeInsets.only(top: 50),
+                        child: CircularProgressIndicator(color: _primaryColor),
+                      ));
                     }
                     // เรียกใช้ StreamBuilder ภายใน Obx
                     return _buildPackagesList(controller);
@@ -222,7 +212,8 @@ class PackagePickupPage extends StatelessWidget {
       stream: controller.getRecipientPackagesStream(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: _primaryColor));
+          return const Center(
+              child: CircularProgressIndicator(color: _primaryColor));
         }
 
         if (snapshot.hasError) {
@@ -240,45 +231,17 @@ class PackagePickupPage extends StatelessWidget {
             ),
           );
         }
-        
-        final allPackages = snapshot.data!.docs.map((doc) => PackageModel.fromFirestore(doc)).toList();
-        final filterText = controller.searchText.value.toLowerCase();
 
-        // **Client-side Filtering Logic**
-        final filteredPackages = allPackages.where((package) {
-          if (filterText.isEmpty) return true;
-
-          // Check Order Details (ชื่อสินค้า)
-          if (package.orderDetails.toLowerCase().contains(filterText)) return true;
-
-          // Check Package ID (หมายเลขพัสดุ)
-          if (package.id.toLowerCase().contains(filterText)) return true;
-          
-          // Note: ค้นหาเบอร์โทรผู้ส่งทำได้ยากกว่า เพราะต้องดึงเบอร์โทรของผู้ส่ง (customerId) จาก Collection 'users'
-          // และนำมาเปรียบเทียบทีละรายการ ซึ่งทำได้แต่ช้า/ซับซ้อน
-          // สำหรับโค้ดนี้จะค้นหาแค่ ชื่อสินค้าและรหัสพัสดุ
-          
-          return false;
-        }).toList();
-
-        if (filteredPackages.isEmpty) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.only(top: 50.0),
-              child: Text(
-                'ไม่พบรายการพัสดุที่ตรงกับคำค้นหา',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-              ),
-            ),
-          );
-        }
+        final packages = snapshot.data!.docs
+            .map((doc) => PackageModel.fromFirestore(doc))
+            .toList();
 
         return Column(
           children: filteredPackages.map((package) {
             String statusText;
             Color statusColor;
             bool showConfirmButton = false;
-            
+
             switch (package.currentStatus) {
               case 'pending':
                 statusText = 'รอไรเดอร์รับงาน';
@@ -302,7 +265,8 @@ class PackagePickupPage extends StatelessWidget {
                 showConfirmButton = true; // แสดงปุ่มให้ผู้รับยืนยัน
                 break;
               case 'completed':
-                statusText = 'ได้รับสินค้าแล้ว ✔️'; // สถานะสุดท้ายที่ผู้รับต้องการเห็น
+                statusText =
+                    'ได้รับสินค้าแล้ว ✔️'; // สถานะสุดท้ายที่ผู้รับต้องการเห็น
                 statusColor = Colors.teal;
                 break;
               default:
@@ -311,10 +275,13 @@ class PackagePickupPage extends StatelessWidget {
             }
 
             return FutureBuilder<Map<String, String>>(
-              future: _fetchNames(controller, package.customerId, package.riderId),
+              future:
+                  _fetchNames(controller, package.customerId, package.riderId),
               builder: (context, nameSnapshot) {
-                String senderName = nameSnapshot.data?['sender'] ?? 'กำลังโหลด...';
-                String riderName = nameSnapshot.data?['rider'] ?? 'ยังไม่มีไรเดอร์';
+                String senderName =
+                    nameSnapshot.data?['sender'] ?? 'กำลังโหลด...';
+                String riderName =
+                    nameSnapshot.data?['rider'] ?? 'ยังไม่มีไรเดอร์';
 
                 return _buildPackageItem(
                   package,
@@ -334,8 +301,8 @@ class PackagePickupPage extends StatelessWidget {
   }
 
   // ดึงชื่อผู้ส่งและไรเดอร์พร้อมกัน
-  Future<Map<String, String>> _fetchNames(
-      PackagePickupController controller, String customerId, String? riderId) async {
+  Future<Map<String, String>> _fetchNames(PackagePickupController controller,
+      String customerId, String? riderId) async {
     final senderName = await controller.getUserName(customerId, 'ผู้ส่ง');
     final riderName = riderId != null
         ? await controller.getUserName(riderId, 'ไรเดอร์')
@@ -352,18 +319,15 @@ class PackagePickupPage extends StatelessWidget {
       String senderName,
       String riderName,
       Function(String) onConfirm) {
-      
-    // ตรวจสอบว่าควรแสดงรูปหลักฐานหรือไม่ (สำหรับ delivered/completed)
-    final bool showDeliveredImage = (package.currentStatus == 'delivered' || package.currentStatus == 'completed') && package.deliveredImageUrl?.isNotEmpty == true;
-
     return Card(
       margin: const EdgeInsets.only(bottom: 15),
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: InkWell(
         onTap: () {
-          // สามารถเปลี่ยนตรงนี้ให้ไปหน้า OrderStatusPage ได้ หากคุณมีไฟล์นั้น
-          Get.snackbar('รายละเอียด', 'เปิดหน้าเพื่อดูรายละเอียดพัสดุ ${package.id}');
+          // สามารถนำไปหน้า OrderStatusPage ได้
+          Get.snackbar(
+              'รายละเอียด', 'เปิดหน้าเพื่อดูรายละเอียดพัสดุ ${package.id}');
         },
         child: Padding(
           padding: const EdgeInsets.all(15.0),
@@ -384,7 +348,8 @@ class PackagePickupPage extends StatelessWidget {
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: statusColor,
                       borderRadius: BorderRadius.circular(20),
@@ -397,34 +362,11 @@ class PackagePickupPage extends StatelessWidget {
                 ],
               ),
               const Divider(),
-              
-              // ------------------ รายละเอียดพัสดุ/ผู้ติดต่อ ------------------
-              _buildDetailRow(Icons.inventory_2_outlined, 'สินค้า: ${package.orderDetails}'), // รายละเอียดสินค้า
-              _buildDetailRow(Icons.person, 'ผู้ส่ง: $senderName'),
-              _buildDetailRow(Icons.two_wheeler_outlined, 'ไรเดอร์: $riderName'),
+              _buildDetailRow(Icons.person_outline, 'ผู้ส่ง: $senderName'),
+              _buildDetailRow(
+                  Icons.two_wheeler_outlined, 'ไรเดอร์: $riderName'),
+              _buildDetailRow(Icons.pin_drop, package.source),
               _buildDetailRow(Icons.qr_code, 'รหัสพัสดุ: ${package.id}'),
-              
-              // ------------------ รูปภาพหลักฐาน (ถ้ามี) ------------------
-              if (showDeliveredImage)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 10),
-                    const Text('หลักฐานการจัดส่งสำเร็จ:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                    const SizedBox(height: 5),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.network(
-                        package.deliveredImageUrl!,
-                        height: 100,
-                        width: 100,
-                        fit: BoxFit.cover,
-                        errorBuilder: (c, e, s) => const Icon(Icons.broken_image, size: 100),
-                      ),
-                    ),
-                  ],
-                ),
-              
               const SizedBox(height: 10),
               // ------------------ ปุ่มยืนยัน (ถ้ามี) ------------------
               if (showConfirmButton)
@@ -509,13 +451,8 @@ class PackagePickupPage extends StatelessWidget {
         decoration: InputDecoration(
           hintText: 'ค้นหาด้วยชื่อสินค้า หรือ รหัสพัสดุ',
           border: InputBorder.none,
-          prefixIcon: const Icon(Icons.search, color: _primaryColor),
-          suffixIcon: IconButton( // ปุ่มค้นหา
-            icon: const Icon(Icons.send, color: _primaryColor),
-            onPressed: controller.performSearch,
-          ),
+          prefixIcon: Icon(Icons.search, color: _primaryColor),
         ),
-        onSubmitted: (_) => controller.performSearch(),
       ),
     );
   }

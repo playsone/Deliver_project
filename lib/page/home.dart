@@ -2,6 +2,7 @@
 
 import 'dart:async';
 import 'dart:developer';
+import 'package:async/async.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/models/user_model.dart';
 import 'package:delivery_project/page/history_page.dart';
@@ -33,180 +34,180 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // 1. ตัวแปรสำหรับ Flutter Maps
   final MapController mapController = MapController();
   static const LatLng _initialCenter = LatLng(16.2470, 103.2522);
   static const double _initialZoom = 14.0;
 
-  // 2. จุดปักหมุด (ถาวร)
-  List<Marker> get _fixedMarkers => [
-        const Marker(
-          point: LatLng(16.2427, 103.2555),
+  LatLng? currentPos;
+  UserModel? _currentUser;
+  List<Marker> _orderMarkers = [];
+  StreamSubscription? _ordersSubscription;
+
+  // --- ⭐️ 1. เพิ่ม: ตัวแปรสำหรับควบคุมการฟังตำแหน่งของผู้ใช้ ---
+  StreamSubscription<Position>? _positionStreamSubscription;
+
+  List<Marker> get _fixedMarkers {
+    if (_currentUser != null && _currentUser!.defaultGPS != null) {
+      final userGps = _currentUser!.defaultGPS!;
+      return [
+        Marker(
+          point: LatLng(userGps.latitude, userGps.longitude),
           width: 40,
           height: 40,
-          child: Tooltip(
-            message: 'จุดบริการ',
+          child: const Tooltip(
+            message: 'ที่อยู่หลักของคุณ',
             child: Icon(
-              Icons.pin_drop_outlined,
-              color: Colors.red,
+              Icons.home,
+              color: Colors.purple,
               size: 40.0,
             ),
           ),
         ),
       ];
-
-  // 3. ตัวแปรสำหรับตำแหน่ง GPS ปัจจุบันของผู้ใช้
-  LatLng? currentPos;
-
-  // --- ตัวแปรสำหรับข้อมูลจาก Firestore ---
-  UserModel? _currentUser;
-  List<Marker> _orderMarkers = [];
-  StreamSubscription? _ordersSubscription;
+    }
+    return [];
+  }
 
   @override
   void initState() {
     super.initState();
     _fetchUserData();
-    _listenToOrders();
-    _getCurrentLocation(); // เรียกฟังก์ชันเพื่อค้นหาตำแหน่งเมื่อเปิดหน้า
+    _startListeningToLocation(); // <-- ⭐️ 3. แก้ไข: เปลี่ยนมาใช้ฟังก์ชันนี้
   }
 
   @override
   void dispose() {
-    _ordersSubscription?.cancel(); // ยกเลิกการฟังข้อมูลเพื่อป้องกัน memory leak
+    _ordersSubscription?.cancel();
+    _positionStreamSubscription?.cancel(); // <-- ⭐️ 4. สำคัญ: หยุดการฟัง
     super.dispose();
   }
 
-  // --- ฟังก์ชันดึงข้อมูลจาก Firestore ---
+  // --- ⭐️ 2. เพิ่ม: ฟังก์ชันสำหรับเริ่มฟังตำแหน่งแบบ Real-time ---
+  void _startListeningToLocation() async {
+    // ตรวจสอบ Permission ก่อนเริ่มฟัง
+    bool serviceEnabled;
+    LocationPermission permission;
 
-  /// ดึงข้อมูลผู้ใช้ที่กำลัง login อยู่
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      log('Location services are disabled.');
+      return;
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        log('Location permissions are denied.');
+        return;
+      }
+    }
+
+    const LocationSettings locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 10, // อัปเดตทุกครั้งที่เคลื่อนที่ 10 เมตร
+    );
+
+    _positionStreamSubscription =
+        Geolocator.getPositionStream(locationSettings: locationSettings)
+            .listen((Position? position) {
+      if (position != null && mounted) {
+        // เมื่อได้รับตำแหน่งใหม่ ให้ setState เพื่อวาด Marker ใหม่
+        setState(() {
+          currentPos = LatLng(position.latitude, position.longitude);
+        });
+        // ทำให้แผนที่เคลื่อนที่ตาม (อาจจะทำให้กระตุกถ้าผู้ใช้กำลังเลื่อนแผนที่เอง)
+        // mapController.move(currentPos!, 16);
+      }
+    });
+  }
+
   Future<void> _fetchUserData() async {
     try {
       final doc = await FirebaseFirestore.instance
           .collection('users')
-          .where('uid', isEqualTo: widget.uid)
+          .doc(widget.uid)
           .get();
-      if (doc.docs.first.exists) {
+
+      if (doc.exists && mounted) {
         setState(() {
-          _currentUser = UserModel.fromFirestore(doc.docs.first);
-          log(_currentUser.toString());
+          _currentUser = UserModel.fromFirestore(doc);
         });
+        _listenToOrders();
       }
     } catch (e) {
       log("Error fetching user data: $e");
-      // สามารถแสดง SnackBar แจ้งเตือนได้
     }
   }
 
-  /// ฟังข้อมูลออเดอร์แบบ Real-time จาก Firestore
   void _listenToOrders() {
-    // ฟังเฉพาะออเดอร์ที่มีสถานะ 'delivering' (กำลังจัดส่ง)
-    final ordersStream = FirebaseFirestore.instance
+    if (_currentUser == null) return;
+    List<String> statusesToTrack = ['accepted', 'picked_up', 'in_transit'];
+    final senderStream = FirebaseFirestore.instance
         .collection('orders')
         .where('customerId', isEqualTo: widget.uid)
-        .where('currentStatus', isEqualTo: 'accepted')
+        .where('currentStatus', whereIn: statusesToTrack)
         .snapshots();
-
-    _ordersSubscription = ordersStream.listen((snapshot) {
+    final receiverStream = FirebaseFirestore.instance
+        .collection('orders')
+        .where('deliveryAddress.receiverPhone', isEqualTo: _currentUser!.phone)
+        .where('currentStatus', whereIn: statusesToTrack)
+        .snapshots();
+    final riderStream = FirebaseFirestore.instance
+        .collection('orders')
+        .where('riderId', isEqualTo: widget.uid)
+        .where('currentStatus', whereIn: statusesToTrack)
+        .snapshots();
+    final mergedStream =
+        StreamGroup.merge([senderStream, receiverStream, riderStream]);
+    _ordersSubscription = mergedStream.listen((snapshot) {
       if (!mounted) return;
-      final newMarkers = snapshot.docs
-          .map((doc) {
-            final data = doc.data();
-            // ตรวจสอบว่ามี field 'currentLocation' และเป็นประเภท GeoPoint หรือไม่
-            if (data['pickupAddress'] is! GeoPoint) return null;
-
-            final GeoPoint position = data['pickupAddress'];
-            final String orderId = doc.id;
-
-            return Marker(
-              point: LatLng(position.latitude, position.longitude),
-              width: 40,
-              height: 40,
-              child: Tooltip(
-                message: 'Order ID: $orderId',
-                child: const Icon(
-                  Icons.local_shipping, // ไอคอนรถส่งของ
-                  color: Colors.orange,
-                  size: 40.0,
-                ),
+      final Map<String, Marker> markerMap = {};
+      for (var doc in snapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        final String orderId = doc.id;
+        if (data.containsKey('currentLocation') &&
+            data['currentLocation'] is GeoPoint) {
+          final GeoPoint position = data['currentLocation'];
+          markerMap[orderId] = Marker(
+            point: LatLng(position.latitude, position.longitude),
+            width: 40,
+            height: 40,
+            child: Tooltip(
+              message: 'Order ID: $orderId',
+              child: const Icon(
+                Icons.two_wheeler,
+                color: Colors.blue,
+                size: 40.0,
               ),
-            );
-          })
-          .whereType<Marker>()
-          .toList(); // กรองค่า null ออกจาก List
-
+            ),
+          );
+        }
+      }
       setState(() {
-        _orderMarkers = newMarkers;
+        _orderMarkers = markerMap.values.toList();
       });
     }, onError: (error) {
       log("Error listening to orders: $error");
     });
   }
 
-  /// ดึงตำแหน่ง GPS ปัจจุบัน
+  /// ฟังก์ชันสำหรับกดปุ่มเพื่อดึงตำแหน่ง (ยังคงมีประโยชน์)
   Future<void> _getCurrentLocation() async {
     try {
-      if (kIsWeb) {
-        Position pos = await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.high);
-        if (mounted) {
-          setState(() {
-            currentPos = LatLng(pos.latitude, pos.longitude);
-          });
-          mapController.move(currentPos!, 16);
-        }
-        log("Web Location: ${pos.latitude}, ${pos.longitude}");
-      } else {
-        bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-        if (!serviceEnabled) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('กรุณาเปิด GPS')),
-            );
-          }
-          return;
-        }
-
-        LocationPermission permission = await Geolocator.checkPermission();
-        if (permission == LocationPermission.denied) {
-          permission = await Geolocator.requestPermission();
-          if (permission == LocationPermission.denied) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('การเข้าถึงตำแหน่งถูกปฏิเสธ')),
-              );
-            }
-            return;
-          }
-        }
-
-        if (permission == LocationPermission.deniedForever) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                  content: Text(
-                      'การเข้าถึงตำแหน่งถูกปฏิเสธถาวร, กรุณาไปที่การตั้งค่า')),
-            );
-          }
-          return;
-        }
-
-        Position pos = await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.high);
-        if (mounted) {
-          setState(() {
-            currentPos = LatLng(pos.latitude, pos.longitude);
-          });
-          mapController.move(currentPos!, 16);
-        }
-        log("Mobile Location: ${pos.latitude}, ${pos.longitude}");
+      Position pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
+      if (mounted) {
+        setState(() {
+          currentPos = LatLng(pos.latitude, pos.longitude);
+        });
+        // เมื่อกดปุ่ม ให้แผนที่เคลื่อนที่ตามทันที
+        mapController.move(currentPos!, 16);
       }
     } catch (e) {
-      log("Error getting location: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("เกิดข้อผิดพลาดในการดึงตำแหน่ง: $e")));
-      }
+      log("Error getting location manually: $e");
     }
   }
 
@@ -230,7 +231,8 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: const Color(0xFFC70808),
-        onPressed: _getCurrentLocation,
+        onPressed:
+            _getCurrentLocation, // ปุ่มนี้ยังใช้เพื่อเลื่อนแผนที่มาที่ตำแหน่งเรา
         tooltip: 'ค้นหาตำแหน่งปัจจุบัน',
         child: const Icon(Icons.gps_fixed, color: Colors.white),
       ),
@@ -238,7 +240,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- Header Section (แสดงข้อมูลผู้ใช้) ---
+  // ... (โค้ดส่วนที่เหลือทั้งหมดเหมือนเดิม) ...
   Widget _buildHeader(BuildContext context) {
     return Stack(
       children: [
@@ -250,35 +252,30 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-          child: Column(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'สวัสดีคุณ\n${_currentUser?.fullname ?? 'กำลังโหลด...'}',
-                    style: const TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      height: 1.2,
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: () => _showProfileOptions(context),
-                    child: CircleAvatar(
-                      radius: 35,
-                      backgroundColor: Colors.white,
-                      backgroundImage: (_currentUser?.profile != null &&
-                              _currentUser!.profile.isNotEmpty)
-                          ? NetworkImage(_currentUser!.profile)
-                          : const AssetImage('assets/image/default_avatar.png')
-                              as ImageProvider, // ใส่รูป default
-                    ),
-                  ),
-                ],
+              Text(
+                'สวัสดีคุณ\n${_currentUser?.fullname ?? 'กำลังโหลด...'}',
+                style: const TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  height: 1.2,
+                ),
+              ),
+              GestureDetector(
+                onTap: () => _showProfileOptions(context),
+                child: CircleAvatar(
+                  radius: 35,
+                  backgroundColor: Colors.white,
+                  backgroundImage: (_currentUser?.profile != null &&
+                          _currentUser!.profile.isNotEmpty)
+                      ? NetworkImage(_currentUser!.profile)
+                      : const AssetImage('assets/image/default_avatar.png')
+                          as ImageProvider,
+                ),
               ),
             ],
           ),
@@ -287,7 +284,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- Icon Buttons Section ---
   Widget _buildIconButtons() {
     goToPickup() => Get.to(() => PackagePickupPage(
           role: widget.role,
@@ -375,11 +371,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- Map Section (รวม Marker ทั้งหมด) ---
   Widget _buildMapSection(BuildContext context) {
     List<Marker> allMarkers = [
-      ..._fixedMarkers, // หมุดถาวร
-      ..._orderMarkers, // หมุดจาก Firestore (real-time)
+      ..._fixedMarkers,
+      ..._orderMarkers,
       if (currentPos != null)
         Marker(
           point: currentPos!,
@@ -448,7 +443,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- Bottom Navigation Bar ---
   Widget _buildBottomNavigationBar(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
@@ -481,21 +475,20 @@ class _HomeScreenState extends State<HomeScreen> {
         currentIndex: 0,
         onTap: (index) {
           if (index == 0) {
-            // อยู่หน้าแรกอยู่แล้ว ไม่ต้องทำอะไร หรือจะ refresh ก็ได้
+            // อยู่หน้าแรกอยู่แล้ว
           } else if (index == 1) {
             Get.to(() => HistoryPage(
                   uid: widget.uid,
                   role: widget.role,
                 ));
           } else if (index == 2) {
-            Get.offAll(() => const SpeedDerApp()); // กลับไปหน้าแรกของแอป
+            Get.offAll(() => const SpeedDerApp());
           }
         },
       ),
     );
   }
 
-  // --- Profile Options Modal ---
   void _showProfileOptions(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -526,14 +519,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 'แก้ไขข้อมูลส่วนตัว',
                 Icons.person_outline,
                 () {
-                  Get.back(); // ปิด Modal ก่อน
+                  Get.back();
                   Get.to(() => EditProfilePage(
                         role: widget.role,
                         uid: widget.uid,
                       ));
                 },
               ),
-              // สามารถเพิ่มปุ่มอื่นๆ ได้ที่นี่
             ],
           ),
         );
