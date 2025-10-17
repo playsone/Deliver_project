@@ -86,6 +86,12 @@ class PackagePickupController extends GetxController {
     super.onInit();
   }
 
+  @override
+  void onClose() {
+    searchController.dispose();
+    super.onClose();
+  }
+
   // ดึงเบอร์โทรศัพท์ของผู้ใช้ปัจจุบัน
   Future<void> _fetchUserPhone() async {
     try {
@@ -99,16 +105,30 @@ class PackagePickupController extends GetxController {
     }
   }
 
+  // NEW: ฟังก์ชันที่ถูกเรียกเมื่อกดปุ่มค้นหา
+  void performSearch() {
+    searchText.value = searchController.text.trim();
+    // เมื่อ searchText เปลี่ยน StreamBuilder จะทำงานเอง
+  }
+
   // 1. ฟังก์ชัน Stream สำหรับดึงพัสดุที่ถูกส่งมายังผู้ใช้คนนี้ (ผ่านเบอร์โทร)
   Stream<QuerySnapshot> getRecipientPackagesStream() {
     if (userPhone.value.isEmpty) {
       return Stream.empty();
     }
+
     // ค้นหาพัสดุทั้งหมดที่มี receiverPhone ตรงกับเบอร์โทรศัพท์ของผู้ใช้
     final baseQuery = FirebaseFirestore.instance
         .collection('orders')
         .where('deliveryAddress.receiverPhone', isEqualTo: userPhone.value)
-        .snapshots();
+        .orderBy('createdAt', descending: true);
+
+    // !!! ข้อจำกัด: Firestore ไม่รองรับการค้นหาแบบ 'contains' หรือ 'startswith'
+    // ในหลาย Field พร้อมกันโดยไม่มี Index ที่ซับซ้อน หรือการค้นหาแบบ Full-text search
+    // ดังนั้นโค้ดนี้จะดึงข้อมูลทั้งหมดแล้วมา Filter ใน Flutter (Client-side)
+    // หรือใช้แค่ Base Query และ Filter Client-side เพื่อการใช้งานที่ง่ายขึ้น
+
+    return baseQuery.snapshots();
   }
 
   // 2. ฟังก์ชันสำหรับดึงชื่อผู้ใช้ (ผู้ส่ง/ไรเดอร์) จาก UID (เหมือนเดิม)
@@ -128,7 +148,7 @@ class PackagePickupController extends GetxController {
     }
   }
 
-  // 3. ฟังก์ชันสำหรับอัพเดทสถานะเป็น 'completed'
+  // 3. ฟังก์ชันสำหรับอัพเดทสถานะเป็น 'completed' (เหมือนเดิม)
   Future<void> confirmPackageReception(String orderId) async {
     Get.dialog(
         const Center(child: CircularProgressIndicator(color: _primaryColor)),
@@ -232,9 +252,40 @@ class PackagePickupPage extends StatelessWidget {
           );
         }
 
-        final packages = snapshot.data!.docs
+        final allPackages = snapshot.data!.docs
             .map((doc) => PackageModel.fromFirestore(doc))
             .toList();
+        final filterText = controller.searchText.value.toLowerCase();
+
+        // **Client-side Filtering Logic**
+        final filteredPackages = allPackages.where((package) {
+          if (filterText.isEmpty) return true;
+
+          // Check Order Details (ชื่อสินค้า)
+          if (package.orderDetails.toLowerCase().contains(filterText))
+            return true;
+
+          // Check Package ID (หมายเลขพัสดุ)
+          if (package.id.toLowerCase().contains(filterText)) return true;
+
+          // Note: ค้นหาเบอร์โทรผู้ส่งทำได้ยากกว่า เพราะต้องดึงเบอร์โทรของผู้ส่ง (customerId) จาก Collection 'users'
+          // และนำมาเปรียบเทียบทีละรายการ ซึ่งทำได้แต่ช้า/ซับซ้อน
+          // สำหรับโค้ดนี้จะค้นหาแค่ ชื่อสินค้าและรหัสพัสดุ
+
+          return false;
+        }).toList();
+
+        if (filteredPackages.isEmpty) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.only(top: 50.0),
+              child: Text(
+                'ไม่พบรายการพัสดุที่ตรงกับคำค้นหา',
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+            ),
+          );
+        }
 
         return Column(
           children: filteredPackages.map((package) {
@@ -319,13 +370,18 @@ class PackagePickupPage extends StatelessWidget {
       String senderName,
       String riderName,
       Function(String) onConfirm) {
+    // ตรวจสอบว่าควรแสดงรูปหลักฐานหรือไม่ (สำหรับ delivered/completed)
+    final bool showDeliveredImage = (package.currentStatus == 'delivered' ||
+            package.currentStatus == 'completed') &&
+        package.deliveredImageUrl?.isNotEmpty == true;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 15),
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: InkWell(
         onTap: () {
-          // สามารถนำไปหน้า OrderStatusPage ได้
+          // สามารถเปลี่ยนตรงนี้ให้ไปหน้า OrderStatusPage ได้ หากคุณมีไฟล์นั้น
           Get.snackbar(
               'รายละเอียด', 'เปิดหน้าเพื่อดูรายละเอียดพัสดุ ${package.id}');
         },
@@ -362,11 +418,39 @@ class PackagePickupPage extends StatelessWidget {
                 ],
               ),
               const Divider(),
-              _buildDetailRow(Icons.person_outline, 'ผู้ส่ง: $senderName'),
+
+              // ------------------ รายละเอียดพัสดุ/ผู้ติดต่อ ------------------
+              _buildDetailRow(Icons.inventory_2_outlined,
+                  'สินค้า: ${package.orderDetails}'), // รายละเอียดสินค้า
+              _buildDetailRow(Icons.person, 'ผู้ส่ง: $senderName'),
               _buildDetailRow(
                   Icons.two_wheeler_outlined, 'ไรเดอร์: $riderName'),
-              _buildDetailRow(Icons.pin_drop, package.source),
               _buildDetailRow(Icons.qr_code, 'รหัสพัสดุ: ${package.id}'),
+
+              // ------------------ รูปภาพหลักฐาน (ถ้ามี) ------------------
+              if (showDeliveredImage)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 10),
+                    const Text('หลักฐานการจัดส่งสำเร็จ:',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 14)),
+                    const SizedBox(height: 5),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        package.deliveredImageUrl!,
+                        height: 100,
+                        width: 100,
+                        fit: BoxFit.cover,
+                        errorBuilder: (c, e, s) =>
+                            const Icon(Icons.broken_image, size: 100),
+                      ),
+                    ),
+                  ],
+                ),
+
               const SizedBox(height: 10),
               // ------------------ ปุ่มยืนยัน (ถ้ามี) ------------------
               if (showConfirmButton)
@@ -451,8 +535,14 @@ class PackagePickupPage extends StatelessWidget {
         decoration: InputDecoration(
           hintText: 'ค้นหาด้วยชื่อสินค้า หรือ รหัสพัสดุ',
           border: InputBorder.none,
-          prefixIcon: Icon(Icons.search, color: _primaryColor),
+          prefixIcon: const Icon(Icons.search, color: _primaryColor),
+          suffixIcon: IconButton(
+            // ปุ่มค้นหา
+            icon: const Icon(Icons.send, color: _primaryColor),
+            onPressed: controller.performSearch,
+          ),
         ),
+        onSubmitted: (_) => controller.performSearch(),
       ),
     );
   }
