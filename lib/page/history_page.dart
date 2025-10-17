@@ -25,10 +25,25 @@ class HistoryPage extends StatefulWidget {
 class _HistoryPageState extends State<HistoryPage> {
   String? _selectedOrderId;
 
+  // State สำหรับการค้นหา
+  final TextEditingController _searchController = TextEditingController();
+  String _searchTerm = '';
+
   @override
   void initState() {
     super.initState();
     initializeDateFormatting('th', null);
+    _searchController.addListener(() {
+      setState(() {
+        _searchTerm = _searchController.text;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -62,27 +77,56 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
-  /// Widget สำหรับแสดง "หน้ารายการประวัติ"
+  // ===================================================================
+  // == WIDGETS สำหรับแสดง "หน้ารายการประวัติ" ==
+  // ===================================================================
+
   Widget _buildOrderListView() {
+    return Column(
+      children: [
+        _buildSearchBar(),
+        Expanded(child: _buildOrderList()),
+      ],
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: TextField(
+        controller: _searchController,
+        decoration: InputDecoration(
+          hintText: 'ค้นหา Order ID, ชื่อ/เบอร์ ผู้รับ...',
+          prefixIcon: const Icon(Icons.search),
+          suffixIcon: _searchTerm.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear),
+                  onPressed: () {
+                    _searchController.clear();
+                  },
+                )
+              : null,
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(30),
+            borderSide: BorderSide.none,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOrderList() {
     // Stream 1: ออเดอร์ที่ user เป็น "ลูกค้า" และส่งสำเร็จแล้ว
-    final customerStream = FirebaseFirestore.instance
+    final senderStream = FirebaseFirestore.instance
         .collection('orders')
         .where('customerId', isEqualTo: widget.uid)
         .where('currentStatus', isEqualTo: 'delivered')
         .snapshots();
 
-    // Stream 2: ออเดอร์ที่ user เป็น "ไรเดอร์" และส่งสำเร็จแล้ว
-    final riderStream = FirebaseFirestore.instance
-        .collection('orders')
-        .where('riderId', isEqualTo: widget.uid)
-        .where('currentStatus', isEqualTo: 'delivered')
-        .snapshots();
-
-    // รวม 2 Streams เข้าด้วยกัน
-    final mergedStream = StreamGroup.merge([customerStream, riderStream]);
-
     return StreamBuilder<QuerySnapshot>(
-      stream: mergedStream,
+      stream: senderStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -94,12 +138,38 @@ class _HistoryPageState extends State<HistoryPage> {
           return const Center(child: Text('ยังไม่มีประวัติการส่งสินค้า'));
         }
 
-        // ใช้ Map เพื่อกรองรายการที่ซ้ำซ้อน (ถ้ามี)
+        // ใช้ Map เพื่อกรองรายการที่ซ้ำซ้อน
         final uniqueDocs = {for (var doc in snapshot.data!.docs) doc.id: doc};
-        final orderDocs = uniqueDocs.values.toList();
+        var allDocs = uniqueDocs.values.toList();
+
+        // Logic การกรองข้อมูล
+        if (_searchTerm.isNotEmpty) {
+          String lowerCaseSearch = _searchTerm.toLowerCase();
+          allDocs = allDocs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final deliveryAddress =
+                data['deliveryAddress'] as Map<String, dynamic>? ?? {};
+
+            final orderId = doc.id.toLowerCase();
+            final receiverName =
+                (deliveryAddress['receiverName'] as String?)?.toLowerCase() ??
+                    '';
+            final receiverPhone =
+                (deliveryAddress['receiverPhone'] as String?)?.toLowerCase() ??
+                    '';
+
+            return orderId.contains(lowerCaseSearch) ||
+                receiverName.contains(lowerCaseSearch) ||
+                receiverPhone.contains(lowerCaseSearch);
+          }).toList();
+        }
+
+        if (allDocs.isEmpty) {
+          return const Center(child: Text('ไม่พบรายการที่ค้นหา'));
+        }
 
         // เรียงตามวันที่สร้างล่าสุด
-        orderDocs.sort((a, b) {
+        allDocs.sort((a, b) {
           final aTime = (a.data() as Map)['createdAt'] as Timestamp?;
           final bTime = (b.data() as Map)['createdAt'] as Timestamp?;
           if (aTime == null || bTime == null) return 0;
@@ -107,15 +177,12 @@ class _HistoryPageState extends State<HistoryPage> {
         });
 
         return ListView.builder(
-          padding: const EdgeInsets.all(10),
-          itemCount: orderDocs.length,
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 20),
+          itemCount: allDocs.length,
           itemBuilder: (context, index) {
-            final doc = orderDocs[index];
-            final data = doc.data() as Map<String, dynamic>;
-
-            // ส่งข้อมูลทั้งหมดไปให้ Widget ใหม่จัดการ
+            final doc = allDocs[index];
             return HistoryListItem(
-              orderData: data,
+              orderData: doc.data() as Map<String, dynamic>,
               orderId: doc.id,
               onTap: () {
                 setState(() {
@@ -129,7 +196,10 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
-  /// Widget สำหรับแสดง "หน้ารายละเอียดประวัติ"
+  // ===================================================================
+  // == WIDGETS สำหรับแสดง "หน้ารายละเอียดประวัติ" ==
+  // ===================================================================
+
   Widget _buildOrderDetailView(String orderId) {
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
@@ -375,38 +445,6 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
-  String _translateStatus(String status) {
-    switch (status) {
-      case 'pending':
-        return 'รอไรเดอร์รับงาน';
-      case 'accepted':
-        return 'ไรเดอร์รับงานแล้ว';
-      case 'picked_up':
-        return 'รับพัสดุแล้ว';
-      case 'in_transit':
-        return 'กำลังนำส่ง';
-      case 'delivered':
-        return 'จัดส่งสำเร็จ';
-      default:
-        return status;
-    }
-  }
-
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'pending':
-      case 'accepted':
-        return Colors.blue;
-      case 'picked_up':
-      case 'in_transit':
-        return Colors.orange;
-      case 'delivered':
-        return Colors.green;
-      default:
-        return Colors.grey;
-    }
-  }
-
   Widget _buildBottomNavigationBar(BuildContext context, int currentIndex) {
     return Container(
       decoration: const BoxDecoration(
@@ -467,21 +505,19 @@ class HistoryListItem extends StatefulWidget {
 }
 
 class _HistoryListItemState extends State<HistoryListItem> {
-  String _riderName = 'กำลังโหลด...';
+  Map<String, dynamic>? _riderData;
 
   @override
   void initState() {
     super.initState();
-    _fetchRiderName();
+    _fetchRiderData();
   }
 
   /// ฟังก์ชันสำหรับดึงชื่อไรเดอร์แค่ครั้งเดียว
-  Future<void> _fetchRiderName() async {
+  Future<void> _fetchRiderData() async {
     final riderId = widget.orderData['riderId'] as String?;
-    if (riderId == null || riderId.isEmpty) {
-      if (mounted) setState(() => _riderName = 'ไม่มีข้อมูล');
-      return;
-    }
+    if (riderId == null || riderId.isEmpty) return;
+
     try {
       final doc = await FirebaseFirestore.instance
           .collection('users')
@@ -489,68 +525,127 @@ class _HistoryListItemState extends State<HistoryListItem> {
           .get();
       if (doc.exists && mounted) {
         setState(() {
-          _riderName = doc.data()?['fullname'] ?? 'ไม่มีชื่อ';
+          _riderData = doc.data();
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _riderName = 'ผิดพลาด');
+      // Handle error if needed
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final data = widget.orderData;
     final deliveryAddress =
-        widget.orderData['deliveryAddress'] as Map<String, dynamic>? ?? {};
-    final timestamp = (widget.orderData['createdAt'] as Timestamp?)?.toDate();
-    final formattedDate = timestamp != null
-        ? DateFormat('dd MMM yyyy', 'th').format(timestamp)
-        : '';
-    final receiverName = deliveryAddress['receiverName'] ?? 'ไม่มีชื่อผู้รับ';
+        data['deliveryAddress'] as Map<String, dynamic>? ?? {};
+    final status = data['currentStatus'] ?? 'N/A';
 
     return InkWell(
       onTap: widget.onTap,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        padding: const EdgeInsets.all(15),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: [
-            BoxShadow(color: Colors.grey.withOpacity(0.3), blurRadius: 5),
-          ],
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.task_alt, size: 40, color: Colors.green),
-            const SizedBox(width: 15),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      child: Card(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'ส่งถึง: $receiverName',
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold),
-                    overflow: TextOverflow.ellipsis,
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(status).withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      _translateStatus(status),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: _getStatusColor(status),
+                      ),
+                    ),
                   ),
-                  const SizedBox(height: 4),
                   Text(
-                    'จัดส่งโดย: $_riderName', // <-- แสดงชื่อไรเดอร์
-                    style: const TextStyle(color: Colors.black54, fontSize: 14),
+                    'ID: ${widget.orderId}',
+                    style: const TextStyle(color: Colors.grey, fontSize: 12),
                     overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'วันที่: $formattedDate',
-                    style: const TextStyle(color: Colors.grey, fontSize: 14),
                   ),
                 ],
               ),
-            ),
-            const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 16),
-          ],
+              const Divider(height: 16),
+              _buildInfoRow(Icons.person_pin_circle_outlined, 'ผู้รับ',
+                  deliveryAddress['receiverName'] ?? 'N/A'),
+              _buildInfoRow(Icons.phone_outlined, 'เบอร์โทร',
+                  deliveryAddress['receiverPhone'] ?? 'N/A'),
+              const SizedBox(height: 8),
+              if (_riderData != null) ...[
+                _buildInfoRow(Icons.two_wheeler_outlined, 'Rider',
+                    _riderData!['fullname'] ?? 'N/A'),
+                _buildInfoRow(Icons.phone_android_outlined, 'เบอร์โทร Rider',
+                    _riderData!['phone'] ?? 'N/A'),
+                _buildInfoRow(Icons.badge_outlined, 'ทะเบียนรถ',
+                    _riderData!['vehicle_no'] ?? 'N/A'),
+              ] else if (data['riderId'] != null) ...[
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 4.0),
+                  child: Text('กำลังโหลดข้อมูลไรเดอร์...'),
+                ),
+              ]
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2.0),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.grey.shade600, size: 16),
+          const SizedBox(width: 8),
+          Text('$label: ', style: const TextStyle(fontWeight: FontWeight.bold)),
+          Expanded(child: Text(value, overflow: TextOverflow.ellipsis)),
+        ],
+      ),
+    );
+  }
+}
+
+// --- ⭐️ ย้ายฟังก์ชันมาไว้นอกคลาสเพื่อให้ Widget อื่นเรียกใช้ได้ ---
+String _translateStatus(String status) {
+  switch (status) {
+    case 'pending':
+      return 'รอไรเดอร์รับงาน';
+    case 'accepted':
+      return 'ไรเดอร์รับงานแล้ว';
+    case 'picked_up':
+      return 'รับพัสดุแล้ว';
+    case 'in_transit':
+      return 'กำลังนำส่ง';
+    case 'delivered':
+      return 'จัดส่งสำเร็จ';
+    default:
+      return status;
+  }
+}
+
+Color _getStatusColor(String status) {
+  switch (status) {
+    case 'pending':
+    case 'accepted':
+      return Colors.blue;
+    case 'picked_up':
+    case 'in_transit':
+      return Colors.orange;
+    case 'delivered':
+      return Colors.green;
+    default:
+      return Colors.grey;
   }
 }

@@ -210,11 +210,6 @@ class _PackageDeliveryPageState extends State<PackageDeliveryPage> {
                         _buildEvidenceImage(data),
                         const SizedBox(height: 20),
                         _buildDeliveryInfoSection(data),
-                        FilledButton(
-                            onPressed: () {
-                              Get.off(() => const SpeedDerApp());
-                            },
-                            child: const Text("ออก"))
                       ],
                     ),
                   ),

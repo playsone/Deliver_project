@@ -408,10 +408,6 @@ class RiderHomeScreen extends StatelessWidget {
                   context, 'แก้ไขข้อมูลส่วนตัว', Icons.person_outline, () {
                 Get.to(() => EditProfilePage(uid: uid, role: role));
               }),
-              _buildOptionButton(context, 'เปลี่ยนรหัสผ่าน', Icons.lock_outline,
-                  () {
-                Navigator.pop(context);
-              }),
               _buildOptionButton(context, 'ออกจากระบบ', Icons.logout, () {
                 Get.offAll(() => const SpeedDerApp());
               }),

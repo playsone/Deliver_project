@@ -537,6 +537,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       ));
                 },
               ),
+              _buildOptionButton(
+                context,
+                'ออกจากระบบ',
+                Icons.person_outline,
+                () {
+                  Get.offAll(() => const SpeedDerApp());
+                },
+              ),
             ],
           ),
         );
