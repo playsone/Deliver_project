@@ -11,11 +11,11 @@ import 'package:delivery_project/page/index.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-// สำหรับ Flutter Map และ LatLong2
+// For Flutter Map and LatLong2
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
-// สำหรับ GPS
+// For GPS
 import 'package:geolocator/geolocator.dart';
 import 'package:delivery_project/page/edit_profile.dart';
 
@@ -43,9 +43,10 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Marker> _orderMarkers = [];
   StreamSubscription? _ordersSubscription;
 
-  // --- ⭐️ 1. เพิ่ม: ตัวแปรสำหรับควบคุมการฟังตำแหน่งของผู้ใช้ ---
+  // Stream subscription to control the user's location listener
   StreamSubscription<Position>? _positionStreamSubscription;
 
+  // Dynamically generates a marker for the user's primary address
   List<Marker> get _fixedMarkers {
     if (_currentUser != null && _currentUser!.defaultGPS != null) {
       final userGps = _currentUser!.defaultGPS!;
@@ -72,58 +73,70 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _fetchUserData();
-    _startListeningToLocation(); // <-- ⭐️ 3. แก้ไข: เปลี่ยนมาใช้ฟังก์ชันนี้
+    _startListeningToUserLocation(); // Start listening for real-time location updates
   }
 
   @override
   void dispose() {
     _ordersSubscription?.cancel();
-    _positionStreamSubscription?.cancel(); // <-- ⭐️ 4. สำคัญ: หยุดการฟัง
+    _positionStreamSubscription
+        ?.cancel(); // IMPORTANT: Stop listening to save battery
     super.dispose();
   }
 
-  // --- ⭐️ 2. เพิ่ม: ฟังก์ชันสำหรับเริ่มฟังตำแหน่งแบบ Real-time ---
-  void _startListeningToLocation() async {
-    // ตรวจสอบ Permission ก่อนเริ่มฟัง
+  /// Starts listening for the user's location in real-time.
+  void _startListeningToUserLocation() async {
     bool serviceEnabled;
     LocationPermission permission;
 
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       log('Location services are disabled.');
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('กรุณาเปิด GPS')));
       return;
     }
 
     permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied ||
-        permission == LocationPermission.deniedForever) {
+    if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
+      if (permission == LocationPermission.denied) {
         log('Location permissions are denied.');
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('การเข้าถึงตำแหน่งถูกปฏิเสธ')));
         return;
       }
     }
 
+    if (permission == LocationPermission.deniedForever) {
+      log('Location permissions are permanently denied.');
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('การเข้าถึงตำแหน่งถูกปฏิเสธถาวร')));
+      return;
+    }
+
     const LocationSettings locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 10, // อัปเดตทุกครั้งที่เคลื่อนที่ 10 เมตร
+      distanceFilter: 10, // Update every 10 meters of movement
     );
 
+    // Listen to the position stream
     _positionStreamSubscription =
         Geolocator.getPositionStream(locationSettings: locationSettings)
             .listen((Position? position) {
       if (position != null && mounted) {
-        // เมื่อได้รับตำแหน่งใหม่ ให้ setState เพื่อวาด Marker ใหม่
+        // Update the state with the new position, causing the UI to rebuild
         setState(() {
           currentPos = LatLng(position.latitude, position.longitude);
         });
-        // ทำให้แผนที่เคลื่อนที่ตาม (อาจจะทำให้กระตุกถ้าผู้ใช้กำลังเลื่อนแผนที่เอง)
-        // mapController.move(currentPos!, 16);
       }
     });
   }
 
+  /// Fetches user data and then starts listening for related orders.
   Future<void> _fetchUserData() async {
     try {
       final doc = await FirebaseFirestore.instance
@@ -135,6 +148,7 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _currentUser = UserModel.fromFirestore(doc);
         });
+        // Start listening for orders only after user data is available
         _listenToOrders();
       }
     } catch (e) {
@@ -142,32 +156,39 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Listens for real-time order updates relevant to the user.
   void _listenToOrders() {
     if (_currentUser == null) return;
     List<String> statusesToTrack = ['accepted', 'picked_up', 'in_transit'];
+
     final senderStream = FirebaseFirestore.instance
         .collection('orders')
         .where('customerId', isEqualTo: widget.uid)
         .where('currentStatus', whereIn: statusesToTrack)
         .snapshots();
+
     final receiverStream = FirebaseFirestore.instance
         .collection('orders')
         .where('deliveryAddress.receiverPhone', isEqualTo: _currentUser!.phone)
         .where('currentStatus', whereIn: statusesToTrack)
         .snapshots();
+
     final riderStream = FirebaseFirestore.instance
         .collection('orders')
         .where('riderId', isEqualTo: widget.uid)
         .where('currentStatus', whereIn: statusesToTrack)
         .snapshots();
+
     final mergedStream =
         StreamGroup.merge([senderStream, receiverStream, riderStream]);
+
     _ordersSubscription = mergedStream.listen((snapshot) {
       if (!mounted) return;
       final Map<String, Marker> markerMap = {};
       for (var doc in snapshot.docs) {
         final data = doc.data() as Map<String, dynamic>;
         final String orderId = doc.id;
+
         if (data.containsKey('currentLocation') &&
             data['currentLocation'] is GeoPoint) {
           final GeoPoint position = data['currentLocation'];
@@ -194,20 +215,10 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  /// ฟังก์ชันสำหรับกดปุ่มเพื่อดึงตำแหน่ง (ยังคงมีประโยชน์)
-  Future<void> _getCurrentLocation() async {
-    try {
-      Position pos = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high);
-      if (mounted) {
-        setState(() {
-          currentPos = LatLng(pos.latitude, pos.longitude);
-        });
-        // เมื่อกดปุ่ม ให้แผนที่เคลื่อนที่ตามทันที
-        mapController.move(currentPos!, 16);
-      }
-    } catch (e) {
-      log("Error getting location manually: $e");
+  /// Moves the map camera to the user's current known location.
+  void _moveCameraToCurrentLocation() {
+    if (currentPos != null) {
+      mapController.move(currentPos!, 16.0);
     }
   }
 
@@ -231,8 +242,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: const Color(0xFFC70808),
-        onPressed:
-            _getCurrentLocation, // ปุ่มนี้ยังใช้เพื่อเลื่อนแผนที่มาที่ตำแหน่งเรา
+        onPressed: _moveCameraToCurrentLocation,
         tooltip: 'ค้นหาตำแหน่งปัจจุบัน',
         child: const Icon(Icons.gps_fixed, color: Colors.white),
       ),
@@ -240,7 +250,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ... (โค้ดส่วนที่เหลือทั้งหมดเหมือนเดิม) ...
+  // --- UI Widgets (No changes below this line) ---
+
   Widget _buildHeader(BuildContext context) {
     return Stack(
       children: [
@@ -475,7 +486,7 @@ class _HomeScreenState extends State<HomeScreen> {
         currentIndex: 0,
         onTap: (index) {
           if (index == 0) {
-            // อยู่หน้าแรกอยู่แล้ว
+            // Stay on this page
           } else if (index == 1) {
             Get.to(() => HistoryPage(
                   uid: widget.uid,

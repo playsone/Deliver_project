@@ -120,13 +120,7 @@ class PackagePickupController extends GetxController {
     // ค้นหาพัสดุทั้งหมดที่มี receiverPhone ตรงกับเบอร์โทรศัพท์ของผู้ใช้
     final baseQuery = FirebaseFirestore.instance
         .collection('orders')
-        .where('deliveryAddress.receiverPhone', isEqualTo: userPhone.value)
-        .orderBy('createdAt', descending: true);
-
-    // !!! ข้อจำกัด: Firestore ไม่รองรับการค้นหาแบบ 'contains' หรือ 'startswith'
-    // ในหลาย Field พร้อมกันโดยไม่มี Index ที่ซับซ้อน หรือการค้นหาแบบ Full-text search
-    // ดังนั้นโค้ดนี้จะดึงข้อมูลทั้งหมดแล้วมา Filter ใน Flutter (Client-side)
-    // หรือใช้แค่ Base Query และ Filter Client-side เพื่อการใช้งานที่ง่ายขึ้น
+        .where('deliveryAddress.receiverPhone', isEqualTo: userPhone.value);
 
     return baseQuery.snapshots();
   }
