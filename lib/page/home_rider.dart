@@ -6,17 +6,17 @@ import 'package:delivery_project/models/package_model.dart';
 import 'package:delivery_project/models/user_model.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'dart:math' show cos, sqrt, asin, pi, atan2, sin; // สำหรับสูตร Haversine
+import 'package:geolocator/geolocator.dart'; // ✅ IMPORT GEOLOCATOR
 
 // --- IMPORT MODELS AND PAGES ---
 // !สำคัญ: ตรวจสอบว่า Path ของไฟล์ Model และ Page ถูกต้อง
+import 'package:rxdart/rxdart.dart'
+    as RxDart; // ✅ FIX: Re-added RxDart with prefix
 import '../models/order_model.dart';
 import 'package:delivery_project/page/edit_profile.dart';
 import 'package:delivery_project/page/index.dart';
 import 'package:delivery_project/page/package_delivery_page.dart';
-
-// ------------------------------------------------------------------
-// **แก้ไข:** ย้าย Class Package ออกมาไว้ข้างนอกสุด
-// ------------------------------------------------------------------
 
 // ------------------------------------------------------------------
 // Controller (ส่วนจัดการ Logic ทั้งหมดของหน้า Home)
@@ -30,9 +30,19 @@ class RiderHomeController extends GetxController {
   final Rx<UserModel?> rider = Rx(null);
   final db = FirebaseFirestore.instance;
 
+  // **State สำหรับตำแหน่งปัจจุบันของ Rider (ใช้ GeoPoint)**
+  final Rx<GeoPoint?> riderCurrentLocation = Rx(null);
+
+  // กำหนดระยะทางสูงสุดที่อนุญาตให้รับงาน (20 เมตร)
+  static const double MAX_DISTANCE_METERS = 20.0;
+
   @override
   void onInit() {
     super.onInit();
+
+    // **✅ แก้ไข: เริ่มฟัง Stream ตำแหน่ง GPS จริง ทันที**
+    _startLocationTracking();
+
     // 1. ตรวจสอบงานที่ค้างอยู่ก่อนเป็นอันดับแรก
     _checkAndNavigateToActiveOrder();
 
@@ -46,7 +56,74 @@ class RiderHomeController extends GetxController {
     );
   }
 
-  // ฟังก์ชันใหม่สำหรับตรวจสอบและนำทางไปยังงานที่ Rider รับไว้
+  // **✅ ฟังก์ชัน: จัดการการขอ Permission และเริ่มฟังตำแหน่ง GPS จริง**
+  void _startLocationTracking() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    // 1. ตรวจสอบว่า GPS เปิดอยู่ไหม
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      Get.snackbar(
+          'แจ้งเตือน GPS', 'กรุณาเปิดบริการระบุตำแหน่ง (GPS) เพื่อรับงาน');
+      return;
+    }
+
+    // 2. ตรวจสอบ Permission
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        Get.snackbar(
+            'ข้อจำกัด', 'ไม่ได้รับอนุญาตให้เข้าถึงตำแหน่ง. กรุณาตั้งค่าในแอป.');
+        return;
+      }
+    }
+
+    // 3. เริ่มฟังตำแหน่งอย่างต่อเนื่อง
+    const LocationSettings locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high, // ความแม่นยำสูง
+      distanceFilter: 10, // อัปเดตเมื่อเคลื่อนที่เกิน 10 เมตร
+    );
+
+    Geolocator.getPositionStream(locationSettings: locationSettings).listen(
+        (Position position) {
+      // อัปเดตตำแหน่ง Rider ใน Rx State ด้วย GeoPoint ใหม่ (ตำแหน่งจริง)
+      riderCurrentLocation.value =
+          GeoPoint(position.latitude, position.longitude);
+      log('GPS Location Updated: ${position.latitude}, ${position.longitude}');
+    }, onError: (e) {
+      log('Error getting location: $e');
+      Get.snackbar('ข้อผิดพลาด', 'ไม่สามารถติดตามตำแหน่ง GPS ได้: $e');
+    });
+  }
+
+  // **ฟังก์ชันสำหรับคำนวณระยะทาง (Haversine Formula) เป็นเมตร**
+  double _calculateDistanceMeters(GeoPoint riderLoc, GeoPoint pickupLoc) {
+    const double R = 6371000; // รัศมีโลกเป็นเมตร
+
+    final double lat1 = riderLoc.latitude;
+    final double lon1 = riderLoc.longitude;
+    final double lat2 = pickupLoc.latitude;
+    final double lon2 = pickupLoc.longitude;
+
+    // แปลง Degree เป็น Radians
+    final double dLat = (lat2 - lat1) * (pi / 180.0);
+    final double dLon = (lon2 - lon1) * (pi / 180.0);
+
+    // สูตร Haversine
+    final double a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(lat1 * (pi / 180.0)) *
+            cos(lat2 * (pi / 180.0)) *
+            sin(dLon / 2) *
+            sin(dLon / 2);
+    final double c = 2 * atan2(sqrt(a), sqrt(1 - a));
+
+    return R * c; // ผลลัพธ์เป็นเมตร
+  }
+
+  // ฟังก์ชันใหม่สำหรับตรวจสอบและนำทางไปยังงานที่ Rider รับไว้ (ไม่แก้ไข)
   Future<void> _checkAndNavigateToActiveOrder() async {
     try {
       final querySnapshot = await db
@@ -86,17 +163,52 @@ class RiderHomeController extends GetxController {
     }
   }
 
-  // Stream สำหรับดึงรายการงานที่ยังว่างอยู่ (pending)
+  // **Stream สำหรับดึงรายการงานที่ยังว่างอยู่ (pending) พร้อมการกรองระยะทาง**
   Stream<List<OrderModel>> getPendingOrdersStream() {
-    return db
-        .collection('orders')
-        .where('currentStatus', isEqualTo: 'pending')
-        .snapshots()
-        .map((snapshot) =>
-            snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList());
+    // ต้องเข้าถึง .stream ก่อนเรียกใช้ switchMap (จาก rxdart)
+    return riderCurrentLocation.stream.switchMap((riderLoc) {
+      // 1. ตรวจสอบว่ามีตำแหน่งของไรเดอร์แล้วหรือยัง
+      if (riderLoc == null) {
+        log('Rider location is not available, returning empty list.');
+        return Stream.value([]);
+      }
+
+      // 2. ดึง Orders ทั้งหมดที่ 'pending' จาก Firestore
+      return db
+          .collection('orders')
+          .where('currentStatus', isEqualTo: 'pending')
+          .snapshots()
+          .map((snapshot) {
+        final allPendingOrders =
+            snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
+
+        // 3. กรองด้วยเงื่อนไขระยะทาง 20 เมตร
+        final filteredOrders = allPendingOrders.where((order) {
+          // ตรวจสอบพิกัดของจุดรับงาน
+          final GeoPoint? pickupGps = order.pickupAddress.gps;
+          if (pickupGps == null) {
+            log('Order ${order.id} skipped: Pickup GPS is missing.');
+            return false; // ข้ามงานที่ไม่มีพิกัด
+          }
+
+          final distance = _calculateDistanceMeters(riderLoc, pickupGps);
+
+          // กรอง: แสดงเฉพาะงานที่ห่างไม่เกิน 20.0 เมตร
+          if (distance <= MAX_DISTANCE_METERS) {
+            log('Order ${order.id} is ${distance.toStringAsFixed(2)}m away - ACCEPTED');
+            return true;
+          } else {
+            log('Order ${order.id} is ${distance.toStringAsFixed(2)}m away - REJECTED (Max: $MAX_DISTANCE_METERS m)');
+            return false;
+          }
+        }).toList();
+
+        return filteredOrders;
+      });
+    });
   }
 
-  // ฟังก์ชันสำหรับกด "รับงาน"
+  // ฟังก์ชันสำหรับกด "รับงาน" (ไม่แก้ไข)
   Future<void> acceptOrder(OrderModel order) async {
     Get.dialog(const Center(child: CircularProgressIndicator()),
         barrierDismissible: false);
@@ -235,14 +347,27 @@ class RiderHomeScreen extends StatelessWidget {
       stream: controller.getPendingOrdersStream(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
+          // หากตำแหน่ง Rider ยังโหลดอยู่ ก็แสดง Loading
+          if (controller.riderCurrentLocation.value == null) {
+            return const Center(
+                child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 10),
+                Text('กำลังค้นหาตำแหน่งของคุณ...'),
+              ],
+            ));
+          }
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return const Center(child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล'));
+          return Center(
+              child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล: ${snapshot.error}'));
         }
         if (!snapshot.hasData || snapshot.data!.isEmpty) {
           return const Center(
-              child: Text('ไม่มีงานให้รับในขณะนี้',
+              child: Text('ไม่มีงานที่อยู่ในรัศมี 20 เมตรให้รับในขณะนี้',
                   style: TextStyle(fontSize: 16, color: Colors.grey)));
         }
 
