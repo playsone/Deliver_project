@@ -28,14 +28,11 @@ class SplashScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // โลโก้
             Expanded(
               child: Center(
                 child: Image.asset("assets/image/logo.png", width: 180),
               ),
             ),
-
-            // ชื่อแอป
             const Text(
               "SPEED - DER",
               style: TextStyle(
@@ -45,10 +42,7 @@ class SplashScreen extends StatelessWidget {
                 letterSpacing: 2,
               ),
             ),
-
             const SizedBox(height: 40),
-
-            // ปุ่ม Login
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 40),
               child: ElevatedButton(
@@ -66,10 +60,7 @@ class SplashScreen extends StatelessWidget {
                 child: const Text("Login", style: TextStyle(fontSize: 18)),
               ),
             ),
-
             const SizedBox(height: 15),
-
-            // ปุ่ม สมัครสมาชิก
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 40),
               child: OutlinedButton(
@@ -91,7 +82,6 @@ class SplashScreen extends StatelessWidget {
                 ),
               ),
             ),
-
             const SizedBox(height: 40),
           ],
         ),
