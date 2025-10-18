@@ -16,13 +16,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:location/location.dart';
 
-// หากต้องการ คุณสามารถแยก widget ย่อยออกเป็น part ไฟล์ได้
-// part 'delivery_map_section.dart';
-// part 'delivery_action_section.dart';
-// part 'delivery_info_section.dart';
-// part 'delivery_status_tracker.dart';
-// part 'delivery_image_card.dart';
-
 enum DeliveryStatus {
   accepted,
   pickedUp,
@@ -51,8 +44,7 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
   final MapController _mapController = MapController();
   StreamSubscription<LocationData>? _locationSubscription;
 
-  // ⭐️ แก้ไข: เปลี่ยนชื่อตัวแปรให้สื่อถึงระยะทางที่ยอมรับได้
-  static const double maxDistanceToTarget = 20.0; // 20 เมตร
+  static const double maxDistanceToTarget = 20.0; 
 
   @override
   void initState() {
@@ -66,7 +58,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
     super.dispose();
   }
 
-  // ================= Location Tracking =================
   void _startSendingLocation() async {
     bool serviceEnabled = await _location.serviceEnabled();
     if (!serviceEnabled) {
@@ -103,7 +94,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
     });
   }
 
-  // ================= Enum Mapping =================
   DeliveryStatus _mapStatus(String status) {
     switch (status) {
       case 'picked_up':
@@ -117,7 +107,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
     }
   }
 
-  // ================= Confirm Exit =================
   void _confirmExitDialog() {
     showDialog(
       context: context,
@@ -142,7 +131,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
     );
   }
 
-  // ================= Build =================
   @override
   Widget build(BuildContext context) {
     const primaryColor = Color(0xFFC70808);
@@ -210,7 +198,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
     );
   }
 
-  // ================= Image Upload & Status Update =================
   Future<void> _captureAndUploadStatusImage({
     required String statusToUpdate,
     bool isFinal = false,
@@ -267,7 +254,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
     }
   }
 
-  // ================= Widget: Status Tracker =================
   Widget _buildStatusTracker(Color baseColor, DeliveryStatus status) {
     final steps = [
       {'icon': Icons.check_circle_outline, 'label': 'รับงาน'},
@@ -311,7 +297,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
     );
   }
 
-  // ================= Widget: Map Section =================
   Widget _buildMapSection(
       Map<String, dynamic> orderData, DeliveryStatus status) {
     // ดึงพิกัดรับและส่ง
@@ -387,7 +372,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
     );
   }
 
-  // ⭐️ แก้ไข: ปรับปรุง Action Section ให้มีการตรวจสอบระยะทางก่อน "รับของ" และ "ส่งของ"
   Widget _buildActionSection(
       DeliveryStatus status, Map<String, dynamic> orderData) {
     if (status == DeliveryStatus.delivered) {
@@ -409,7 +393,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
       );
     }
 
-    // กำหนดค่าตามสถานะปัจจุบัน
     String targetStatus;
     GeoPoint? targetGps;
     String buttonText;
@@ -418,13 +401,10 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
     if (status == DeliveryStatus.accepted) {
       targetStatus = 'picked_up';
       buttonText = 'ถ่ายรูปยืนยันการรับของ';
-      // จุดหมายคือจุดรับของ
       targetGps = orderData['pickupAddress']?['gps'] as GeoPoint?;
     } else if (status == DeliveryStatus.pickedUp) {
       targetStatus = 'in_transit';
       buttonText = 'ถ่ายรูปเพื่อเริ่มนำส่ง';
-      // เมื่อรับของแล้ว จุดหมายต่อไปคือจุดรับของ (ยังไม่ถ่ายรูปเดินทาง)
-      // อนุญาตให้ถ่ายได้เลย ไม่ต้องเช็คระยะทางซ้ำ
       targetGps = null;
     } else if (status == DeliveryStatus.inTransit) {
       targetStatus = 'delivered';
@@ -433,17 +413,15 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
       // จุดหมายคือจุดส่งของ
       targetGps = orderData['deliveryAddress']?['gps'] as GeoPoint?;
     } else {
-      return const SizedBox.shrink(); // สถานะอื่น ๆ ไม่ต้องแสดงปุ่ม
+      return const SizedBox.shrink(); 
     }
 
     final GeoPoint? riderLoc = orderData['currentLocation'] as GeoPoint?;
 
-    // --- 1. ตรวจสอบว่าต้องเช็คระยะทางหรือไม่ (คือขั้นตอน accepted -> picked_up หรือ inTransit -> delivered) ---
     if (riderLoc != null && targetGps != null) {
       final double distance = _calculateDistanceMeters(riderLoc, targetGps);
 
       if (distance > maxDistanceToTarget) {
-        // แสดงปุ่มแจ้งเตือนให้เข้าใกล้จุดหมายก่อน
         final String targetName =
             status == DeliveryStatus.accepted ? 'ผู้ส่ง' : 'ผู้รับ';
 
@@ -479,7 +457,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
         );
       }
     } else if (targetGps != null && riderLoc == null) {
-      // กรณีที่ต้องเช็คระยะทาง แต่ GPS ของไรเดอร์ยังไม่มา
       return SizedBox(
         width: double.infinity,
         child: ElevatedButton.icon(
@@ -499,7 +476,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
         ),
       );
     }
-    // --- 2. ถ้าผ่านการเช็คระยะทางแล้ว หรือเป็นสถานะที่ไม่ต้องเช็คระยะทาง (picked_up -> in_transit) ---
 
     final Color buttonColor =
         isFinal ? const Color(0xFF38B000) : const Color(0xFFC70808);
@@ -528,7 +504,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
     );
   }
 
-  // ================= Helper: Distance =================
   double _calculateDistanceMeters(GeoPoint loc1, GeoPoint loc2) {
     const double R = 6371000; // meters
     final double lat1 = loc1.latitude;
@@ -549,7 +524,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
     return R * c;
   }
 
-  // ================= Widget: Evidence Images =================
   Widget _buildEvidenceImages(Map<String, dynamic> orderData) {
     final List<dynamic> history =
         orderData['statusHistory'] as List<dynamic>? ?? [];
@@ -635,7 +609,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
     );
   }
 
-  // ================= Widget: Delivery Info =================
   Widget _buildDeliveryInfoSection(Map<String, dynamic> orderData) {
     final pickup = orderData['pickupAddress'] as Map<String, dynamic>? ?? {};
     final delivery =

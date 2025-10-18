@@ -1,4 +1,3 @@
-// file: lib/page/order_status_page.dart
 
 import 'package:async/async.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -12,7 +11,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
-// Constants
+
 const Color _primaryColor = Color(0xFFC70808);
 const Color _backgroundColor = Color(0xFFFDE9E9);
 
@@ -559,7 +558,6 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
   }
 }
 
-// --- ⭐️ เพิ่ม: Widget ใหม่สำหรับแสดงผลรายการออเดอร์ ---
 class OrderListItem extends StatefulWidget {
   final Map<String, dynamic> orderData;
   final String orderId;
@@ -630,14 +628,14 @@ class _OrderListItemState extends State<OrderListItem> {
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: _getStatusColor(status)
-                          .withOpacity(0.2), // <-- ⭐️ แก้ไข
+                          .withOpacity(0.2), 
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      _translateStatus(status), // <-- ⭐️ แก้ไข
+                      _translateStatus(status), 
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: _getStatusColor(status), // <-- ⭐️ แก้ไข
+                        color: _getStatusColor(status), 
                       ),
                     ),
                   ),
@@ -686,7 +684,6 @@ class _OrderListItemState extends State<OrderListItem> {
   }
 }
 
-// --- ⭐️ ย้ายฟังก์ชันมาไว้นอกคลาส ---
 String _translateStatus(String status) {
   switch (status) {
     case 'pending':

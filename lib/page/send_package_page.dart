@@ -1,4 +1,3 @@
-// file: lib/page/send_package_page.dart
 
 import 'dart:async';
 import 'dart:io';
@@ -15,13 +14,9 @@ import 'package:delivery_project/page/order_status_page.dart';
 import 'dart:developer';
 import 'package:delivery_project/models/user_model.dart';
 
-// Constants
 const Color _primaryColor = Color(0xFFC70808);
 const Color _backgroundColor = Color(0xFFFDE9E9);
 
-// ------------------------------------------------------------------
-// Controller
-// ------------------------------------------------------------------
 class SendPackageController extends GetxController {
   final String uid;
   final int role;

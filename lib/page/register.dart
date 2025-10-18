@@ -216,7 +216,6 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   Future<void> _selectImageSource(bool isProfile) async {
     showModalBottomSheet(
@@ -439,7 +438,7 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFDE9E9), // Background color
+      backgroundColor: const Color(0xFFFDE9E9), 
       body: SingleChildScrollView(
         child: Form(
           key: _formKey,
@@ -496,7 +495,7 @@ class _RegisterPageState extends State<RegisterPage> {
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFFC70808), // ใช้สีหลักของธีม
+                color: Color(0xFFC70808), 
               ),
             ),
           ),
@@ -530,7 +529,6 @@ class _RegisterPageState extends State<RegisterPage> {
         onTap: () {
           setState(() {
             _isRider = title == 'ไรเดอร์';
-            // Clear vehicle image when switching back to user
             if (!_isRider) {
               _vehicleImage = null;
               _vehicleRegController.clear();
@@ -556,10 +554,9 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Profile Image Section
   Widget _buildProfileImage() {
     return GestureDetector(
-      onTap: () => _selectImageSource(true), // isProfile = true
+      onTap: () => _selectImageSource(true), 
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -597,11 +594,9 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Vehicle Image Section (เฉพาะไรเดอร์)
   Widget _buildVehicleImage() {
     return GestureDetector(
-      onTap: () => _selectImageSource(false), // isProfile = false
-      child: Stack(
+      onTap: () => _selectImageSource(false), 
         alignment: Alignment.center,
         children: [
           Container(
@@ -638,7 +633,6 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // User Registration Form
   Widget _buildUserForm() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
@@ -791,7 +785,6 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Generic TextField
   Widget _buildTextField(
     String label, {
     TextEditingController? controller,
@@ -817,7 +810,6 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // TextField with icon
   Widget _buildTextFieldWithIcon(
     String label,
     IconData icon, {
@@ -849,7 +841,6 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Submit Button
   Widget _buildSubmitButton(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40),
@@ -880,7 +871,6 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Success Dialog
   void _showSuccessDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -970,7 +960,6 @@ class _MapPickerModalState extends State<MapPickerModal> {
   final TextEditingController _searchController = TextEditingController();
   LatLng? _selectedPos;
 
-  // *** API KEY ที่ท่านระบุ ***
   static const String thunderforestApiKey = 'cb153d15cb4e41f59e25cfda6468f1a0';
   static const String thunderforestUrl =
       'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=$thunderforestApiKey';
@@ -1058,7 +1047,6 @@ class _MapPickerModalState extends State<MapPickerModal> {
             ),
           ),
           const SizedBox(height: 15),
-          // 4.3 Search Bar
           TextField(
             controller: _searchController,
             decoration: InputDecoration(
@@ -1115,7 +1103,6 @@ class _MapPickerModalState extends State<MapPickerModal> {
             child: ElevatedButton(
               onPressed: () {
                 if (_selectedPos != null) {
-                  // ส่ง LatLng กลับไปยังหน้า RegisterPage
                   Navigator.pop(context, _selectedPos);
                 } else {
                   Navigator.pop(context);
