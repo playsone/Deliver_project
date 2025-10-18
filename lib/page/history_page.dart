@@ -254,7 +254,8 @@ class _HistoryPageState extends State<HistoryPage> {
   Widget _buildCurrentStatusHeader(
       Map<String, dynamic> orderData, Map<String, dynamic>? riderData) {
     final status = orderData['currentStatus'] ?? 'unknown';
-    final orderDetails = orderData['orderDetails'] ?? 'ไม่มีรายละเอียด';
+    final orderDetails =
+        orderData['orderDetails'].toString().trim() ?? 'ไม่มีรายละเอียด';
     final deliveryAddress =
         orderData['deliveryAddress'] as Map<String, dynamic>? ?? {};
     final receiverName = deliveryAddress['receiverName'] ?? 'ไม่มีข้อมูล';
@@ -265,10 +266,10 @@ class _HistoryPageState extends State<HistoryPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(orderDetails,
+          Text("รายละเอียด: $orderDetails",
               style:
                   const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
+          const Divider(height: 20),
           Row(
             children: [
               Text('สถานะ: ',

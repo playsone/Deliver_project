@@ -1,4 +1,4 @@
-// send_package_page.dart
+// file: lib/page/send_package_page.dart
 
 import 'dart:async';
 import 'dart:io';
@@ -9,73 +9,42 @@ import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloudinary_public/cloudinary_public.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:location/location.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:delivery_project/page/order_status_page.dart';
+import 'dart:developer';
+import 'package:delivery_project/models/user_model.dart';
 
 // Constants
 const Color _primaryColor = Color(0xFFC70808);
+const Color _backgroundColor = Color(0xFFFDE9E9);
 
 // ------------------------------------------------------------------
-// NEW: User Info Model for Receiver Selection
-// ------------------------------------------------------------------
-class UserInfo {
-  final String uid;
-  final String name;
-  final String phone;
-  final String addressDetail; // ใช้สำหรับแสดงที่อยู่หลักของผู้รับ (ถ้ามี)
-
-  UserInfo({
-    required this.uid,
-    required this.name,
-    required this.phone,
-    this.addressDetail = '',
-  });
-
-  factory UserInfo.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-    return UserInfo(
-      uid: doc.id,
-      name: data['fullname'] ?? 'ไม่ระบุชื่อ',
-      phone: data['phone'] ?? '-',
-      addressDetail:
-          data['addressDetail'] ?? '', // สมมติว่ามี addressDetail ใน users
-    );
-  }
-}
-
-// ------------------------------------------------------------------
-// Controller (จัดการ Logic ทั้งหมดของหน้า)
+// Controller
 // ------------------------------------------------------------------
 class SendPackageController extends GetxController {
   final String uid;
   final int role;
   SendPackageController({required this.uid, required this.role});
 
-  // --- Form Controllers ---
   final detailController = TextEditingController();
   final pickupAddressController = TextEditingController();
   final deliveryAddressController = TextEditingController();
   final receiverNameController = TextEditingController();
   final receiverPhoneController = TextEditingController();
 
-  // --- State ---
   final Rx<XFile?> imageFile = Rx(null);
   final RxInt step = 1.obs;
   final RxBool isLoading = true.obs;
-
-  // User (Sender) Info
   final RxString userName = 'กำลังโหลด...'.obs;
 
-  // Location
-  final Location _location = Location();
-  final Rx<LocationData?> currentUserLocation = Rx(null);
+  final RxList<UserModel> userList = <UserModel>[].obs;
+  final Rx<Position?> currentUserLocation = Rx(null);
   final Rx<LatLng?> selectedDestinationLocation = Rx(null);
   final RxString destinationAddressText = 'แตะเพื่อเลือกบนแผนที่'.obs;
-  StreamSubscription<LocationData>? _locationSubscription;
+  StreamSubscription<Position>? _positionStreamSubscription;
 
-  // NEW: Receiver Info State
-  final Rx<UserInfo?> selectedReceiver = Rx(null);
+  final Rx<UserModel?> selectedReceiver = Rx(null);
 
   @override
   void onInit() {
@@ -90,14 +59,17 @@ class SendPackageController extends GetxController {
     deliveryAddressController.dispose();
     receiverNameController.dispose();
     receiverPhoneController.dispose();
-    _locationSubscription?.cancel();
+    _positionStreamSubscription?.cancel();
     super.onClose();
   }
 
   Future<void> _initialize() async {
     isLoading.value = true;
-    await _fetchUserData();
-    await _getCurrentUserLocation();
+    await Future.wait([
+      _fetchUserData(),
+      _getCurrentUserLocation(),
+      _fetchUsersForDropdown(),
+    ]);
     isLoading.value = false;
   }
 
@@ -106,86 +78,163 @@ class SendPackageController extends GetxController {
       final doc =
           await FirebaseFirestore.instance.collection('users').doc(uid).get();
       if (doc.exists) {
-        final data = doc.data()!;
-        userName.value = data['fullname'] ?? 'ผู้ใช้';
+        userName.value = doc.data()?['fullname'] ?? 'ผู้ใช้';
       }
     } catch (e) {
       userName.value = 'ไม่พบข้อมูล';
     }
   }
 
+  Future<void> _fetchUsersForDropdown() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where('role', isEqualTo: 0)
+          .get();
+
+      final users = snapshot.docs
+          .where((doc) => doc.id != uid)
+          .map((doc) => UserModel.fromFirestore(doc))
+          .toList();
+
+      userList.value = users;
+    } catch (e) {
+      log("Error fetching users for dropdown: $e");
+    }
+  }
+
   Future<void> _getCurrentUserLocation() async {
-    bool serviceEnabled = await _location.serviceEnabled();
-    if (!serviceEnabled) serviceEnabled = await _location.requestService();
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       Get.snackbar('ข้อผิดพลาด', 'กรุณาเปิด GPS เพื่อใช้งาน');
       return;
     }
-    PermissionStatus permission = await _location.hasPermission();
-    if (permission == PermissionStatus.denied) {
-      permission = await _location.requestPermission();
-      if (permission != PermissionStatus.granted) {
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
         Get.snackbar('ข้อผิดพลาด', 'ไม่ได้รับอนุญาตให้เข้าถึงตำแหน่ง');
         return;
       }
     }
-    currentUserLocation.value = await _location.getLocation();
-    _locationSubscription = _location.onLocationChanged.listen((locationData) {
-      currentUserLocation.value = locationData;
-    });
+
+    if (permission == LocationPermission.deniedForever) {
+      Get.snackbar('ข้อผิดพลาด', 'การเข้าถึงตำแหน่งถูกปฏิเสธถาวร');
+      return;
+    }
+
+    currentUserLocation.value = await Geolocator.getCurrentPosition();
+
+    const LocationSettings locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 10,
+    );
+    _positionStreamSubscription =
+        Geolocator.getPositionStream(locationSettings: locationSettings).listen(
+      (Position? position) {
+        if (position != null) {
+          currentUserLocation.value = position;
+        }
+      },
+    );
   }
 
-  // NEW: ฟังก์ชันค้นหาผู้รับ
-  Future<List<UserInfo>> searchReceiverByPhone(String phone) async {
-    if (phone.isEmpty || phone.length < 9) return [];
+  void onReceiverSelected(UserModel user) {
+    Get.back();
+    selectedReceiver.value = user;
+    receiverNameController.text = user.fullname;
+    receiverPhoneController.text = user.phone;
 
-    try {
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .where('phone', isEqualTo: phone)
-          .limit(1)
-          .get();
+    bool hasDefault =
+        user.defaultAddress != null && user.defaultAddress!.isNotEmpty;
+    bool hasSecond =
+        user.secondAddress != null && user.secondAddress!.isNotEmpty;
 
-      return querySnapshot.docs
-          .map((doc) => UserInfo.fromFirestore(doc))
-          .toList();
-    } catch (e) {
-      print('Error searching user: $e');
-      return [];
+    if (hasDefault && hasSecond) {
+      _showAddressSelectionDialog(user);
+    } else if (hasDefault) {
+      deliveryAddressController.text = user.defaultAddress!;
+      if (user.defaultGPS != null) {
+        selectedDestinationLocation.value =
+            LatLng(user.defaultGPS!.latitude, user.defaultGPS!.longitude);
+        destinationAddressText.value =
+            'เลือกตำแหน่งแล้ว: ${user.defaultGPS!.latitude.toStringAsFixed(4)}, ...';
+      }
+    } else if (hasSecond) {
+      deliveryAddressController.text = user.secondAddress!;
+      if (user.secondGPS != null) {
+        selectedDestinationLocation.value =
+            LatLng(user.secondGPS!.latitude, user.secondGPS!.longitude);
+        destinationAddressText.value =
+            'เลือกตำแหน่งแล้ว: ${user.secondGPS!.latitude.toStringAsFixed(4)}, ...';
+      }
     }
   }
 
-  // NEW: ฟังก์ชันเลือกผู้รับจากผลการค้นหา
-  void selectReceiver(UserInfo info) {
-    selectedReceiver.value = info;
-    receiverNameController.text = info.name;
-    receiverPhoneController.text = info.phone;
-    deliveryAddressController.text = info.addressDetail;
-    Get.back(); // ปิด Modal
+  void _showAddressSelectionDialog(UserModel user) {
+    Get.dialog(AlertDialog(
+      title: const Text('เลือกที่อยู่ปลายทาง'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            title: const Text('ที่อยู่หลัก'),
+            subtitle: Text(user.defaultAddress ?? ''),
+            onTap: () {
+              deliveryAddressController.text = user.defaultAddress!;
+              if (user.defaultGPS != null) {
+                selectedDestinationLocation.value = LatLng(
+                    user.defaultGPS!.latitude, user.defaultGPS!.longitude);
+                destinationAddressText.value =
+                    'เลือกตำแหน่งแล้ว: ${user.defaultGPS!.latitude.toStringAsFixed(4)}, ...';
+              }
+              Get.back();
+            },
+          ),
+          ListTile(
+            title: const Text('ที่อยู่รอง'),
+            subtitle: Text(user.secondAddress ?? ''),
+            onTap: () {
+              deliveryAddressController.text = user.secondAddress!;
+              if (user.secondGPS != null) {
+                selectedDestinationLocation.value =
+                    LatLng(user.secondGPS!.latitude, user.secondGPS!.longitude);
+                destinationAddressText.value =
+                    'เลือกตำแหน่งแล้ว: ${user.secondGPS!.latitude.toStringAsFixed(4)}, ...';
+              }
+              Get.back();
+            },
+          )
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Get.back(), child: const Text("ยกเลิก"))
+      ],
+    ));
   }
 
-  // NEW: เปิด Modal ค้นหาผู้รับ
-  Future<void> openReceiverSearchModal() async {
-    await Get.bottomSheet(
-      _ReceiverSearchModal(controller: this),
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-    );
+  void clearReceiverSelection() {
+    selectedReceiver.value = null;
+    receiverNameController.clear();
+    receiverPhoneController.clear();
+    deliveryAddressController.clear();
+    selectedDestinationLocation.value = null;
+    destinationAddressText.value = 'แตะเพื่อเลือกบนแผนที่';
   }
 
   Future<void> selectDestinationOnMap() async {
     final initialLatLng = currentUserLocation.value != null
-        ? LatLng(currentUserLocation.value!.latitude!,
-            currentUserLocation.value!.longitude!)
+        ? LatLng(currentUserLocation.value!.latitude,
+            currentUserLocation.value!.longitude)
         : const LatLng(16.2426, 103.2579);
 
-    // ใช้ Get.bottomSheet เพื่อเปิด Modal
     final result = await Get.bottomSheet<LatLng>(
       _MapPickerModal(initialLocation: initialLatLng),
-      isScrollControlled: true, // ทำให้ Modal ขยายได้เต็มที่
+      isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -251,8 +300,8 @@ class SendPackageController extends GetxController {
         'orderImageUrl': imageUrl,
         'pickupAddress': {
           'detail': pickupAddressController.text,
-          'gps': GeoPoint(currentUserLocation.value!.latitude!,
-              currentUserLocation.value!.longitude!),
+          'gps': GeoPoint(currentUserLocation.value!.latitude,
+              currentUserLocation.value!.longitude),
         },
         'deliveryAddress': {
           'detail': deliveryAddressController.text,
@@ -294,13 +343,9 @@ class SendPackagePage extends StatelessWidget {
   final int role;
   const SendPackagePage({super.key, required this.uid, required this.role});
 
-  static const Color _primaryColor = Color(0xFFC70808);
-  static const Color _backgroundColor = Color(0xFFFDE9E9);
-
   @override
   Widget build(BuildContext context) {
     final controller = Get.put(SendPackageController(uid: uid, role: role));
-
     return Scaffold(
       backgroundColor: _backgroundColor,
       body: Obx(() {
@@ -308,7 +353,6 @@ class SendPackagePage extends StatelessWidget {
           return const Center(
               child: CircularProgressIndicator(color: _primaryColor));
         }
-
         return CustomScrollView(
           slivers: [
             _buildSliverAppBar(context, controller),
@@ -317,15 +361,18 @@ class SendPackagePage extends StatelessWidget {
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
                   Obx(() {
-                    if (controller.step.value == 1)
-                      return _buildStepOneForm(context, controller);
-                    if (controller.step.value == 2)
-                      return _buildStepTwoConfirmation(context, controller);
-                    if (controller.step.value == 3)
-                      return _buildStepThreeFinalConfirmation(controller);
-                    if (controller.step.value == 4)
-                      return _buildStepFourSuccess();
-                    return const SizedBox.shrink();
+                    switch (controller.step.value) {
+                      case 1:
+                        return _buildStepOneForm(context, controller);
+                      case 2:
+                        return _buildStepTwoConfirmation(context, controller);
+                      case 3:
+                        return _buildStepThreeFinalConfirmation(controller);
+                      case 4:
+                        return _buildStepFourSuccess();
+                      default:
+                        return const SizedBox.shrink();
+                    }
                   }),
                 ]),
               ),
@@ -336,12 +383,9 @@ class SendPackagePage extends StatelessWidget {
     );
   }
 
-  // (โค้ด UI Widgets ทั้งหมดสามารถใช้ของเดิมได้)
-  // ...
   Widget _buildSliverAppBar(
       BuildContext context, SendPackageController controller) {
     return SliverAppBar(
-      expandedHeight: 120.0,
       pinned: true,
       backgroundColor: _primaryColor,
       foregroundColor: Colors.white,
@@ -350,7 +394,10 @@ class SendPackagePage extends StatelessWidget {
       flexibleSpace: const FlexibleSpaceBar(
         titlePadding: EdgeInsets.only(left: 60, bottom: 12),
         title: Text('สร้างรายการส่งของ',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            style: TextStyle(
+                fontSize: 30,
+                fontWeight: FontWeight.bold,
+                color: Colors.white)),
       ),
     );
   }
@@ -371,23 +418,21 @@ class SendPackagePage extends StatelessWidget {
         const Text("ข้อมูลผู้รับ",
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
-
-        // NEW: ปุ่มสำหรับค้นหาผู้รับ
-        _buildSearchReceiverButton(controller),
+        _buildReceiverSelectionField(context, controller),
         const SizedBox(height: 15),
-
-        _buildTextField(controller.receiverNameController, 'ชื่อผู้รับ',
-            Icons.person_outline,
-            isReadOnly: controller.selectedReceiver.value != null),
+        Obx(() => _buildTextField(controller.receiverNameController,
+            'ชื่อผู้รับ', Icons.person_outline,
+            isReadOnly: controller.selectedReceiver.value != null)),
         const SizedBox(height: 15),
-        _buildTextField(controller.receiverPhoneController, 'เบอร์โทรผู้รับ',
-            Icons.phone_outlined,
+        Obx(() => _buildTextField(controller.receiverPhoneController,
+            'เบอร์โทรผู้รับ', Icons.phone_outlined,
             keyboardType: TextInputType.phone,
-            isReadOnly: controller.selectedReceiver.value != null),
+            isReadOnly: controller.selectedReceiver.value != null)),
         const SizedBox(height: 15),
-        _buildTextField(controller.deliveryAddressController,
+        Obx(() => _buildTextField(controller.deliveryAddressController,
             'รายละเอียดที่อยู่ปลายทาง', Icons.location_city,
-            maxLines: 3, isReadOnly: controller.selectedReceiver.value != null),
+            maxLines: 3,
+            isReadOnly: controller.selectedReceiver.value != null)),
         const SizedBox(height: 15),
         _buildMapPickerField(controller),
         const SizedBox(height: 25),
@@ -396,30 +441,32 @@ class SendPackagePage extends StatelessWidget {
         const SizedBox(height: 10),
         _buildPackageSection(controller),
         const SizedBox(height: 15),
-        _buildTextField(controller.detailController,
-            'รายละเอียดสินค้า (เช่น เสื้อผ้า 1 กล่อง)', Icons.note_alt_outlined,
-            maxLines: 3),
+        _buildTextField(
+          controller.detailController,
+          'รายละเอียดสินค้า (เช่น เสื้อผ้า 1 กล่อง)',
+          Icons.note_alt_outlined,
+        ),
         const SizedBox(height: 20),
         _buildPrimaryButton('ดำเนินการต่อ', controller.submitStep1),
       ],
     );
   }
 
-  // NEW: Widget ปุ่มค้นหาผู้รับ
-  Widget _buildSearchReceiverButton(SendPackageController controller) {
+  Widget _buildReceiverSelectionField(
+      BuildContext context, SendPackageController controller) {
     return Obx(() => GestureDetector(
-          onTap: controller.openReceiverSearchModal,
+          onTap: controller.selectedReceiver.value == null
+              ? () => _showUserSelectionDialog(context, controller)
+              : null,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: controller.selectedReceiver.value != null
-                    ? Colors.green
-                    : Colors.grey.shade300,
-                width: controller.selectedReceiver.value != null ? 2 : 1,
-              ),
+                  color: controller.selectedReceiver.value != null
+                      ? Colors.green
+                      : Colors.grey.shade300),
             ),
             child: Row(
               children: [
@@ -429,27 +476,47 @@ class SendPackagePage extends StatelessWidget {
                         : _primaryColor),
                 const SizedBox(width: 10),
                 Expanded(
-                    child: Text(
-                  controller.selectedReceiver.value != null
-                      ? 'ผู้รับที่เลือก: ${controller.selectedReceiver.value!.name} (${controller.selectedReceiver.value!.phone})'
-                      : 'แตะเพื่อค้นหาผู้รับจากเบอร์โทร',
-                  style: TextStyle(
+                  child: Text(
+                    controller.selectedReceiver.value != null
+                        ? 'ผู้รับ: ${controller.selectedReceiver.value!.fullname}'
+                        : 'แตะเพื่อเลือก/ค้นหาผู้รับ',
+                    style: TextStyle(
                       color: controller.selectedReceiver.value != null
                           ? Colors.black
                           : Colors.grey.shade600,
                       fontWeight: controller.selectedReceiver.value != null
                           ? FontWeight.bold
-                          : FontWeight.normal),
-                )),
-                Icon(Icons.search,
-                    size: 20,
-                    color: controller.selectedReceiver.value != null
-                        ? Colors.green
-                        : Colors.grey),
+                          : FontWeight.normal,
+                    ),
+                  ),
+                ),
+                if (controller.selectedReceiver.value != null)
+                  IconButton(
+                    icon: const Icon(Icons.clear, color: Colors.red),
+                    onPressed: controller.clearReceiverSelection,
+                  )
+                else
+                  const Icon(Icons.search, color: Colors.grey),
               ],
             ),
           ),
         ));
+  }
+
+  void _showUserSelectionDialog(
+      BuildContext context, SendPackageController controller) {
+    Get.dialog(
+      AlertDialog(
+        title: const Text('เลือก/ค้นหาผู้รับ'),
+        content: _ReceiverSearchModalContent(controller: controller),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text("ปิด"),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildUserInfoMap(SendPackageController controller) {
@@ -468,7 +535,7 @@ class SendPackagePage extends StatelessWidget {
           if (location == null) {
             return const Center(child: Text("กำลังค้นหาตำแหน่งของคุณ..."));
           }
-          final center = LatLng(location.latitude!, location.longitude!);
+          final center = LatLng(location.latitude, location.longitude);
           return FlutterMap(
             options: MapOptions(
               initialCenter: center,
@@ -496,8 +563,7 @@ class SendPackagePage extends StatelessWidget {
 
   Widget _buildMapPickerField(SendPackageController controller) {
     return GestureDetector(
-      onTap:
-          controller.selectDestinationOnMap, // **แก้ไข:** เรียกใช้ฟังก์ชันใหม่
+      onTap: controller.selectDestinationOnMap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
         decoration: BoxDecoration(
@@ -653,7 +719,7 @@ class SendPackagePage extends StatelessWidget {
       controller: controller,
       maxLines: maxLines,
       keyboardType: keyboardType,
-      readOnly: isReadOnly, // NEW: เพิ่ม readOnly
+      readOnly: isReadOnly,
       decoration: InputDecoration(
         hintText: hint,
         filled: true,
@@ -748,113 +814,6 @@ class SendPackagePage extends StatelessWidget {
   }
 }
 
-// ------------------------------------------------------------------
-// **NEW:** WIDGET สำหรับ Modal ค้นหาผู้รับ
-// ------------------------------------------------------------------
-class _ReceiverSearchModal extends StatefulWidget {
-  final SendPackageController controller;
-  const _ReceiverSearchModal({required this.controller});
-
-  @override
-  State<_ReceiverSearchModal> createState() => _ReceiverSearchModalState();
-}
-
-class _ReceiverSearchModalState extends State<_ReceiverSearchModal> {
-  final TextEditingController _phoneController = TextEditingController();
-  List<UserInfo> _searchResults = [];
-  bool _isLoading = false;
-
-  Future<void> _search() async {
-    setState(() {
-      _isLoading = true;
-      _searchResults = [];
-    });
-
-    final results = await widget.controller
-        .searchReceiverByPhone(_phoneController.text.trim());
-
-    setState(() {
-      _searchResults = results;
-      _isLoading = false;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.8,
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('ค้นหาผู้รับจากเบอร์โทร',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              IconButton(
-                  onPressed: () => Get.back(), icon: const Icon(Icons.close)),
-            ],
-          ),
-          const Divider(),
-          TextField(
-            controller: _phoneController,
-            keyboardType: TextInputType.phone,
-            decoration: InputDecoration(
-              hintText: 'กรอกเบอร์โทรศัพท์ผู้รับ',
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.search, color: _primaryColor),
-                onPressed: _search,
-              ),
-              border: const OutlineInputBorder(),
-            ),
-            onSubmitted: (_) => _search(),
-          ),
-          const SizedBox(height: 20),
-          if (_isLoading)
-            const Center(child: CircularProgressIndicator(color: _primaryColor))
-          else if (_searchResults.isEmpty)
-            Center(
-              child: Text(
-                _phoneController.text.isEmpty
-                    ? 'กรุณากรอกเบอร์โทรเพื่อค้นหา'
-                    : 'ไม่พบผู้ใช้ที่ลงทะเบียนด้วยเบอร์โทร ${_phoneController.text}',
-                style: const TextStyle(color: Colors.grey),
-              ),
-            )
-          else
-            Expanded(
-              child: ListView.builder(
-                itemCount: _searchResults.length,
-                itemBuilder: (context, index) {
-                  final user = _searchResults[index];
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    child: ListTile(
-                      leading:
-                          const Icon(Icons.person_pin, color: Colors.green),
-                      title: Text(user.name,
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text(
-                          '${user.phone}\nที่อยู่: ${user.addressDetail.isEmpty ? "ไม่มีข้อมูลที่อยู่หลัก" : user.addressDetail}'),
-                      isThreeLine: true,
-                      onTap: () {
-                        widget.controller.selectReceiver(user);
-                      },
-                    ),
-                  );
-                },
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-// ------------------------------------------------------------------
-// **เพิ่ม:** WIDGET สำหรับ Modal เลือกแผนที่ (ย้ายมาจากไฟล์เดิม)
-// ------------------------------------------------------------------
 class _MapPickerModal extends StatefulWidget {
   final LatLng initialLocation;
   const _MapPickerModal({required this.initialLocation});
@@ -936,7 +895,91 @@ class _MapPickerModalState extends State<_MapPickerModal> {
   }
 }
 
-// Custom Clipper สำหรับ Header
+class _ReceiverSearchModalContent extends StatefulWidget {
+  final SendPackageController controller;
+  const _ReceiverSearchModalContent({required this.controller});
+
+  @override
+  State<_ReceiverSearchModalContent> createState() =>
+      _ReceiverSearchModalContentState();
+}
+
+class _ReceiverSearchModalContentState
+    extends State<_ReceiverSearchModalContent> {
+  final TextEditingController _searchController = TextEditingController();
+  List<UserModel> _filteredUsers = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _filteredUsers = widget.controller.userList;
+    _searchController.addListener(_filterUsers);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_filterUsers);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _filterUsers() {
+    final searchTerm = _searchController.text.toLowerCase();
+    setState(() {
+      if (searchTerm.isEmpty) {
+        _filteredUsers = widget.controller.userList;
+      } else {
+        _filteredUsers = widget.controller.userList.where((user) {
+          final nameMatches = user.fullname.toLowerCase().contains(searchTerm);
+          final phoneMatches = user.phone.contains(searchTerm);
+          return nameMatches || phoneMatches;
+        }).toList();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.maxFinite,
+      height: MediaQuery.of(context).size.height * 0.5,
+      child: Column(
+        children: [
+          TextField(
+            controller: _searchController,
+            autofocus: true,
+            decoration: InputDecoration(
+              hintText: 'ค้นหาด้วยชื่อ หรือ เบอร์โทร',
+              prefixIcon: const Icon(Icons.search),
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+          const SizedBox(height: 15),
+          Expanded(
+            child: _filteredUsers.isEmpty
+                ? const Center(child: Text('ไม่พบรายชื่อ'))
+                : ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _filteredUsers.length,
+                    itemBuilder: (context, index) {
+                      final UserModel user = _filteredUsers[index];
+                      return ListTile(
+                        title: Text(user.fullname),
+                        subtitle: Text(user.phone),
+                        onTap: () {
+                          widget.controller.onReceiverSelected(user);
+                        },
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class CustomClipperWidget extends CustomClipper<ui.Path> {
   @override
   ui.Path getClip(Size size) {

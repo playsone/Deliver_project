@@ -189,8 +189,15 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
                         const SizedBox(height: 20),
                         FilledButton(
                           onPressed: _confirmExitDialog,
-                          child: const Text('ออกจากระบบ / กลับหน้าหลัก'),
-                        ),
+                          // Use FilledButton.styleFrom to set the color
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color.fromARGB(
+                                255, 173, 15, 4), // Your desired color
+                          ),
+                          child: const Text(
+                            'ออกจากระบบ',
+                          ),
+                        )
                       ],
                     ),
                   ),
