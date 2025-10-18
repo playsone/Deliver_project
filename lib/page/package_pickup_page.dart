@@ -6,7 +6,6 @@ import 'package:delivery_project/page/index.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-// ต้องแน่ใจว่าคุณมีไฟล์นี้:
 import 'package:delivery_project/page/order_status_page.dart';
 
 // Constants (อ้างอิงจากธีมหลัก)
@@ -15,7 +14,7 @@ const Color _backgroundColor = Color(0xFFFDE9E9);
 const Color _accentColor = Color(0xFF0D47A1);
 
 // ------------------------------------------------------------------
-// Model
+// Model & Controller (ย้ายมาอยู่ในไฟล์เดียวกันเพื่อความสมบูรณ์)
 // ------------------------------------------------------------------
 class UserInfo {
   final String name;
@@ -110,7 +109,9 @@ class PackagePickupController extends GetxController {
       if (doc.exists) {
         userPhone.value = doc.data()?['phone'] ?? '';
       }
-    } catch (e) {}
+    } catch (e) {
+      print('Error fetching user phone: $e');
+    }
   }
 
   Future<void> performSearch() async {
@@ -126,7 +127,6 @@ class PackagePickupController extends GetxController {
       return Stream.empty();
     }
 
-    // NOTE: ลบ orderBy ออกเพื่อเลี่ยง Composite Index Error
     final baseQuery = FirebaseFirestore.instance
         .collection('orders')
         .where('deliveryAddress.receiverPhone', isEqualTo: userPhone.value);
@@ -134,7 +134,6 @@ class PackagePickupController extends GetxController {
     return baseQuery.snapshots();
   }
 
-  // ฟังก์ชันสำหรับดึงชื่อและเบอร์โทรผู้ใช้ (ผู้ส่ง/ไรเดอร์) จาก UID
   Future<UserInfo> getUserInfo(String? userId, String defaultName) async {
     if (userId == null || userId.isEmpty) return UserInfo(defaultName, '-');
     try {
@@ -152,7 +151,6 @@ class PackagePickupController extends GetxController {
     }
   }
 
-  // ฟังก์ชันอัพเดทสถานะ 'completed'
   Future<void> confirmPackageReception(String orderId) async {
     Get.dialog(
         const Center(child: CircularProgressIndicator(color: _primaryColor)),
@@ -183,9 +181,12 @@ class PackagePickupController extends GetxController {
   }
 }
 
+// ------------------------------------------------------------------
+// Page (UI) - PackagePickupPage
+// ------------------------------------------------------------------
 class PackagePickupPage extends StatelessWidget {
   final String uid;
-  final int role;
+  final int role; // 0 = User (สามารถเป็นผู้ส่ง/ผู้รับ)
   const PackagePickupPage({super.key, required this.uid, required this.role});
 
   @override
@@ -275,7 +276,6 @@ class PackagePickupPage extends StatelessWidget {
           );
         }
 
-        // Default list display (without search filter)
         return Column(
           children: allPackages.map((package) {
             return FutureBuilder<Map<String, String>>(
@@ -292,7 +292,6 @@ class PackagePickupPage extends StatelessWidget {
     );
   }
 
-  // ดึงชื่อและเบอร์โทรผู้ส่ง/ไรเดอร์พร้อมกัน
   Future<Map<String, String>> _fetchNames(PackagePickupController controller,
       String customerId, String? riderId) async {
     final senderInfo = await controller.getUserInfo(customerId, 'ผู้ส่ง');
@@ -306,7 +305,6 @@ class PackagePickupPage extends StatelessWidget {
     };
   }
 
-  // ดึงชื่อผู้ส่ง/ไรเดอร์ และกรองข้อมูล
   Future<List<PackageModel>> _fetchNamesAndFilter(
       PackagePickupController controller,
       List<PackageModel> allPackages,
@@ -323,7 +321,6 @@ class PackagePickupPage extends StatelessWidget {
 
       bool matches = false;
 
-      // Filter Logic (Package ID, Sender Info, Rider Info, Order Details)
       if (package.id.toLowerCase().contains(lowerCaseFilter)) matches = true;
       if (senderInfo.name.toLowerCase().contains(lowerCaseFilter) ||
           senderInfo.phone.contains(lowerCaseFilter)) matches = true;
@@ -468,9 +465,9 @@ class PackagePickupPage extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: InkWell(
         onTap: () {
-          // ไปหน้า OrderStatusPage
-          Get.to(() => OrderStatusPage(
-              orderId: package.id, uid: currentUid, role: currentRole));
+          // *** ส่ง Role 0 (User/Recipient) ไปยังหน้าติดตามสถานะ ***
+          Get.to(() =>
+              OrderStatusPage(orderId: package.id, uid: currentUid, role: 0));
         },
         child: Padding(
           padding: const EdgeInsets.all(15.0),
@@ -581,18 +578,37 @@ class PackagePickupPage extends StatelessWidget {
 
   Widget _buildHeader(BuildContext context) {
     return SliverAppBar(
+      expandedHeight: 150.0,
+      floating: false,
+      pinned: true,
       backgroundColor: _primaryColor,
-      flexibleSpace: const FlexibleSpaceBar(
-        titlePadding: EdgeInsets.only(left: 40),
+      flexibleSpace: FlexibleSpaceBar(
+        titlePadding: EdgeInsets.zero,
         centerTitle: false,
-        title: Padding(
-          padding: EdgeInsets.only(left: 30, bottom: 15),
+        title: const Padding(
+          padding: EdgeInsets.only(left: 20, bottom: 8),
           child: Text(
-            'รายการที่ต้องรับ',
+            'พัสดุถึงคุณ',
             style: TextStyle(
-              fontSize: 25,
+              fontSize: 18,
               fontWeight: FontWeight.bold,
               color: Colors.white,
+            ),
+          ),
+        ),
+        background: ClipPath(
+          clipper: HeaderClipper(),
+          child: Container(
+            color: _primaryColor,
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.only(left: 20, top: 50),
+            child: const Text(
+              'รายการพัสดุรอรับ',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
             ),
           ),
         ),

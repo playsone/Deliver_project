@@ -16,10 +16,11 @@ const Color _primaryColor = Color(0xFFC70808);
 const Color _backgroundColor = Color(0xFFFDE9E9);
 const Color _accentColor = Color(0xFF0D47A1);
 
+
 class OrderStatusPage extends StatefulWidget {
   final String? orderId;
   final String uid;
-  final int role; // 1 = Sender (ผู้ส่ง), 2 = Recipient (ผู้รับ), 3 = Rider
+  final int role; // 0 = User (Sender/Recipient), 1 = Rider
 
   const OrderStatusPage({
     super.key,
@@ -35,7 +36,7 @@ class OrderStatusPage extends StatefulWidget {
 class _OrderStatusPageState extends State<OrderStatusPage> {
   final MapController _mapController = MapController();
   String? _selectedOrderId;
-
+  
   // สถานะสำหรับเก็บข้อมูลผู้ใช้งานที่เกี่ยวข้อง
   Map<String, dynamic>? _senderData;
   Map<String, dynamic>? _recipientData;
@@ -53,38 +54,33 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
     super.dispose();
   }
 
-  // NEW: Helper สำหรับดึงข้อมูลผู้ส่ง
+  // Helper สำหรับดึงข้อมูลผู้ส่ง
   Future<void> _fetchSenderData(String senderId) async {
     if (senderId.isEmpty) return;
-    final doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(senderId)
-        .get();
+    final doc = await FirebaseFirestore.instance.collection('users').doc(senderId).get();
     if (mounted) {
       setState(() {
         _senderData = doc.data();
       });
     }
   }
-
-  // NEW: Helper สำหรับดึงข้อมูลผู้รับ (จาก Order Data)
+  
+  // Helper สำหรับตั้งค่าข้อมูลผู้รับ (จาก Order Data)
   void _setRecipientDataFromOrder(Map<String, dynamic> orderData) {
-    if (mounted) {
-      setState(() {
-        _recipientData = {
-          'fullname':
-              orderData['deliveryAddress']?['receiverName'] ?? 'ไม่ระบุ',
-          'phone': orderData['deliveryAddress']?['receiverPhone'] ?? '-',
-        };
-      });
-    }
+     if (mounted) {
+        setState(() {
+          _recipientData = {
+              'fullname': orderData['deliveryAddress']?['receiverName'] ?? 'ไม่ระบุ',
+              'phone': orderData['deliveryAddress']?['receiverPhone'] ?? '-',
+          };
+        });
+      }
   }
 
-  // NEW: Helper สำหรับดึงข้อมูลไรเดอร์
+  // Helper สำหรับดึงข้อมูลไรเดอร์
   Future<void> _fetchRiderData(String? riderId) async {
     if (riderId == null || riderId.isEmpty) return;
-    final doc =
-        await FirebaseFirestore.instance.collection('users').doc(riderId).get();
+    final doc = await FirebaseFirestore.instance.collection('users').doc(riderId).get();
     if (mounted) {
       setState(() {
         _riderData = doc.data();
@@ -99,25 +95,30 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
 
     String appBarTitle;
     if (isDetailPage) {
-      if (widget.role == 1) {
-        // Sender
-        appBarTitle = 'ติดตามการส่งของ (บทบาทผู้ส่ง)';
-      } else if (widget.role == 2) {
-        // Recipient
-        appBarTitle = 'ติดตามพัสดุรับเข้า (บทบาทผู้รับ)';
+      // ตรวจสอบว่าผู้ใช้คนปัจจุบันคือใครใน Order นี้
+      final bool isCurrentUserSender = widget.role == 0 && widget.uid == _senderData?['uid']; 
+      final bool isCurrentUserRecipient = widget.role == 0 && widget.uid == _recipientData?['uid'];
+
+      if (isCurrentUserSender) {
+        appBarTitle = 'ติดตามการส่งของ';
+      } else if (isCurrentUserRecipient) {
+        appBarTitle = 'ติดตามพัสดุรับเข้า';
+      } else if (widget.role == 1) {
+        appBarTitle = 'สถานะงานไรเดอร์';
       } else {
-        appBarTitle = 'ติดตามสถานะการจัดส่ง';
+        appBarTitle = 'ติดตามสถานะ';
       }
+
     } else {
-      appBarTitle = 'รายการส่งของ/รับของ'; // กรณีเปิดหน้านี้โดยไม่มี orderId
+      // หน้าหลัก Order Status (สำหรับลูกค้า/ผู้ส่ง)
+      appBarTitle = 'รายการส่งของที่คุณสร้าง'; 
     }
 
     return WillPopScope(
       onWillPop: () async {
         if (isDetailPage) {
-          setState(() {
-            _selectedOrderId = null;
-          });
+          // ใช้ Get.back() เพื่อกลับไปหน้า PackagePickupPage หรือ Home/History
+          Get.back();
           return false;
         }
         return true;
@@ -132,8 +133,13 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
               ? IconButton(
                   icon: const Icon(Icons.arrow_back),
                   onPressed: () {
-                    // กลับไปหน้า PackagePickupPage
-                    Get.back();
+                    // กลับไปหน้า List View (หรือหน้าหลัก)
+                    setState(() {
+                      _selectedOrderId = null;
+                      _senderData = null;
+                      _recipientData = null;
+                      _riderData = null;
+                    });
                   },
                 )
               : null,
@@ -141,11 +147,64 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
         ),
         body: isDetailPage
             ? _buildOrderDetailView(_selectedOrderId!)
-            : Center(
-                child: Text('กรุณาเลือกรายการจากหน้าหลัก',
-                    style: TextStyle(color: Colors.grey.shade700))),
+            : _buildOrderListView(), // แสดงรายการส่งของเมื่อไม่ใช่หน้า Detail
         bottomNavigationBar: _buildBottomNavigationBar(context),
       ),
+    );
+  }
+
+  Widget _buildOrderListView() {
+    // โหมดนี้สำหรับ User ทั่วไป (Role 0) ที่เป็นคนสร้างงานส่งของ
+    if (widget.role != 0) {
+        return Center(
+            child: Text('คุณไม่มีสิทธิ์เข้าถึงรายการส่งของ', 
+            style: TextStyle(fontSize: 16, color: Colors.grey.shade700)));
+    }
+    
+    // Stream สำหรับแสดงรายการที่ผู้ใช้คนนี้เป็นคนส่ง (customerId)
+    final senderStream = FirebaseFirestore.instance
+        .collection('orders')
+        .where('customerId', isEqualTo: widget.uid)
+        .orderBy('createdAt', descending: true) // เรียงตามเวลาล่าสุด
+        .snapshots();
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: senderStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล: ${snapshot.error}'));
+        }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const Center(child: Text('คุณยังไม่มีรายการส่งของที่สร้างขึ้น'));
+        }
+
+        var allDocs = snapshot.data!.docs;
+
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 20),
+          itemCount: allDocs.length,
+          itemBuilder: (context, index) {
+            final doc = allDocs[index];
+            return OrderListItem(
+              orderData: doc.data() as Map<String, dynamic>,
+              orderId: doc.id,
+              isSenderRole: true, // แจ้งให้ OrderListItem ทราบว่าเป็นโหมดผู้ส่ง
+              onTap: () {
+                setState(() {
+                  _selectedOrderId = doc.id;
+                  // Clear previously loaded detail data when switching orders
+                  _senderData = null;
+                  _recipientData = null;
+                  _riderData = null;
+                });
+              },
+            );
+          },
+        );
+      },
     );
   }
 
@@ -166,10 +225,16 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
         final orderData = orderSnapshot.data!.data() as Map<String, dynamic>;
         final riderId = orderData['riderId'] as String?;
         final senderId = orderData['customerId'] as String;
-
-        // Trigger fetching related user data
-        if (_senderData == null) _fetchSenderData(senderId);
+        
+        // Trigger fetching related user data if not loaded
+        // ทุกโหมดต้องดึงข้อมูลผู้รับ
         if (_recipientData == null) _setRecipientDataFromOrder(orderData);
+
+        // ถ้า User ทั่วไป (Role 0) ต้องดึงข้อมูลผู้ส่ง (Sender)
+        if (widget.role == 0 && _senderData == null) {
+            _fetchSenderData(senderId);
+        }
+        // ทุกโหมดต้องดึงข้อมูลไรเดอร์ (ถ้ามี)
         if (riderId != null && _riderData == null) _fetchRiderData(riderId);
 
         LatLng? riderPosition;
@@ -178,18 +243,17 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
           final geoPoint = orderData['currentLocation'] as GeoPoint;
           riderPosition = LatLng(geoPoint.latitude, geoPoint.longitude);
         }
-
-        // Wait until essential data is loaded before building content
-        if (_senderData == null || _recipientData == null) {
-          return const Center(
-              child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 10),
-              Text('กำลังโหลดข้อมูลผู้ส่งและผู้รับ...')
-            ],
-          ));
+        
+        // ถ้าเป็น User ทั่วไป (Role 0) ต้องรอข้อมูลผู้ส่งด้วย
+        if (widget.role == 0 && _senderData == null) {
+             return const Center(child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 10),
+                    Text('กำลังโหลดข้อมูลผู้ส่ง...')
+                ],
+            ));
         }
 
         return _buildContent(orderData, riderPosition);
@@ -197,23 +261,23 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
     );
   }
 
-  Widget _buildContent(Map<String, dynamic> orderData, LatLng? riderPosition) {
-    // ตรวจสอบบทบาทเพื่อกำหนดข้อมูลที่แสดง
-    final bool isSender = widget.role == 1;
-
+  Widget _buildContent(
+      Map<String, dynamic> orderData, LatLng? riderPosition) {
+    
+    // ตรวจสอบว่าผู้ใช้ปัจจุบันคือเจ้าของ Order นี้หรือไม่
+    final bool isCurrentUserSender = widget.role == 0 && orderData['customerId'] == widget.uid;
+    
     // ข้อมูลหลักที่ผู้ใช้ต้องการดู
-    final Map<String, dynamic>? primaryUserInfo =
-        isSender ? _recipientData : _senderData;
-    final String primaryUserRoleTitle = isSender ? 'ผู้รับ' : 'ผู้ส่ง';
-
+    final Map<String, dynamic>? primaryUserInfo = isCurrentUserSender ? _recipientData : _senderData;
+    final String primaryUserRoleTitle = isCurrentUserSender ? 'ผู้รับ' : 'ผู้ส่ง';
+    
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildMapSection(orderData, riderPosition),
           const SizedBox(height: 20),
-          _buildCurrentStatusHeader(
-              orderData, primaryUserInfo, primaryUserRoleTitle),
+          _buildCurrentStatusHeader(orderData, primaryUserInfo, primaryUserRoleTitle),
           _buildStatusTimeline(orderData['statusHistory'] ?? []),
           const SizedBox(height: 20),
         ],
@@ -230,17 +294,14 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
         ? LatLng(deliveryGps.latitude, deliveryGps.longitude)
         : null;
 
-    final pickupAddress =
+    final pickupAddress = 
         orderData['pickupAddress'] as Map<String, dynamic>? ?? {};
     final pickupGps = pickupAddress['gps'] as GeoPoint?;
     final LatLng? pickupLatLng = pickupGps != null
         ? LatLng(pickupGps.latitude, pickupGps.longitude)
         : null;
 
-    final initialCenter = riderPosition ??
-        deliveryLatLng ??
-        pickupLatLng ??
-        const LatLng(16.24, 103.25);
+    final initialCenter = riderPosition ?? deliveryLatLng ?? pickupLatLng ?? const LatLng(16.24, 103.25);
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.4,
@@ -268,14 +329,13 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
             MarkerLayer(
               markers: [
                 if (pickupLatLng != null)
-                  Marker(
+                   Marker(
                     point: pickupLatLng,
                     width: 80,
                     height: 80,
                     child: const Tooltip(
                       message: 'จุดรับพัสดุ',
-                      child:
-                          Icon(Icons.location_on, color: Colors.blue, size: 40),
+                      child: Icon(Icons.location_on, color: Colors.blue, size: 40),
                     ),
                   ),
                 if (riderPosition != null)
@@ -304,12 +364,12 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
     );
   }
 
-  Widget _buildCurrentStatusHeader(Map<String, dynamic> orderData,
-      Map<String, dynamic>? primaryUserInfo, String primaryUserRoleTitle) {
+  Widget _buildCurrentStatusHeader(
+      Map<String, dynamic> orderData, Map<String, dynamic>? primaryUserInfo, String primaryUserRoleTitle) {
     final status = orderData['currentStatus'] ?? 'pending';
     final orderDetails =
         orderData['orderDetails'].toString().trim() ?? 'ไม่มีรายละเอียด';
-
+    
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20.0),
       child: Column(
@@ -340,17 +400,16 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
             ],
           ),
           const Divider(height: 20),
-
+          
           // ข้อมูลผู้รับ/ผู้ส่ง ที่เราต้องการดู (ตามบทบาท)
           _buildRelatedUserInfoSection(primaryUserInfo, primaryUserRoleTitle),
-
+          
           // ข้อมูลไรเดอร์
-          if (orderData['riderId'] != null &&
-              orderData['riderId'].isNotEmpty) ...[
-            const Divider(height: 20),
-            _buildRiderInfoSection(_riderData),
-          ],
-
+          if (orderData['riderId'] != null && orderData['riderId'].isNotEmpty) {
+            const Divider(height: 20);
+            _buildRiderInfoSection(_riderData);
+          },
+          
           const Divider(height: 20),
           const Text('ประวัติการจัดส่ง',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -358,13 +417,12 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
       ),
     );
   }
-
+  
   // Widget แสดงข้อมูลผู้ส่งหรือผู้รับ
-  Widget _buildRelatedUserInfoSection(
-      Map<String, dynamic>? userData, String title) {
+  Widget _buildRelatedUserInfoSection(Map<String, dynamic>? userData, String title) {
     final name = userData?['fullname'] ?? 'กำลังโหลด...';
     final phone = userData?['phone'] ?? '-';
-
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -400,7 +458,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
     // Sort: Newest first
     statusHistory.sort((a, b) =>
         (b['timestamp'] as Timestamp).compareTo(a['timestamp'] as Timestamp));
-
+        
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -431,9 +489,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
                   ),
                   if (index != statusHistory.length - 1)
                     Container(
-                        height: (imageUrl != null &&
-                                imageUrl.isNotEmpty &&
-                                imageUrl != 'received by recipient')
+                        height: (imageUrl != null && imageUrl.isNotEmpty && imageUrl != 'received by recipient')
                             ? 120
                             : 40,
                         width: 2,
@@ -457,9 +513,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
                     Text(formattedTime,
                         style: TextStyle(
                             color: Colors.grey.shade600, fontSize: 12)),
-                    if (imageUrl != null &&
-                        imageUrl.isNotEmpty &&
-                        imageUrl != 'received by recipient')
+                    if (imageUrl != null && imageUrl.isNotEmpty && imageUrl != 'received by recipient')
                       Padding(
                         padding: const EdgeInsets.only(top: 8.0),
                         child: GestureDetector(
@@ -557,7 +611,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
   }
 }
 
-// Helper functions (ใช้ร่วมกับ OrderStatusPage)
+// Helper functions (ใช้ร่วมกับ OrderStatusPage และ PackagePickupPage)
 String _translateStatus(String status) {
   switch (status) {
     case 'pending':
@@ -593,5 +647,144 @@ Color _getStatusColor(String status) {
       return Colors.green;
     default:
       return Colors.grey;
+  }
+}
+
+
+class OrderListItem extends StatefulWidget {
+  final Map<String, dynamic> orderData;
+  final String orderId;
+  final VoidCallback onTap;
+  final bool isSenderRole; 
+
+  const OrderListItem({
+    super.key,
+    required this.orderData,
+    required this.orderId,
+    required this.onTap,
+    this.isSenderRole = false, 
+  });
+
+  @override
+  State<OrderListItem> createState() => _OrderListItemState();
+}
+
+class _OrderListItemState extends State<OrderListItem> {
+  Map<String, dynamic>? _riderData;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchRiderData();
+  }
+
+  Future<void> _fetchRiderData() async {
+    final riderId = widget.orderData['riderId'] as String?;
+    if (riderId == null || riderId.isEmpty) return;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(riderId)
+          .get();
+      if (doc.exists && mounted) {
+        setState(() {
+          _riderData = doc.data();
+        });
+      }
+    } catch (e) {
+      // Handle error
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final data = widget.orderData;
+    final deliveryAddress =
+        data['deliveryAddress'] as Map<String, dynamic>? ?? {};
+    final pickupAddress = 
+        data['pickupAddress'] as Map<String, dynamic>? ?? {};
+    final status = data['currentStatus'] ?? 'N/A';
+    
+    // Determine the main user info to show based on the list's purpose
+    final String mainLabel = widget.isSenderRole ? 'ผู้รับ' : 'ผู้ส่ง';
+    final String mainName = widget.isSenderRole 
+        ? deliveryAddress['receiverName'] ?? 'N/A' 
+        : pickupAddress['senderName'] ?? 'N/A'; 
+    final String mainPhone = widget.isSenderRole 
+        ? deliveryAddress['receiverPhone'] ?? 'N/A' 
+        : pickupAddress['senderPhone'] ?? 'N/A';
+
+
+    return InkWell(
+      onTap: widget.onTap,
+      child: Card(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(status).withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      _translateStatus(status),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: _getStatusColor(status),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    'ID: ${widget.orderId.substring(0, 8)}...',
+                    style: const TextStyle(color: Colors.grey, fontSize: 12),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+              const Divider(height: 16),
+              
+              // แสดงข้อมูลผู้รับ/ผู้ส่ง ตามบทบาท
+              _buildInfoRow(Icons.person_pin_circle_outlined, mainLabel, mainName),
+              _buildInfoRow(Icons.phone_outlined, 'เบอร์โทร$mainLabel', mainPhone),
+
+              const SizedBox(height: 8),
+              if (_riderData != null) ...[
+                _buildInfoRow(Icons.two_wheeler_outlined, 'Rider',
+                    _riderData!['fullname'] ?? 'N/A'),
+                _buildInfoRow(Icons.phone_android_outlined, 'เบอร์โทร Rider',
+                    _riderData!['phone'] ?? 'N/A'),
+              ] else if (data['riderId'] != null && data['riderId'].isNotEmpty) ...[
+                const Text('กำลังโหลดข้อมูลไรเดอร์...'),
+              ]
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2.0),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.grey.shade600, size: 16),
+          const SizedBox(width: 8),
+          Text('$label: ', style: const TextStyle(fontWeight: FontWeight.bold)),
+          Expanded(child: Text(value, overflow: TextOverflow.ellipsis)),
+        ],
+      ),
+    );
   }
 }
