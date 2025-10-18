@@ -39,23 +39,30 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
   Map<String, dynamic>? _senderData;
   Map<String, dynamic>? _recipientData;
   Map<String, dynamic>? _riderData;
+  
+  // NEW: ตัวแปรสำหรับการค้นหา
+  final TextEditingController _searchController = TextEditingController(); 
+  String _searchTerm = ''; 
 
   @override
   void initState() {
     super.initState();
     initializeDateFormatting('th', null);
     _selectedOrderId = widget.orderId;
-    
-    // 1. โหลดข้อมูลเมื่อเข้าหน้า Detail ครั้งแรก
     if (_selectedOrderId != null) {
       _initializeOrderData(_selectedOrderId!);
     }
+    // NEW: Listener สำหรับการค้นหา
+    _searchController.addListener(() {
+      setState(() {
+        _searchTerm = _searchController.text.trim();
+      });
+    });
   }
 
   @override
   void didUpdateWidget(covariant OrderStatusPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // 2. เรียกการโหลดข้อมูลใหม่เมื่อ orderId เปลี่ยนไป (ถ้ามีการเปลี่ยนรายการในอนาคต)
     if (widget.orderId != oldWidget.orderId) {
       _selectedOrderId = widget.orderId;
       if (_selectedOrderId != null) {
@@ -66,6 +73,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
 
   @override
   void dispose() {
+    _searchController.dispose(); // ต้อง dispose controller
     super.dispose();
   }
   
@@ -138,28 +146,25 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
 
     String appBarTitle;
     if (isDetailPage) {
-      // ตรวจสอบว่าผู้ใช้คนปัจจุบันคือใครใน Order นี้ (ใช้ข้อมูลที่โหลดไว้ใน _senderData)
       final bool isCurrentUserSender = widget.role == 0 && _senderData != null && _senderData!['uid'] == widget.uid;
       
       if (isCurrentUserSender) {
         appBarTitle = 'ติดตามการส่งของ';
-      } else if (widget.role == 0) { // User role 0 แต่ไม่ใช่ sender แปลว่ามาจากหน้า PackagePickup (ผู้รับ)
+      } else if (widget.role == 0) {
         appBarTitle = 'ติดตามพัสดุรับเข้า';
-      } else if (widget.role == 1) { // Rider
+      } else if (widget.role == 1) {
         appBarTitle = 'สถานะงานไรเดอร์';
       } else {
         appBarTitle = 'ติดตามสถานะ';
       }
 
     } else {
-      // หน้าหลัก Order Status (สำหรับลูกค้า/ผู้ส่ง)
       appBarTitle = 'รายการส่งของที่คุณสร้าง'; 
     }
 
     return WillPopScope(
       onWillPop: () async {
         if (isDetailPage) {
-          // ถ้าอยู่ในหน้า Detail ให้กลับไปหน้า List View
           setState(() {
             _selectedOrderId = null;
             _senderData = null;
@@ -199,20 +204,46 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
       ),
     );
   }
+  
+  // NEW: Widget Search Bar
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: TextField(
+        controller: _searchController,
+        decoration: InputDecoration(
+          hintText: 'ค้นหา Order ID, ชื่อ/เบอร์ ผู้รับ...',
+          prefixIcon: const Icon(Icons.search),
+          suffixIcon: _searchTerm.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear),
+                  onPressed: () {
+                    _searchController.clear();
+                  },
+                )
+              : null,
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(30),
+            borderSide: BorderSide.none,
+          ),
+        ),
+      ),
+    );
+  }
+
 
   Widget _buildOrderListView() {
-    // โหมดนี้สำหรับ User ทั่วไป (Role 0) ที่เป็นคนสร้างงานส่งของ
     if (widget.role != 0) {
         return Center(
             child: Text('คุณไม่มีสิทธิ์เข้าถึงรายการส่งของ', 
             style: TextStyle(fontSize: 16, color: Colors.grey.shade700)));
     }
     
-    // Stream สำหรับแสดงรายการที่ผู้ใช้คนนี้เป็นคนส่ง (customerId)
     final senderStream = FirebaseFirestore.instance
         .collection('orders')
         .where('customerId', isEqualTo: widget.uid)
-        // **แก้ไข: ลบ orderBy เพื่อเลี่ยง Index Error (Error สีขาวในรูปที่สอง)**
         .snapshots();
 
     return StreamBuilder<QuerySnapshot>(
@@ -230,31 +261,59 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
 
         var allDocs = snapshot.data!.docs;
         
-        // **NEW: ทำ Client-side Sorting (เนื่องจากเอา orderBy ออกไปแล้ว)**
+        // 1. Client-side Sorting (ล่าสุดก่อน)
         allDocs.sort((a, b) {
             final aTime = (a.data() as Map)['createdAt'] as Timestamp?;
             final bTime = (b.data() as Map)['createdAt'] as Timestamp?;
             if (aTime == null || bTime == null) return 0;
-            return bTime.compareTo(aTime); // เรียงจากใหม่ไปเก่า
+            return bTime.compareTo(aTime); 
         });
+        
+        // 2. Client-side Filtering (ค้นหา)
+        if (_searchTerm.isNotEmpty) {
+            final lowerCaseSearch = _searchTerm.toLowerCase();
+            allDocs = allDocs.where((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final deliveryAddress = data['deliveryAddress'] as Map<String, dynamic>? ?? {};
 
-        return ListView.builder(
-          padding: const EdgeInsets.fromLTRB(8, 8, 8, 20),
-          itemCount: allDocs.length,
-          itemBuilder: (context, index) {
-            final doc = allDocs[index];
-            return OrderListItem(
-              orderData: doc.data() as Map<String, dynamic>,
-              orderId: doc.id,
-              isSenderRole: true, // แจ้งให้ OrderListItem ทราบว่าเป็นโหมดผู้ส่ง
-              onTap: () {
-                setState(() {
-                  _selectedOrderId = doc.id;
-                  _initializeOrderData(doc.id); // โหลดข้อมูลเมื่อกด
-                });
-              },
-            );
-          },
+                final orderId = doc.id.toLowerCase();
+                final receiverName = (deliveryAddress['receiverName'] as String?)?.toLowerCase() ?? '';
+                final receiverPhone = (deliveryAddress['receiverPhone'] as String?)?.toLowerCase() ?? '';
+                
+                return orderId.contains(lowerCaseSearch) ||
+                       receiverName.contains(lowerCaseSearch) ||
+                       receiverPhone.contains(lowerCaseSearch);
+            }).toList();
+        }
+        
+        if (allDocs.isEmpty && _searchTerm.isNotEmpty) {
+            return Column(children: [_buildSearchBar(), const Expanded(child: Center(child: Text('ไม่พบรายการที่ค้นหา')))],);
+        }
+
+        return Column( // ต้องใช้ Column เพื่อให้มีพื้นที่สำหรับ Search Bar
+             children: [
+                _buildSearchBar(), // <<< แถบ Search
+                Expanded(
+                    child: ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(8, 0, 8, 20),
+                        itemCount: allDocs.length,
+                        itemBuilder: (context, index) {
+                            final doc = allDocs[index];
+                            return OrderListItem(
+                                orderData: doc.data() as Map<String, dynamic>,
+                                orderId: doc.id,
+                                isSenderRole: true, // โหมดผู้ส่ง
+                                onTap: () {
+                                    setState(() {
+                                        _selectedOrderId = doc.id;
+                                        _initializeOrderData(doc.id); // โหลดข้อมูลเมื่อกด
+                                    });
+                                },
+                            );
+                        },
+                    ),
+                ),
+             ],
         );
       },
     );
@@ -277,7 +336,6 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
         final orderData = orderSnapshot.data!.data() as Map<String, dynamic>;
         
         // **ตรวจสอบความสมบูรณ์ของข้อมูลที่โหลดไว้ใน State**
-        // ถ้าข้อมูลผู้ส่ง/ผู้รับหลักยังไม่ถูกโหลด ให้แสดง Loading
         final bool isCurrentUserSender = orderData['customerId'] == widget.uid;
         final bool isEssentialDataLoaded = (isCurrentUserSender && _recipientData != null) || (!isCurrentUserSender && _senderData != null);
         
@@ -298,6 +356,14 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
           final geoPoint = orderData['currentLocation'] as GeoPoint;
           riderPosition = LatLng(geoPoint.latitude, geoPoint.longitude);
         }
+        
+        // *** ✅ ตรรกะ Real-time Map Panning ***
+        if (riderPosition != null && _mapController.ready) {
+             WidgetsBinding.instance.addPostFrameCallback((_) {
+                 _mapController.move(riderPosition, _mapController.zoom);
+             });
+        }
+        // *** --------------------------------- ***
 
         return _buildContent(orderData, riderPosition);
       },
@@ -307,10 +373,8 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
   Widget _buildContent(
       Map<String, dynamic> orderData, LatLng? riderPosition) {
     
-    // ตรวจสอบว่าผู้ใช้ปัจจุบันคือเจ้าของ Order นี้หรือไม่
     final bool isCurrentUserSender = orderData['customerId'] == widget.uid;
     
-    // ข้อมูลหลักที่ผู้ใช้ต้องการดู
     final Map<String, dynamic>? primaryUserInfo = isCurrentUserSender ? _recipientData : _senderData;
     final String primaryUserRoleTitle = isCurrentUserSender ? 'ผู้รับ' : 'ผู้ส่ง';
     
@@ -365,8 +429,8 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
           ),
           children: [
             TileLayer(
-              urlTemplate:
-                  'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=cb153d15cb4e41f59e25cfda6468f1a0',
+              // ใช้ OpenStreetMap เพื่อหลีกเลี่ยง API Key Error
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
               userAgentPackageName: 'com.example.app',
             ),
             MarkerLayer(
@@ -653,6 +717,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
     );
   }
 }
+
 // Helper functions (ใช้ร่วมกับ OrderStatusPage และ PackagePickupPage)
 String _translateStatus(String status) {
   switch (status) {
