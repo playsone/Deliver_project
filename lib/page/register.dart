@@ -235,7 +235,6 @@ class _RegisterPageState extends State<RegisterPage> {
       buttonColor: Colors.redAccent,
       radius: 20,
       barrierDismissible: false,
-      backgroundColor: Colors.white.withOpacity(0.9),
       onConfirm: () => Get.back(),
     );
   }
@@ -325,11 +324,11 @@ class _RegisterPageState extends State<RegisterPage> {
       setState(() {
         _profileImageUrl = response.secureUrl;
       });
-      log("✅ Profile image uploaded: ${response.secureUrl}");
+      log("✅ Profile image uploaded: ${response.secureUrl}"); 
     } catch (e) {
       log("❌ Profile image upload error: $e");
       setState(() {
-        _profileImageUrl = '';
+        _profileImageUrl = ''; 
       });
     }
   }
