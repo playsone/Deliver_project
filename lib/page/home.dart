@@ -1,5 +1,3 @@
-// file: lib/page/home_screen.dart
-
 import 'dart:async';
 import 'dart:developer';
 import 'package:async/async.dart';
@@ -10,16 +8,10 @@ import 'package:flutter/foundation.dart';
 import 'package:delivery_project/page/index.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-
-// For Flutter Map and LatLong2
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-
-// For GPS
 import 'package:geolocator/geolocator.dart';
 import 'package:delivery_project/page/edit_profile.dart';
-
-// Pages
 import 'package:delivery_project/page/package_pickup_page.dart';
 import 'package:delivery_project/page/order_status_page.dart';
 import 'package:delivery_project/page/send_package_page.dart';
@@ -42,11 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
   UserModel? _currentUser;
   List<Marker> _orderMarkers = [];
   StreamSubscription? _ordersSubscription;
-
-  // Stream subscription to control the user's location listener
   StreamSubscription<Position>? _positionStreamSubscription;
-
-  // Dynamically generates a marker for the user's primary address
   List<Marker> get _fixedMarkers {
     if (_currentUser != null && _currentUser!.defaultGPS != null) {
       final userGps = _currentUser!.defaultGPS!;
@@ -73,18 +61,16 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _fetchUserData();
-    _startListeningToUserLocation(); // Start listening for real-time location updates
+    _startListeningToUserLocation();
   }
 
   @override
   void dispose() {
     _ordersSubscription?.cancel();
-    _positionStreamSubscription
-        ?.cancel(); // IMPORTANT: Stop listening to save battery
+    _positionStreamSubscription?.cancel();
     super.dispose();
   }
 
-  /// Starts listening for the user's location in real-time.
   void _startListeningToUserLocation() async {
     bool serviceEnabled;
     LocationPermission permission;
@@ -92,9 +78,10 @@ class _HomeScreenState extends State<HomeScreen> {
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       log('Location services are disabled.');
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('กรุณาเปิด GPS')));
+      }
       return;
     }
 
@@ -103,32 +90,32 @@ class _HomeScreenState extends State<HomeScreen> {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
         log('Location permissions are denied.');
-        if (mounted)
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('การเข้าถึงตำแหน่งถูกปฏิเสธ')));
+        }
         return;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
       log('Location permissions are permanently denied.');
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('การเข้าถึงตำแหน่งถูกปฏิเสธถาวร')));
+      }
       return;
     }
 
     const LocationSettings locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 10, // Update every 10 meters of movement
+      distanceFilter: 10,
     );
 
-    // Listen to the position stream
     _positionStreamSubscription =
         Geolocator.getPositionStream(locationSettings: locationSettings)
             .listen((Position? position) {
       if (position != null && mounted) {
-        // Update the state with the new position, causing the UI to rebuild
         setState(() {
           currentPos = LatLng(position.latitude, position.longitude);
         });
@@ -136,7 +123,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  /// Fetches user data and then starts listening for related orders.
   Future<void> _fetchUserData() async {
     try {
       final doc = await FirebaseFirestore.instance
@@ -148,7 +134,6 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _currentUser = UserModel.fromFirestore(doc);
         });
-        // Start listening for orders only after user data is available
         _listenToOrders();
       }
     } catch (e) {
@@ -156,7 +141,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// Listens for real-time order updates relevant to the user.
   void _listenToOrders() {
     if (_currentUser == null) return;
     List<String> statusesToTrack = ['accepted', 'picked_up', 'in_transit'];
@@ -186,7 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       final Map<String, Marker> markerMap = {};
       for (var doc in snapshot.docs) {
-        final data = doc.data() as Map<String, dynamic>;
+        final data = doc.data();
         final String orderId = doc.id;
 
         if (data.containsKey('currentLocation') &&
@@ -215,7 +199,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  /// Moves the map camera to the user's current known location.
   void _moveCameraToCurrentLocation() {
     if (currentPos != null) {
       mapController.move(currentPos!, 16.0);
@@ -249,8 +232,6 @@ class _HomeScreenState extends State<HomeScreen> {
       bottomNavigationBar: _buildBottomNavigationBar(context),
     );
   }
-
-  // --- UI Widgets (No changes below this line) ---
 
   Widget _buildHeader(BuildContext context) {
     return Stack(

@@ -1,52 +1,33 @@
-// file: lib/page/home_rider.dart
-
 import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/models/package_model.dart';
 import 'package:delivery_project/models/user_model.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'dart:math' show cos, sqrt, asin, pi, atan2, sin; // สำหรับสูตร Haversine
-import 'package:geolocator/geolocator.dart'; // ✅ IMPORT GEOLOCATOR
-
-// --- IMPORT MODELS AND PAGES ---
-// !สำคัญ: ตรวจสอบว่า Path ของไฟล์ Model และ Page ถูกต้อง
-import 'package:rxdart/rxdart.dart'
-    as RxDart; // ✅ FIX: Re-added RxDart with prefix
+import 'dart:math' show cos, sqrt, asin, pi, atan2, sin;
+import 'package:geolocator/geolocator.dart';
+import 'package:rxdart/rxdart.dart' as RxDart;
 import '../models/order_model.dart';
 import 'package:delivery_project/page/edit_profile.dart';
 import 'package:delivery_project/page/index.dart';
 import 'package:delivery_project/page/package_delivery_page.dart';
 
-// ------------------------------------------------------------------
-// Controller (ส่วนจัดการ Logic ทั้งหมดของหน้า Home)
-// ------------------------------------------------------------------
 class RiderHomeController extends GetxController {
   final String uid;
   final int role;
   RiderHomeController({required this.uid, required this.role});
 
-  // --- State ---
   final Rx<UserModel?> rider = Rx(null);
   final db = FirebaseFirestore.instance;
 
-  // **State สำหรับตำแหน่งปัจจุบันของ Rider (ใช้ GeoPoint)**
   final Rx<GeoPoint?> riderCurrentLocation = Rx(null);
-
-  // กำหนดระยะทางสูงสุดที่อนุญาตให้รับงาน (20 เมตร)
   static const double MAX_DISTANCE_METERS = 20.0;
 
   @override
   void onInit() {
     super.onInit();
-
-    // **✅ แก้ไข: เริ่มฟัง Stream ตำแหน่ง GPS จริง ทันที**
     _startLocationTracking();
-
-    // 1. ตรวจสอบงานที่ค้างอยู่ก่อนเป็นอันดับแรก
     _checkAndNavigateToActiveOrder();
-
-    // 2. จากนั้นค่อยเริ่มฟังข้อมูลของ Rider ตามปกติ
     rider.bindStream(
       db
           .collection('users')
@@ -56,20 +37,16 @@ class RiderHomeController extends GetxController {
     );
   }
 
-  // **✅ ฟังก์ชัน: จัดการการขอ Permission และเริ่มฟังตำแหน่ง GPS จริง**
   void _startLocationTracking() async {
     bool serviceEnabled;
     LocationPermission permission;
 
-    // 1. ตรวจสอบว่า GPS เปิดอยู่ไหม
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       Get.snackbar(
           'แจ้งเตือน GPS', 'กรุณาเปิดบริการระบุตำแหน่ง (GPS) เพื่อรับงาน');
       return;
     }
-
-    // 2. ตรวจสอบ Permission
     permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -81,15 +58,13 @@ class RiderHomeController extends GetxController {
       }
     }
 
-    // 3. เริ่มฟังตำแหน่งอย่างต่อเนื่อง
     const LocationSettings locationSettings = LocationSettings(
-      accuracy: LocationAccuracy.high, // ความแม่นยำสูง
-      distanceFilter: 10, // อัปเดตเมื่อเคลื่อนที่เกิน 10 เมตร
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 10,
     );
 
     Geolocator.getPositionStream(locationSettings: locationSettings).listen(
         (Position position) {
-      // อัปเดตตำแหน่ง Rider ใน Rx State ด้วย GeoPoint ใหม่ (ตำแหน่งจริง)
       riderCurrentLocation.value =
           GeoPoint(position.latitude, position.longitude);
       log('GPS Location Updated: ${position.latitude}, ${position.longitude}');
@@ -99,20 +74,17 @@ class RiderHomeController extends GetxController {
     });
   }
 
-  // **ฟังก์ชันสำหรับคำนวณระยะทาง (Haversine Formula) เป็นเมตร**
   double _calculateDistanceMeters(GeoPoint riderLoc, GeoPoint pickupLoc) {
-    const double R = 6371000; // รัศมีโลกเป็นเมตร
+    const double R = 6371000;
 
     final double lat1 = riderLoc.latitude;
     final double lon1 = riderLoc.longitude;
     final double lat2 = pickupLoc.latitude;
     final double lon2 = pickupLoc.longitude;
 
-    // แปลง Degree เป็น Radians
     final double dLat = (lat2 - lat1) * (pi / 180.0);
     final double dLon = (lon2 - lon1) * (pi / 180.0);
 
-    // สูตร Haversine
     final double a = sin(dLat / 2) * sin(dLat / 2) +
         cos(lat1 * (pi / 180.0)) *
             cos(lat2 * (pi / 180.0)) *
@@ -120,10 +92,9 @@ class RiderHomeController extends GetxController {
             sin(dLon / 2);
     final double c = 2 * atan2(sqrt(a), sqrt(1 - a));
 
-    return R * c; // ผลลัพธ์เป็นเมตร
+    return R * c;
   }
 
-  // ฟังก์ชันใหม่สำหรับตรวจสอบและนำทางไปยังงานที่ Rider รับไว้ (ไม่แก้ไข)
   Future<void> _checkAndNavigateToActiveOrder() async {
     try {
       final querySnapshot = await db
@@ -140,7 +111,6 @@ class RiderHomeController extends GetxController {
 
         log('Rider has an active order: ${orderModel.id}. Navigating...');
 
-        // แปลง OrderModel เป็น Package เพื่อส่งต่อ
         final package = Package(
           id: orderModel.id,
           title: orderModel.orderDetails,
@@ -148,8 +118,6 @@ class RiderHomeController extends GetxController {
           destination: orderModel.deliveryAddress.detail,
           imageUrl: orderModel.orderPicture,
         );
-
-        // ใช้ Get.offAll เพื่อไปหน้า delivery และลบหน้า home ทิ้งจาก stack
         Get.offAll(() => PackageDeliveryPage(
               package: package,
               uid: uid,
@@ -163,17 +131,13 @@ class RiderHomeController extends GetxController {
     }
   }
 
-  // **Stream สำหรับดึงรายการงานที่ยังว่างอยู่ (pending) พร้อมการกรองระยะทาง**
   Stream<List<OrderModel>> getPendingOrdersStream() {
-    // ต้องเข้าถึง .stream ก่อนเรียกใช้ switchMap (จาก rxdart)
     return riderCurrentLocation.stream.switchMap((riderLoc) {
-      // 1. ตรวจสอบว่ามีตำแหน่งของไรเดอร์แล้วหรือยัง
       if (riderLoc == null) {
         log('Rider location is not available, returning empty list.');
         return Stream.value([]);
       }
 
-      // 2. ดึง Orders ทั้งหมดที่ 'pending' จาก Firestore
       return db
           .collection('orders')
           .where('currentStatus', isEqualTo: 'pending')
@@ -181,19 +145,14 @@ class RiderHomeController extends GetxController {
           .map((snapshot) {
         final allPendingOrders =
             snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
-
-        // 3. กรองด้วยเงื่อนไขระยะทาง 20 เมตร
         final filteredOrders = allPendingOrders.where((order) {
-          // ตรวจสอบพิกัดของจุดรับงาน
           final GeoPoint? pickupGps = order.pickupAddress.gps;
           if (pickupGps == null) {
             log('Order ${order.id} skipped: Pickup GPS is missing.');
-            return false; // ข้ามงานที่ไม่มีพิกัด
+            return false;
           }
 
           final distance = _calculateDistanceMeters(riderLoc, pickupGps);
-
-          // กรอง: แสดงเฉพาะงานที่ห่างไม่เกิน 20.0 เมตร
           if (distance <= MAX_DISTANCE_METERS) {
             log('Order ${order.id} is ${distance.toStringAsFixed(2)}m away - ACCEPTED');
             return true;
@@ -208,7 +167,6 @@ class RiderHomeController extends GetxController {
     });
   }
 
-  // ฟังก์ชันสำหรับกด "รับงาน" (ไม่แก้ไข)
   Future<void> acceptOrder(OrderModel order) async {
     Get.dialog(const Center(child: CircularProgressIndicator()),
         barrierDismissible: false);
@@ -223,7 +181,7 @@ class RiderHomeController extends GetxController {
         ]),
       });
 
-      Get.back(); // ปิด Loading
+      Get.back();
 
       final package = Package(
         id: order.id,
@@ -232,8 +190,6 @@ class RiderHomeController extends GetxController {
         destination: order.deliveryAddress.detail,
         imageUrl: order.orderPicture,
       );
-
-      // เมื่อรับงานสำเร็จ ให้ไปที่หน้า Delivery ทันที
       Get.to(() => PackageDeliveryPage(
             package: package,
             uid: uid,
@@ -246,9 +202,6 @@ class RiderHomeController extends GetxController {
   }
 }
 
-// ------------------------------------------------------------------
-// Rider Home Screen (ส่วน UI)
-// ------------------------------------------------------------------
 class RiderHomeScreen extends StatelessWidget {
   final String uid;
   final int role;
@@ -256,7 +209,6 @@ class RiderHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // สร้างและลงทะเบียน Controller
     final controller = Get.put(RiderHomeController(uid: uid, role: role));
 
     return Scaffold(
@@ -276,14 +228,10 @@ class RiderHomeScreen extends StatelessWidget {
     );
   }
 
-  // Header ที่ใช้ Obx เพื่อแสดงข้อมูลจาก Controller แบบ Realtime
   Widget _buildHeader(BuildContext context, RiderHomeController controller) {
     return Obx(() {
       final riderData = controller.rider.value;
       String riderName = riderData?.fullname ?? 'ไรเดอร์';
-
-      // --- แก้ไขจุดนี้ ---
-      // ให้ดึง URL รูปภาพจาก field 'profile' ตาม UserModel ที่ให้มา
       String profileImageUrl = riderData?.profile ??
           'https://cdn-icons-png.flaticon.com/512/1144/1144760.png';
 
@@ -341,13 +289,11 @@ class RiderHomeScreen extends StatelessWidget {
     );
   }
 
-  // รายการงานที่ดึงข้อมูลจาก Stream ใน Controller
   Widget _buildPackageList(RiderHomeController controller) {
     return StreamBuilder<List<OrderModel>>(
       stream: controller.getPendingOrdersStream(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          // หากตำแหน่ง Rider ยังโหลดอยู่ ก็แสดง Loading
           if (controller.riderCurrentLocation.value == null) {
             return const Center(
                 child: Column(
@@ -385,7 +331,6 @@ class RiderHomeScreen extends StatelessWidget {
     );
   }
 
-  // Card แสดงรายละเอียดของงานแต่ละชิ้น
   Widget _buildPackageCard(
       BuildContext context, OrderModel order, RiderHomeController controller) {
     return Card(

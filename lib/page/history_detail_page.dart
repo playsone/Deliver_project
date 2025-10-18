@@ -1,7 +1,4 @@
-// history_detail_page.dart
-
 import 'dart:ui' as ui;
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/page/index.dart';
 import 'package:delivery_project/page/send_package_page.dart';
@@ -10,7 +7,6 @@ import 'package:get/get.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
-// Constants
 const Color _primaryColor = Color(0xFFC70808);
 const Color _backgroundColor = Color(0xFFFDE9E9);
 
@@ -31,13 +27,11 @@ class HistoryDetailPage extends StatefulWidget {
 }
 
 class _HistoryDetailPageState extends State<HistoryDetailPage> {
-  // ใช้ Future เพื่อดึงข้อมูลเพียงครั้งเดียว
   late Future<DocumentSnapshot<Map<String, dynamic>>> _orderFuture;
 
   @override
   void initState() {
     super.initState();
-    // เริ่มดึงข้อมูลออเดอร์เมื่อหน้านี้ถูกสร้าง
     _orderFuture = FirebaseFirestore.instance
         .collection('orders')
         .doc(widget.orderId)
@@ -51,19 +45,15 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
       body: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
         future: _orderFuture,
         builder: (context, snapshot) {
-          // สถานะขณะโหลด
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-          // หากเกิด Error
           if (snapshot.hasError ||
               !snapshot.hasData ||
               !snapshot.data!.exists) {
             return const Center(
                 child: Text('ไม่สามารถโหลดรายละเอียดออเดอร์ได้'));
           }
-
-          // เมื่อโหลดข้อมูลสำเร็จ
           final orderData = snapshot.data!.data()!;
 
           return CustomScrollView(
@@ -78,11 +68,9 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // **ใช้ FutureBuilder ซ้อนเพื่อดึงข้อมูล Customer**
                           _buildUserDetail(
                               orderData['customerId'], 'ข้อมูลผู้ส่งสินค้า'),
                           const SizedBox(height: 20),
-                          // **แสดงข้อมูลผู้รับจาก orderData โดยตรง**
                           _buildReceiverInfoSection(
                               orderData['deliveryAddress']),
                           const SizedBox(height: 20),
@@ -104,10 +92,8 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
     );
   }
 
-  // ส่วน Header
   Widget _buildHeader(Map<String, dynamic> orderData) {
     return SliverAppBar(
-      expandedHeight: 150.0,
       pinned: true,
       backgroundColor: _primaryColor,
       foregroundColor: Colors.white,
@@ -115,15 +101,14 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
         icon: const Icon(Icons.arrow_back),
         onPressed: () => Get.back(),
       ),
-      flexibleSpace: FlexibleSpaceBar(
-        titlePadding: const EdgeInsets.only(left: 60, bottom: 12),
-        title: const Text('รายละเอียดประวัติ',
+      flexibleSpace: const FlexibleSpaceBar(
+        titlePadding: EdgeInsets.only(left: 60, bottom: 12),
+        title: Text('รายละเอียดประวัติ',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
       ),
     );
   }
 
-  // **แก้ไข:** Widget สำหรับดึงและแสดงข้อมูล User (ผู้ส่ง/ไรเดอร์)
   Widget _buildUserDetail(String userId, String title) {
     final userFuture =
         FirebaseFirestore.instance.collection('users').doc(userId).get();
@@ -144,7 +129,6 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
         });
   }
 
-  // **แก้ไข:** Widget สำหรับแสดงข้อมูลผู้รับจากข้อมูลออเดอร์
   Widget _buildReceiverInfoSection(Map<String, dynamic> deliveryAddress) {
     final name = deliveryAddress['receiverName'] ?? 'ไม่มีชื่อ';
     final phone = deliveryAddress['receiverPhone'] ?? 'ไม่มีเบอร์โทร';
@@ -154,7 +138,6 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
         address: address);
   }
 
-  // ส่วนข้อมูล
   Widget _buildInfoSection(
       String title, String name, String phone, IconData icon,
       {String? address}) {
@@ -206,7 +189,6 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
     );
   }
 
-  // ส่วนรายละเอียดสินค้า
   Widget _buildPackageDetailSection(Map<String, dynamic> orderData) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -262,7 +244,6 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
     );
   }
 
-  // ส่วนแสดงแผนที่
   Widget _buildMapSection(
       BuildContext context, Map<String, dynamic> orderData) {
     final pickupGps = orderData['pickupAddress']['gps'] as GeoPoint;

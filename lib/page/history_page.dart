@@ -1,5 +1,3 @@
-// file: lib/page/history_page.dart
-
 import 'package:async/async.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/page/home.dart';
@@ -24,8 +22,6 @@ class HistoryPage extends StatefulWidget {
 
 class _HistoryPageState extends State<HistoryPage> {
   String? _selectedOrderId;
-
-  // State สำหรับการค้นหา
   final TextEditingController _searchController = TextEditingController();
   String _searchTerm = '';
 
@@ -77,10 +73,6 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
-  // ===================================================================
-  // == WIDGETS สำหรับแสดง "หน้ารายการประวัติ" ==
-  // ===================================================================
-
   Widget _buildOrderListView() {
     return Column(
       children: [
@@ -118,7 +110,6 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   Widget _buildOrderList() {
-    // Stream 1: ออเดอร์ที่ user เป็น "ลูกค้า" และส่งสำเร็จแล้ว
     final senderStream = FirebaseFirestore.instance
         .collection('orders')
         .where('customerId', isEqualTo: widget.uid)
@@ -138,11 +129,9 @@ class _HistoryPageState extends State<HistoryPage> {
           return const Center(child: Text('ยังไม่มีประวัติการส่งสินค้า'));
         }
 
-        // ใช้ Map เพื่อกรองรายการที่ซ้ำซ้อน
         final uniqueDocs = {for (var doc in snapshot.data!.docs) doc.id: doc};
         var allDocs = uniqueDocs.values.toList();
 
-        // Logic การกรองข้อมูล
         if (_searchTerm.isNotEmpty) {
           String lowerCaseSearch = _searchTerm.toLowerCase();
           allDocs = allDocs.where((doc) {
@@ -168,7 +157,6 @@ class _HistoryPageState extends State<HistoryPage> {
           return const Center(child: Text('ไม่พบรายการที่ค้นหา'));
         }
 
-        // เรียงตามวันที่สร้างล่าสุด
         allDocs.sort((a, b) {
           final aTime = (a.data() as Map)['createdAt'] as Timestamp?;
           final bTime = (b.data() as Map)['createdAt'] as Timestamp?;
@@ -195,10 +183,6 @@ class _HistoryPageState extends State<HistoryPage> {
       },
     );
   }
-
-  // ===================================================================
-  // == WIDGETS สำหรับแสดง "หน้ารายละเอียดประวัติ" ==
-  // ===================================================================
 
   Widget _buildOrderDetailView(String orderId) {
     return StreamBuilder<DocumentSnapshot>(
@@ -315,7 +299,7 @@ class _HistoryPageState extends State<HistoryPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('ข้อมูลผู้จัดส่ง (ไรเดอร์)',
+        const Text('ข้อมูลไรเดอร์',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         Text('ชื่อ: $riderName'),
         Text('เบอร์โทร: $riderPhone'),
@@ -488,7 +472,6 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 }
 
-/// Widget ใหม่สำหรับแสดงผลแต่ละรายการใน List อย่างมีประสิทธิภาพ
 class HistoryListItem extends StatefulWidget {
   final Map<String, dynamic> orderData;
   final String orderId;
@@ -514,7 +497,6 @@ class _HistoryListItemState extends State<HistoryListItem> {
     _fetchRiderData();
   }
 
-  /// ฟังก์ชันสำหรับดึงชื่อไรเดอร์แค่ครั้งเดียว
   Future<void> _fetchRiderData() async {
     final riderId = widget.orderData['riderId'] as String?;
     if (riderId == null || riderId.isEmpty) return;
@@ -529,9 +511,7 @@ class _HistoryListItemState extends State<HistoryListItem> {
           _riderData = doc.data();
         });
       }
-    } catch (e) {
-      // Handle error if needed
-    }
+    } catch (e) {}
   }
 
   @override
@@ -618,7 +598,6 @@ class _HistoryListItemState extends State<HistoryListItem> {
   }
 }
 
-// --- ⭐️ ย้ายฟังก์ชันมาไว้นอกคลาสเพื่อให้ Widget อื่นเรียกใช้ได้ ---
 String _translateStatus(String status) {
   switch (status) {
     case 'pending':

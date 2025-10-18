@@ -1,5 +1,3 @@
-// file: lib/page/order_status_page.dart
-
 import 'package:async/async.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/page/history_page.dart';
@@ -12,7 +10,6 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
-// Constants
 const Color _primaryColor = Color(0xFFC70808);
 const Color _backgroundColor = Color(0xFFFDE9E9);
 
@@ -332,7 +329,8 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
   Widget _buildCurrentStatusHeader(
       Map<String, dynamic> orderData, Map<String, dynamic>? riderData) {
     final status = orderData['currentStatus'] ?? 'pending';
-    final orderDetails = orderData['orderDetails'] ?? 'ไม่มีรายละเอียด';
+    final orderDetails =
+        orderData['orderDetails'].toString().trim() ?? 'ไม่มีรายละเอียด';
     final deliveryAddress =
         orderData['deliveryAddress'] as Map<String, dynamic>? ?? {};
     final receiverName = deliveryAddress['receiverName'] ?? 'ไม่มีข้อมูล';
@@ -346,7 +344,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
           Text(orderDetails,
               style:
                   const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
+          const Divider(height: 20),
           Row(
             children: [
               Text('สถานะปัจจุบัน: ',
@@ -559,7 +557,6 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
   }
 }
 
-// --- ⭐️ เพิ่ม: Widget ใหม่สำหรับแสดงผลรายการออเดอร์ ---
 class OrderListItem extends StatefulWidget {
   final Map<String, dynamic> orderData;
   final String orderId;
