@@ -51,7 +51,8 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
   final MapController _mapController = MapController();
   StreamSubscription<LocationData>? _locationSubscription;
 
-  static const double maxDistanceToDeliver = 20.0;
+  // ⭐️ แก้ไข: เปลี่ยนชื่อตัวแปรให้สื่อถึงระยะทางที่ยอมรับได้
+  static const double maxDistanceToTarget = 20.0; // 20 เมตร
 
   @override
   void initState() {
@@ -379,7 +380,7 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
     );
   }
 
-  // ================= Widget: Action Section =================
+  // ⭐️ แก้ไข: ปรับปรุง Action Section ให้มีการตรวจสอบระยะทางก่อน "รับของ" และ "ส่งของ"
   Widget _buildActionSection(
       DeliveryStatus status, Map<String, dynamic> orderData) {
     if (status == DeliveryStatus.delivered) {
@@ -401,60 +402,68 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
       );
     }
 
-    if (status == DeliveryStatus.inTransit) {
-      final GeoPoint? riderLoc = orderData['currentLocation'] as GeoPoint?;
-      final GeoPoint? deliveryLoc =
-          orderData['deliveryAddress']?['gps'] as GeoPoint?;
+    // กำหนดค่าตามสถานะปัจจุบัน
+    String targetStatus;
+    GeoPoint? targetGps;
+    String buttonText;
+    bool isFinal = false;
 
-      if (riderLoc != null && deliveryLoc != null) {
-        final double distance = _calculateDistanceMeters(riderLoc, deliveryLoc);
-        if (distance > maxDistanceToDeliver) {
-          return SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              icon: const Icon(Icons.warning, color: Colors.white),
-              label: Text(
-                'ต้องอยู่ใกล้ผู้รับ (ห่าง ${distance.toStringAsFixed(2)} ม.)',
-                style: const TextStyle(
-                    fontSize: 18,
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold),
-              ),
-              onPressed: () {
-                Get.snackbar(
-                  'แจ้งเตือน',
-                  'คุณต้องอยู่ภายใน ${maxDistanceToDeliver.toInt()} เมตรจากจุดส่งมอบ (ห่าง ${distance.toStringAsFixed(2)} ม.)',
-                  snackPosition: SnackPosition.BOTTOM,
-                  backgroundColor: Colors.orange,
-                  colorText: Colors.white,
-                );
-                _mapController.move(
-                    LatLng(riderLoc.latitude, riderLoc.longitude), 17.0);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
-                padding: const EdgeInsets.symmetric(vertical: 15),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
-              ),
-            ),
-          );
-        }
-      } else {
+    if (status == DeliveryStatus.accepted) {
+      targetStatus = 'picked_up';
+      buttonText = 'ถ่ายรูปยืนยันการรับของ';
+      // จุดหมายคือจุดรับของ
+      targetGps = orderData['pickupAddress']?['gps'] as GeoPoint?;
+    } else if (status == DeliveryStatus.pickedUp) {
+      targetStatus = 'in_transit';
+      buttonText = 'ถ่ายรูปเพื่อเริ่มนำส่ง';
+      // เมื่อรับของแล้ว จุดหมายต่อไปคือจุดรับของ (ยังไม่ถ่ายรูปเดินทาง)
+      // อนุญาตให้ถ่ายได้เลย ไม่ต้องเช็คระยะทางซ้ำ
+      targetGps = null;
+    } else if (status == DeliveryStatus.inTransit) {
+      targetStatus = 'delivered';
+      buttonText = 'ถ่ายรูปยืนยันการส่งสำเร็จ';
+      isFinal = true;
+      // จุดหมายคือจุดส่งของ
+      targetGps = orderData['deliveryAddress']?['gps'] as GeoPoint?;
+    } else {
+      return const SizedBox.shrink(); // สถานะอื่น ๆ ไม่ต้องแสดงปุ่ม
+    }
+
+    final GeoPoint? riderLoc = orderData['currentLocation'] as GeoPoint?;
+
+    // --- 1. ตรวจสอบว่าต้องเช็คระยะทางหรือไม่ (คือขั้นตอน accepted -> picked_up หรือ inTransit -> delivered) ---
+    if (riderLoc != null && targetGps != null) {
+      final double distance = _calculateDistanceMeters(riderLoc, targetGps);
+
+      if (distance > maxDistanceToTarget) {
+        // แสดงปุ่มแจ้งเตือนให้เข้าใกล้จุดหมายก่อน
+        final String targetName =
+            status == DeliveryStatus.accepted ? 'ผู้ส่ง' : 'ผู้รับ';
+
         return SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
-            icon: const Icon(Icons.sync, color: Colors.white),
-            label: const Text(
-              'กำลังรอข้อมูลตำแหน่ง Rider…',
-              style: TextStyle(
+            icon: const Icon(Icons.warning, color: Colors.white),
+            label: Text(
+              'ต้องอยู่ใกล้${targetName} (ห่าง ${distance.toStringAsFixed(2)} ม.)',
+              style: const TextStyle(
                   fontSize: 18,
                   color: Colors.white,
                   fontWeight: FontWeight.bold),
             ),
-            onPressed: () {},
+            onPressed: () {
+              Get.snackbar(
+                'แจ้งเตือน',
+                'คุณต้องอยู่ภายใน ${maxDistanceToTarget.toInt()} เมตรจากจุด${targetName} (ปัจจุบันห่าง ${distance.toStringAsFixed(2)} เมตร)',
+                snackPosition: SnackPosition.BOTTOM,
+                backgroundColor: Colors.orange,
+                colorText: Colors.white,
+              );
+              _mapController.move(
+                  LatLng(riderLoc.latitude, riderLoc.longitude), 17.0);
+            },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.grey,
+              backgroundColor: Colors.orange,
               padding: const EdgeInsets.symmetric(vertical: 15),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10)),
@@ -462,23 +471,20 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
           ),
         );
       }
-
-      // ถ้าอยู่ในระยะที่อนุญาต
+    } else if (targetGps != null && riderLoc == null) {
+      // กรณีที่ต้องเช็คระยะทาง แต่ GPS ของไรเดอร์ยังไม่มา
       return SizedBox(
         width: double.infinity,
         child: ElevatedButton.icon(
-          icon: const Icon(Icons.photo_camera, color: Colors.white),
+          icon: const Icon(Icons.sync, color: Colors.white),
           label: const Text(
-            'ถ่ายรูปยืนยันการส่งสำเร็จ',
+            'กำลังรอข้อมูลตำแหน่ง Rider...',
             style: TextStyle(
                 fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
           ),
-          onPressed: () => _captureAndUploadStatusImage(
-            statusToUpdate: 'delivered',
-            isFinal: true,
-          ),
+          onPressed: () {},
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF38B000),
+            backgroundColor: Colors.grey,
             padding: const EdgeInsets.symmetric(vertical: 15),
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -486,39 +492,27 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
         ),
       );
     }
+    // --- 2. ถ้าผ่านการเช็คระยะทางแล้ว หรือเป็นสถานะที่ไม่ต้องเช็คระยะทาง (picked_up -> in_transit) ---
 
-    // กรณี status เป็น accepted หรือ pickedUp
-    String buttonText;
-    IconData icon;
-    VoidCallback onPressed;
-
-    if (status == DeliveryStatus.accepted) {
-      buttonText = 'ถ่ายรูปยืนยันการรับของ';
-      icon = Icons.camera_alt;
-      onPressed = () => _captureAndUploadStatusImage(
-            statusToUpdate: 'picked_up',
-          );
-    } else {
-      // pickedUp
-      buttonText = 'ถ่ายรูปเพื่อเริ่มนำส่ง';
-      icon = Icons.local_shipping;
-      onPressed = () => _captureAndUploadStatusImage(
-            statusToUpdate: 'in_transit',
-          );
-    }
+    final Color buttonColor =
+        isFinal ? const Color(0xFF38B000) : const Color(0xFFC70808);
 
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        icon: Icon(icon, color: Colors.white),
+        icon: Icon(isFinal ? Icons.photo_camera : Icons.camera_alt,
+            color: Colors.white),
         label: Text(
           buttonText,
           style: const TextStyle(
               fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        onPressed: onPressed,
+        onPressed: () => _captureAndUploadStatusImage(
+          statusToUpdate: targetStatus,
+          isFinal: isFinal,
+        ),
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFFC70808),
+          backgroundColor: buttonColor,
           padding: const EdgeInsets.symmetric(vertical: 15),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -585,6 +579,12 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
   Widget _imageCard(String title, String imageUrl) {
     return Container(
       margin: const EdgeInsets.only(bottom: 15),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
