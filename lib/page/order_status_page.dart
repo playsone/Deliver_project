@@ -40,7 +40,6 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
   Map<String, dynamic>? _recipientData;
   Map<String, dynamic>? _riderData;
   
-  // NEW: ตัวแปรสำหรับการค้นหา
   final TextEditingController _searchController = TextEditingController(); 
   String _searchTerm = ''; 
 
@@ -52,7 +51,6 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
     if (_selectedOrderId != null) {
       _initializeOrderData(_selectedOrderId!);
     }
-    // NEW: Listener สำหรับการค้นหา
     _searchController.addListener(() {
       setState(() {
         _searchTerm = _searchController.text.trim();
@@ -73,7 +71,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
 
   @override
   void dispose() {
-    _searchController.dispose(); // ต้อง dispose controller
+    _searchController.dispose();
     super.dispose();
   }
   
@@ -204,8 +202,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
       ),
     );
   }
-  
-  // NEW: Widget Search Bar
+
   Widget _buildSearchBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -232,7 +229,6 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
       ),
     );
   }
-
 
   Widget _buildOrderListView() {
     if (widget.role != 0) {
@@ -335,7 +331,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
 
         final orderData = orderSnapshot.data!.data() as Map<String, dynamic>;
         
-        // **ตรวจสอบความสมบูรณ์ของข้อมูลที่โหลดไว้ใน State**
+        // ตรวจสอบความสมบูรณ์ของข้อมูลที่โหลดไว้ใน State
         final bool isCurrentUserSender = orderData['customerId'] == widget.uid;
         final bool isEssentialDataLoaded = (isCurrentUserSender && _recipientData != null) || (!isCurrentUserSender && _senderData != null);
         
@@ -358,9 +354,9 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
         }
         
         // *** ✅ ตรรกะ Real-time Map Panning ***
-        if (riderPosition != null && _mapController.ready) {
+        if (riderPosition != null) {
              WidgetsBinding.instance.addPostFrameCallback((_) {
-                 _mapController.move(riderPosition, _mapController.zoom);
+                 _mapController.move(riderPosition, 14.0); // ใช้ zoom คงที่ 14.0 
              });
         }
         // *** --------------------------------- ***
@@ -430,7 +426,8 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
           children: [
             TileLayer(
               // ใช้ OpenStreetMap เพื่อหลีกเลี่ยง API Key Error
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              urlTemplat:'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=cb153d15cb4e41f59e25cfda6468f1a0',
+
               userAgentPackageName: 'com.example.app',
             ),
             MarkerLayer(
