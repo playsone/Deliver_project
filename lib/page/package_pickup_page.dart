@@ -139,10 +139,7 @@ class PackagePickupController extends GetxController {
 
     final baseQuery = FirebaseFirestore.instance
         .collection('orders')
-        .where('deliveryAddress.receiverPhone', isEqualTo: userPhone.value)
-        // **BUG FIX: ต้องมี orderBy เพื่อให้ Firebase ทำงานได้หากไม่มี index field**
-        // Re-added orderBy for better UX (newest first)
-        .orderBy('createdAt', descending: true); 
+        .where('deliveryAddress.receiverPhone', isEqualTo: userPhone.value);
 
     return baseQuery.snapshots();
   }
@@ -230,15 +227,15 @@ class PackagePickupPage extends StatelessWidget {
                         controller.isSearching.value) {
                       return const Center(
                           child: Padding(
-                            padding: EdgeInsets.only(top: 50),
-                            child: Column(
-                              children: [
-                                CircularProgressIndicator(color: _primaryColor),
-                                SizedBox(height: 10),
-                                Text('กำลังโหลดข้อมูล...')
-                              ],
-                            ),
-                          ));
+                        padding: EdgeInsets.only(top: 50),
+                        child: Column(
+                          children: [
+                            CircularProgressIndicator(color: _primaryColor),
+                            SizedBox(height: 10),
+                            Text('กำลังโหลดข้อมูล...')
+                          ],
+                        ),
+                      ));
                     }
                     // เรียกใช้ StreamBuilder
                     return _buildPackagesList(controller);
@@ -528,7 +525,8 @@ class PackagePickupPage extends StatelessWidget {
                       const Icon(Icons.inventory_2_outlined,
                           color: _primaryColor),
                       const SizedBox(width: 8),
-                      Text('พัสดุ: ${package.orderDetails.length > 30 ? package.orderDetails.substring(0, 30) + '...' : package.orderDetails}',
+                      Text(
+                          'พัสดุ: ${package.orderDetails.length > 30 ? package.orderDetails.substring(0, 30) + '...' : package.orderDetails}',
                           style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
