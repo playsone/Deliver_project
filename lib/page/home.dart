@@ -40,6 +40,8 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Marker> get _fixedMarkers {
     if (_currentUser != null && _currentUser!.defaultGPS != null) {
       final userGps = _currentUser!.defaultGPS!;
+      final userGps2 = _currentUser?.secondGPS;
+
       return [
         Marker(
           point: LatLng(userGps.latitude, userGps.longitude),
@@ -54,6 +56,21 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ),
+        if (userGps2 != null) ...[
+          Marker(
+            point: LatLng(userGps2.latitude, userGps2.longitude),
+            width: 40,
+            height: 40,
+            child: const Tooltip(
+              message: 'ที่อยู่รองของคุณ',
+              child: Icon(
+                Icons.home_outlined,
+                color: Colors.indigo,
+                size: 40.0,
+              ),
+            ),
+          ),
+        ]
       ];
     }
     return [];
@@ -159,7 +176,14 @@ class _HomeScreenState extends State<HomeScreen> {
         .where('currentStatus', whereIn: statusesToTrack)
         .snapshots();
 
-    final mergedStream = StreamGroup.merge([senderStream, riderStream]);
+    final getDerStream = FirebaseFirestore.instance
+        .collection('orders')
+        .where('deliveryAddress.receiverPhone', isEqualTo: _currentUser!.phone)
+        .where('currentStatus', whereIn: statusesToTrack)
+        .snapshots();
+
+    final mergedStream =
+        StreamGroup.merge([senderStream, riderStream, getDerStream]);
 
     _ordersSubscription = mergedStream.listen((snapshot) {
       if (!mounted) return;
@@ -175,18 +199,19 @@ class _HomeScreenState extends State<HomeScreen> {
         if (data.containsKey('currentLocation') &&
             data['currentLocation'] is GeoPoint) {
           final GeoPoint position = data['currentLocation'];
-          log("✅ Creating/Updating marker for Order ID: $orderId");
-
-          // อัปเดต Marker ใน Map หลัก
           _markerMap[orderId] = Marker(
             point: LatLng(position.latitude, position.longitude),
             width: 40,
             height: 40,
             child: Tooltip(
-              message: 'Order ID: $orderId',
-              child: const Icon(
+              message: data['customerId'] == _currentUser!.uid
+                  ? "ส่งให้ ${data['deliveryAddress']['receiverName']}"
+                  : "พัสดุ ${data['orderDetails']} ที่ต้องรับ",
+              child: Icon(
                 Icons.two_wheeler,
-                color: Colors.blue,
+                color: (data['customerId'] == _currentUser!.uid)
+                    ? Colors.red
+                    : Colors.green,
                 size: 40.0,
               ),
             ),
@@ -194,7 +219,6 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
       setState(() {
-        // อัปเดต UI ด้วยข้อมูลทั้งหมดใน Map
         _orderMarkers = _markerMap.values.toList();
       });
     }, onError: (error) {
@@ -379,7 +403,7 @@ class _HomeScreenState extends State<HomeScreen> {
             message: 'ตำแหน่งปัจจุบันของคุณ',
             child: Icon(
               Icons.my_location,
-              color: Colors.green,
+              color: Colors.cyanAccent,
               size: 40,
             ),
           ),
@@ -470,7 +494,6 @@ class _HomeScreenState extends State<HomeScreen> {
         currentIndex: 0,
         onTap: (index) {
           if (index == 0) {
-            // Stay on this page
           } else if (index == 1) {
             Get.to(() => HistoryPage(
                   uid: widget.uid,

@@ -10,8 +10,7 @@ import 'package:delivery_project/page/order_status_page.dart';
 
 const Color _primaryColor = Color(0xFFC70808);
 const Color _backgroundColor = Color(0xFFFDE9E9);
-const Color _accentColor = Color(0xFF0D47A1); 
-
+const Color _accentColor = Color(0xFF0D47A1);
 
 class PackageModel {
   final String id;
@@ -78,13 +77,12 @@ class UserInfo {
   UserInfo(this.name, this.phone);
 }
 
-
 class PackagePickupController extends GetxController {
   final String uid;
   final RxString userPhone = ''.obs;
   final TextEditingController searchController = TextEditingController();
   final RxString searchText = ''.obs;
-  final RxBool isSearching = false.obs; 
+  final RxBool isSearching = false.obs;
 
   PackagePickupController(this.uid);
 
@@ -107,9 +105,7 @@ class PackagePickupController extends GetxController {
       if (doc.exists) {
         userPhone.value = doc.data()?['phone'] ?? '';
       }
-    } catch (e) {
-      print('Error fetching user phone: $e');
-    }
+    } catch (e) {}
   }
 
   Future<void> performSearch() async {
@@ -178,7 +174,6 @@ class PackagePickupController extends GetxController {
   }
 }
 
-
 class PackagePickupPage extends StatelessWidget {
   final String uid;
   final int role;
@@ -198,7 +193,7 @@ class PackagePickupPage extends StatelessWidget {
             sliver: SliverList(
               delegate: SliverChildListDelegate(
                 [
-                  _buildSearchBar(controller), 
+                  _buildSearchBar(controller),
                   const SizedBox(height: 20),
                   Obx(() {
                     if (controller.userPhone.value.isEmpty ||
@@ -357,7 +352,7 @@ class PackagePickupPage extends StatelessWidget {
           package,
           _getStatusText(package.currentStatus),
           _getStatusColor(package.currentStatus),
-          false, 
+          false,
           senderInfo.name,
           senderInfo.phone,
           riderInfo.name,
@@ -392,7 +387,7 @@ class PackagePickupPage extends StatelessWidget {
       package,
       _getStatusText(package.currentStatus),
       _getStatusColor(package.currentStatus),
-      false, 
+      false,
       senderParts[0],
       senderParts.length > 1 ? senderParts[1] : '-',
       riderParts[0],
@@ -433,7 +428,7 @@ class PackagePickupPage extends StatelessWidget {
       case 'in_transit':
         return Colors.amber.shade800;
       case 'delivered':
-        return Colors.green.shade600; 
+        return Colors.green.shade600;
       case 'completed':
         return Colors.green;
       default:
@@ -445,7 +440,7 @@ class PackagePickupPage extends StatelessWidget {
       PackageModel package,
       String statusText,
       Color statusColor,
-      bool showConfirmButton, 
+      bool showConfirmButton,
       String senderName,
       String senderPhone,
       String riderName,
@@ -459,7 +454,7 @@ class PackagePickupPage extends StatelessWidget {
 
     return Card(
       margin: const EdgeInsets.only(bottom: 15),
-      elevation: 5, 
+      elevation: 5,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: InkWell(
         onTap: () {
@@ -502,15 +497,10 @@ class PackagePickupPage extends StatelessWidget {
                 ],
               ),
               const Divider(height: 15, thickness: 1),
-
-
               _buildDetailRow(Icons.person, 'ผู้ส่ง:', senderName, senderPhone),
-
               _buildDetailRow(Icons.two_wheeler_outlined, 'ไรเดอร์:', riderName,
                   riderPhone),
-
               _buildDetailRow(Icons.qr_code, 'รหัสพัสดุ:', package.id, null),
-
               if (showDeliveredImage)
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -556,7 +546,7 @@ class PackagePickupPage extends StatelessWidget {
           Icon(icon, size: 20, color: _accentColor),
           const SizedBox(width: 8),
           SizedBox(
-            width: 80, // กำหนดความกว้างของ Title
+            width: 80,
             child: Text(title,
                 style:
                     const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
@@ -580,37 +570,18 @@ class PackagePickupPage extends StatelessWidget {
 
   Widget _buildHeader(BuildContext context) {
     return SliverAppBar(
-      expandedHeight: 150.0,
-      floating: false,
-      pinned: true,
       backgroundColor: _primaryColor,
-      flexibleSpace: FlexibleSpaceBar(
-        titlePadding: EdgeInsets.zero,
+      flexibleSpace: const FlexibleSpaceBar(
+        titlePadding: EdgeInsets.only(left: 40),
         centerTitle: false,
-        title: const Padding(
-          padding: EdgeInsets.only(left: 20, bottom: 8),
+        title: Padding(
+          padding: EdgeInsets.only(left: 30, bottom: 15),
           child: Text(
-            'พัสดุถึงคุณ',
+            'รายการที่ต้องรับ',
             style: TextStyle(
-              fontSize: 18,
+              fontSize: 25,
               fontWeight: FontWeight.bold,
               color: Colors.white,
-            ),
-          ),
-        ),
-        background: ClipPath(
-          clipper: HeaderClipper(),
-          child: Container(
-            color: _primaryColor,
-            alignment: Alignment.centerLeft,
-            padding: const EdgeInsets.only(left: 20, top: 50),
-            child: const Text(
-              'รายการพัสดุรอรับ',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
             ),
           ),
         ),

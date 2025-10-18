@@ -177,10 +177,9 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
                         const SizedBox(height: 20),
                         FilledButton(
                           onPressed: _confirmExitDialog,
-                          // Use FilledButton.styleFrom to set the color
                           style: FilledButton.styleFrom(
-                            backgroundColor: const Color.fromARGB(
-                                255, 173, 15, 4), // Your desired color
+                            backgroundColor:
+                                const Color.fromARGB(255, 173, 15, 4),
                           ),
                           child: const Text(
                             'ออกจากระบบ',
@@ -299,7 +298,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
 
   Widget _buildMapSection(
       Map<String, dynamic> orderData, DeliveryStatus status) {
-    // ดึงพิกัดรับและส่ง
     final GeoPoint pickupGps =
         orderData['pickupAddress']?['gps'] as GeoPoint? ?? const GeoPoint(0, 0);
     final GeoPoint deliveryGps =

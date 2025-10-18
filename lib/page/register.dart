@@ -1085,9 +1085,7 @@ class _MapPickerModalState extends State<MapPickerModal> {
 
         _searchController.text = addressLine.replaceAll(', ,', ',').trim();
       }
-    } catch (e) {
-      debugPrint("Reverse Geocoding Error: $e");
-    }
+    } catch (e) {}
   }
 
   @override

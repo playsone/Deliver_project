@@ -2,17 +2,19 @@ import 'dart:developer';
 import 'dart:io';
 import 'dart:convert';
 
+import 'package:delivery_project/page/home.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:get/get.dart';
+import 'package:get/get_core/src/get_main.dart';
+import 'package:get/get_rx/get_rx.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geocoding/geocoding.dart';
-
-// ตรวจสอบว่า path ไปยัง model ของคุณถูกต้อง
 import 'package:delivery_project/models/user_model.dart';
 
 class EditProfilePage extends StatefulWidget {
@@ -29,7 +31,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
   final _auth = FirebaseAuth.instance;
   bool _isDataInitialized = false;
 
-  // Controllers
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -40,7 +41,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
   final _gps2Controller = TextEditingController();
   final _vehicleRegController = TextEditingController();
 
-  // State Variables
   UserModel? _user;
   File? _profileImageFile;
   File? _vehicleImageFile;
@@ -63,8 +63,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
     super.dispose();
   }
 
-  //----------- CORE LOGIC FUNCTIONS -----------//
-
   Future<UserModel> fetchUser(String uid) async {
     final docSnapshot =
         await FirebaseFirestore.instance.collection('users').doc(uid).get();
@@ -75,7 +73,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
     return UserModel.fromFirestore(docSnapshot);
   }
 
-  // --- ⭐️ แก้ไข: ปรับ Logic การดึงข้อมูล ---
   void _initializeData(UserModel user) {
     if (_isDataInitialized) return;
     _user = user;
@@ -84,7 +81,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
     _profileImageUrl = user.profile;
 
     if (user.role == 0) {
-      // Logic สำหรับ User ทั่วไป (ดึงที่อยู่ 1 และ 2)
       _addressController.text = user.defaultAddress ?? '';
       if (user.defaultGPS != null) {
         _defaultMarkerPos =
@@ -100,7 +96,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
             "${_secondMarkerPos!.latitude.toStringAsFixed(6)}, ${_secondMarkerPos!.longitude.toStringAsFixed(6)}";
       }
     } else if (user.role == 1) {
-      // Logic สำหรับ Rider (ไม่ดึงที่อยู่/GPS)
       _vehicleRegController.text = user.vehicleNo ?? '';
       _vehicleImageUrl = user.vehiclePicture ?? '';
     }
@@ -131,7 +126,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
     return null;
   }
 
-  // --- ⭐️ แก้ไข: ปรับ Logic การบันทึกข้อมูล ---
   Future<void> _saveProfile() async {
     if (_passwordController.text.isNotEmpty &&
         _passwordController.text != _password2Controller.text) {
@@ -149,7 +143,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
     final user = _auth.currentUser;
     if (user == null) {
-      Navigator.of(context).pop(); // Dismiss loading
+      Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("ไม่พบข้อมูลผู้ใช้ปัจจุบัน")));
       return;
@@ -171,7 +165,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
       if (newProfileUrl != null) dataToUpdate['profile'] = newProfileUrl;
 
       if (widget.role == 0) {
-        // บันทึกข้อมูลสำหรับ User
         dataToUpdate.addAll({
           'defaultAddress': _addressController.text,
           'secondAddress': _address2Controller.text,
@@ -185,7 +178,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
               GeoPoint(_secondMarkerPos!.latitude, _secondMarkerPos!.longitude);
         }
       } else if (widget.role == 1) {
-        // บันทึกข้อมูลสำหรับ Rider (ไม่มีที่อยู่/GPS)
         dataToUpdate.addAll({
           'vehicle_no': _vehicleRegController.text,
         });
@@ -199,13 +191,15 @@ class _EditProfilePageState extends State<EditProfilePage> {
         await user.updatePassword(_passwordController.text);
       }
 
-      Navigator.of(context).pop(); // ปิด Loading
+      Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text("บันทึกข้อมูลสำเร็จ!"),
         backgroundColor: Colors.green,
       ));
+
+      Get.to(() => HomeScreen(uid: widget.uid, role: widget.role));
     } on FirebaseAuthException catch (e) {
-      Navigator.of(context).pop(); // ปิด Loading ก่อนแสดง Dialog
+      Navigator.of(context).pop();
 
       if (e.code == 'requires-recent-login') {
         final currentPassword = await _showReauthDialog();
@@ -241,7 +235,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
     }
   }
 
-  // ... (โค้ดส่วนอื่น ๆ ที่ไม่เปลี่ยนแปลง) ...
   Future<String?> _showReauthDialog() async {
     final passwordController = TextEditingController();
     return showDialog<String>(
@@ -369,7 +362,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
     );
   }
 
-  //----------- BUILD METHOD & WIDGETS -----------//
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -508,12 +500,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
     );
   }
 
-  // --- ⭐️ แก้ไข: ฟอร์มสำหรับ Rider ---
   Widget _buildRiderSpecificFields() {
     return Column(
       children: [
         _buildTextFieldWithLabel('เลขทะเบียนรถ', _vehicleRegController),
-        // ลบฟิลด์ที่อยู่และ GPS ออกจากส่วนนี้
       ],
     );
   }
@@ -571,7 +561,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
   }
 }
 
-// MapPickerModal (ไม่มีการเปลี่ยนแปลง)
 class MapPickerModal extends StatefulWidget {
   final LatLng initialLatLng;
   const MapPickerModal({super.key, required this.initialLatLng});
