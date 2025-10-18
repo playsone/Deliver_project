@@ -127,6 +127,7 @@ class PackagePickupController extends GetxController {
       return Stream.empty();
     }
 
+    // NOTE: ลบ orderBy ออกเพื่อเลี่ยง Composite Index Error
     final baseQuery = FirebaseFirestore.instance
         .collection('orders')
         .where('deliveryAddress.receiverPhone', isEqualTo: userPhone.value);
@@ -186,7 +187,7 @@ class PackagePickupController extends GetxController {
 // ------------------------------------------------------------------
 class PackagePickupPage extends StatelessWidget {
   final String uid;
-  final int role; // 0 = User (สามารถเป็นผู้ส่ง/ผู้รับ)
+  final int role; // 0 = User (Sender/Recipient), 1 = Rider
   const PackagePickupPage({super.key, required this.uid, required this.role});
 
   @override
@@ -210,15 +211,15 @@ class PackagePickupPage extends StatelessWidget {
                         controller.isSearching.value) {
                       return const Center(
                           child: Padding(
-                        padding: EdgeInsets.only(top: 50),
-                        child: Column(
-                          children: [
-                            CircularProgressIndicator(color: _primaryColor),
-                            SizedBox(height: 10),
-                            Text('กำลังโหลดข้อมูล...')
-                          ],
-                        ),
-                      ));
+                            padding: EdgeInsets.only(top: 50),
+                            child: Column(
+                              children: [
+                                CircularProgressIndicator(color: _primaryColor),
+                                SizedBox(height: 10),
+                                Text('กำลังโหลดข้อมูล...')
+                              ],
+                            ),
+                          ));
                     }
                     return _buildPackagesList(controller);
                   }),
@@ -465,9 +466,10 @@ class PackagePickupPage extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: InkWell(
         onTap: () {
-          // *** ส่ง Role 0 (User/Recipient) ไปยังหน้าติดตามสถานะ ***
-          Get.to(() =>
-              OrderStatusPage(orderId: package.id, uid: currentUid, role: 0));
+          // *** สำคัญ: ส่ง role: 0 (User/Recipient) ไปยังหน้าติดตามสถานะ ***
+          // เราใช้ role 0 ที่หมายถึง User ในฐานะผู้รับ
+          Get.to(() => OrderStatusPage(
+              orderId: package.id, uid: currentUid, role: 0)); 
         },
         child: Padding(
           padding: const EdgeInsets.all(15.0),
@@ -506,8 +508,8 @@ class PackagePickupPage extends StatelessWidget {
               ),
               const Divider(height: 15, thickness: 1),
               _buildDetailRow(Icons.person, 'ผู้ส่ง:', senderName, senderPhone),
-              _buildDetailRow(Icons.two_wheeler_outlined, 'ไรเดอร์:', riderName,
-                  riderPhone),
+              _buildDetailRow(
+                  Icons.two_wheeler_outlined, 'ไรเดอร์:', riderName, riderPhone),
               _buildDetailRow(Icons.qr_code, 'รหัสพัสดุ:', package.id, null),
               if (showDeliveredImage)
                 Column(

@@ -16,7 +16,6 @@ const Color _primaryColor = Color(0xFFC70808);
 const Color _backgroundColor = Color(0xFFFDE9E9);
 const Color _accentColor = Color(0xFF0D47A1);
 
-
 class OrderStatusPage extends StatefulWidget {
   final String? orderId;
   final String uid;
@@ -37,7 +36,6 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
   final MapController _mapController = MapController();
   String? _selectedOrderId;
   
-  // สถานะสำหรับเก็บข้อมูลผู้ใช้งานที่เกี่ยวข้อง
   Map<String, dynamic>? _senderData;
   Map<String, dynamic>? _recipientData;
   Map<String, dynamic>? _riderData;
@@ -47,11 +45,55 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
     super.initState();
     initializeDateFormatting('th', null);
     _selectedOrderId = widget.orderId;
+    
+    // 1. โหลดข้อมูลเมื่อเข้าหน้า Detail ครั้งแรก
+    if (_selectedOrderId != null) {
+      _initializeOrderData(_selectedOrderId!);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant OrderStatusPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 2. เรียกการโหลดข้อมูลใหม่เมื่อ orderId เปลี่ยนไป (ถ้ามีการเปลี่ยนรายการในอนาคต)
+    if (widget.orderId != oldWidget.orderId) {
+      _selectedOrderId = widget.orderId;
+      if (_selectedOrderId != null) {
+          _initializeOrderData(_selectedOrderId!);
+      }
+    }
   }
 
   @override
   void dispose() {
     super.dispose();
+  }
+  
+  // ฟังก์ชันรวมสำหรับการโหลดข้อมูล (แก้ไขปัญหา setState during build)
+  Future<void> _initializeOrderData(String orderId) async {
+    final orderDoc = await FirebaseFirestore.instance.collection('orders').doc(orderId).get();
+    if (!orderDoc.exists) return;
+
+    final orderData = orderDoc.data() as Map<String, dynamic>;
+    final senderId = orderData['customerId'] as String;
+    final riderId = orderData['riderId'] as String?;
+
+    if (mounted) {
+         setState(() {
+            _senderData = null;
+            _recipientData = null;
+            _riderData = null;
+        });
+    }
+
+    // A. ดึงข้อมูลผู้ส่ง
+    await _fetchSenderData(senderId);
+    
+    // B. ตั้งค่าข้อมูลผู้รับ (จากข้อมูล Order)
+    _setRecipientDataFromOrder(orderData); 
+    
+    // C. ดึงข้อมูลไรเดอร์
+    await _fetchRiderData(riderId);
   }
 
   // Helper สำหรับดึงข้อมูลผู้ส่ง
@@ -88,6 +130,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
     }
   }
 
+
   @override
   Widget build(BuildContext context) {
     bool isDetailPage =
@@ -95,15 +138,14 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
 
     String appBarTitle;
     if (isDetailPage) {
-      // ตรวจสอบว่าผู้ใช้คนปัจจุบันคือใครใน Order นี้
-      final bool isCurrentUserSender = widget.role == 0 && widget.uid == _senderData?['uid']; 
-      final bool isCurrentUserRecipient = widget.role == 0 && widget.uid == _recipientData?['uid'];
-
+      // ตรวจสอบว่าผู้ใช้คนปัจจุบันคือใครใน Order นี้ (ใช้ข้อมูลที่โหลดไว้ใน _senderData)
+      final bool isCurrentUserSender = widget.role == 0 && _senderData != null && _senderData!['uid'] == widget.uid;
+      
       if (isCurrentUserSender) {
         appBarTitle = 'ติดตามการส่งของ';
-      } else if (isCurrentUserRecipient) {
+      } else if (widget.role == 0) { // User role 0 แต่ไม่ใช่ sender แปลว่ามาจากหน้า PackagePickup (ผู้รับ)
         appBarTitle = 'ติดตามพัสดุรับเข้า';
-      } else if (widget.role == 1) {
+      } else if (widget.role == 1) { // Rider
         appBarTitle = 'สถานะงานไรเดอร์';
       } else {
         appBarTitle = 'ติดตามสถานะ';
@@ -117,8 +159,13 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
     return WillPopScope(
       onWillPop: () async {
         if (isDetailPage) {
-          // ใช้ Get.back() เพื่อกลับไปหน้า PackagePickupPage หรือ Home/History
-          Get.back();
+          // ถ้าอยู่ในหน้า Detail ให้กลับไปหน้า List View
+          setState(() {
+            _selectedOrderId = null;
+            _senderData = null;
+            _recipientData = null;
+            _riderData = null;
+          });
           return false;
         }
         return true;
@@ -133,7 +180,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
               ? IconButton(
                   icon: const Icon(Icons.arrow_back),
                   onPressed: () {
-                    // กลับไปหน้า List View (หรือหน้าหลัก)
+                    // กลับไปหน้า List View
                     setState(() {
                       _selectedOrderId = null;
                       _senderData = null;
@@ -165,7 +212,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
     final senderStream = FirebaseFirestore.instance
         .collection('orders')
         .where('customerId', isEqualTo: widget.uid)
-        .orderBy('createdAt', descending: true) // เรียงตามเวลาล่าสุด
+        // **แก้ไข: ลบ orderBy เพื่อเลี่ยง Index Error (Error สีขาวในรูปที่สอง)**
         .snapshots();
 
     return StreamBuilder<QuerySnapshot>(
@@ -182,6 +229,14 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
         }
 
         var allDocs = snapshot.data!.docs;
+        
+        // **NEW: ทำ Client-side Sorting (เนื่องจากเอา orderBy ออกไปแล้ว)**
+        allDocs.sort((a, b) {
+            final aTime = (a.data() as Map)['createdAt'] as Timestamp?;
+            final bTime = (b.data() as Map)['createdAt'] as Timestamp?;
+            if (aTime == null || bTime == null) return 0;
+            return bTime.compareTo(aTime); // เรียงจากใหม่ไปเก่า
+        });
 
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(8, 8, 8, 20),
@@ -195,10 +250,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
               onTap: () {
                 setState(() {
                   _selectedOrderId = doc.id;
-                  // Clear previously loaded detail data when switching orders
-                  _senderData = null;
-                  _recipientData = null;
-                  _riderData = null;
+                  _initializeOrderData(doc.id); // โหลดข้อมูลเมื่อกด
                 });
               },
             );
@@ -223,37 +275,28 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
         }
 
         final orderData = orderSnapshot.data!.data() as Map<String, dynamic>;
-        final riderId = orderData['riderId'] as String?;
-        final senderId = orderData['customerId'] as String;
         
-        // Trigger fetching related user data if not loaded
-        // ทุกโหมดต้องดึงข้อมูลผู้รับ
-        if (_recipientData == null) _setRecipientDataFromOrder(orderData);
-
-        // ถ้า User ทั่วไป (Role 0) ต้องดึงข้อมูลผู้ส่ง (Sender)
-        if (widget.role == 0 && _senderData == null) {
-            _fetchSenderData(senderId);
+        // **ตรวจสอบความสมบูรณ์ของข้อมูลที่โหลดไว้ใน State**
+        // ถ้าข้อมูลผู้ส่ง/ผู้รับหลักยังไม่ถูกโหลด ให้แสดง Loading
+        final bool isCurrentUserSender = orderData['customerId'] == widget.uid;
+        final bool isEssentialDataLoaded = (isCurrentUserSender && _recipientData != null) || (!isCurrentUserSender && _senderData != null);
+        
+        if (!isEssentialDataLoaded) {
+             return const Center(child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 10),
+                    Text('กำลังโหลดข้อมูลผู้เกี่ยวข้อง...')
+                ],
+            ));
         }
-        // ทุกโหมดต้องดึงข้อมูลไรเดอร์ (ถ้ามี)
-        if (riderId != null && _riderData == null) _fetchRiderData(riderId);
 
         LatLng? riderPosition;
         if (orderData.containsKey('currentLocation') &&
             orderData['currentLocation'] is GeoPoint) {
           final geoPoint = orderData['currentLocation'] as GeoPoint;
           riderPosition = LatLng(geoPoint.latitude, geoPoint.longitude);
-        }
-        
-        // ถ้าเป็น User ทั่วไป (Role 0) ต้องรอข้อมูลผู้ส่งด้วย
-        if (widget.role == 0 && _senderData == null) {
-             return const Center(child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 10),
-                    Text('กำลังโหลดข้อมูลผู้ส่ง...')
-                ],
-            ));
         }
 
         return _buildContent(orderData, riderPosition);
@@ -265,7 +308,7 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
       Map<String, dynamic> orderData, LatLng? riderPosition) {
     
     // ตรวจสอบว่าผู้ใช้ปัจจุบันคือเจ้าของ Order นี้หรือไม่
-    final bool isCurrentUserSender = widget.role == 0 && orderData['customerId'] == widget.uid;
+    final bool isCurrentUserSender = orderData['customerId'] == widget.uid;
     
     // ข้อมูลหลักที่ผู้ใช้ต้องการดู
     final Map<String, dynamic>? primaryUserInfo = isCurrentUserSender ? _recipientData : _senderData;
@@ -610,7 +653,6 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
     );
   }
 }
-
 // Helper functions (ใช้ร่วมกับ OrderStatusPage และ PackagePickupPage)
 String _translateStatus(String status) {
   switch (status) {
