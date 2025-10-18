@@ -626,15 +626,14 @@ class _OrderListItemState extends State<OrderListItem> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: _getStatusColor(status)
-                          .withOpacity(0.2), // <-- ⭐️ แก้ไข
+                      color: _getStatusColor(status).withOpacity(0.2),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      _translateStatus(status), // <-- ⭐️ แก้ไข
+                      _translateStatus(status),
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: _getStatusColor(status), // <-- ⭐️ แก้ไข
+                        color: _getStatusColor(status),
                       ),
                     ),
                   ),
@@ -683,7 +682,6 @@ class _OrderListItemState extends State<OrderListItem> {
   }
 }
 
-// --- ⭐️ ย้ายฟังก์ชันมาไว้นอกคลาส ---
 String _translateStatus(String status) {
   switch (status) {
     case 'pending':

@@ -77,12 +77,22 @@ class _RegisterPageState extends State<RegisterPage> {
       log("Form validate failed");
       return _showErrorDialog(
         title: "ข้อมูลไม่ถูกต้อง",
-        message: "โปรดตรวจสอบข้อมูลอีกครั้ง",
+        message: "โปรดตรวจสอบข้อมูลในช่องกรอกข้อมูลอีกครั้ง",
       );
     }
-    if (_vehicleImage == null) {
-      Get.snackbar("SYSTEM", 'โปรดเลือกรูปยานพาหนะของท่าน');
-      return;
+    
+    if (_profileImagePath == null || !await _profileImagePath!.exists()) {
+      return _showErrorDialog(
+        title: "ข้อมูลไม่ถูกต้อง",
+        message: "โปรดเลือกรูปโปรไฟล์",
+      );
+    }
+
+    if (_isRider && (_vehicleImagePath == null || !await _vehicleImagePath!.exists())) {
+      return _showErrorDialog(
+        title: "ข้อมูลไม่ถูกต้อง",
+        message: "เนื่องจากเลือกเป็น 'ไรเดอร์' โปรดเลือกรูปยานพาหนะของท่าน",
+      );
     }
 
     try {
@@ -110,6 +120,9 @@ class _RegisterPageState extends State<RegisterPage> {
 
       await uploadImageProfile();
       String? profileUrl = _profileImageUrl;
+      if (profileUrl.isEmpty) {
+          throw Exception("การอัปโหลดรูปโปรไฟล์ล้มเหลว");
+      }
 
       var user = <String, dynamic>{
         "uid": uid,
@@ -121,30 +134,29 @@ class _RegisterPageState extends State<RegisterPage> {
       if (_isRider == false) {
         log("Register as member");
 
-        var memberData = <String, dynamic>{};
+        var memberData = <String, dynamic>{"role": 0};
 
         if (_gpsController.text.isNotEmpty &&
             _gpsController.text.contains(",")) {
           var geoPoints = _gpsController.text.split(',');
-          double lat = double.parse(geoPoints[0]);
-          double lng = double.parse(geoPoints[1]);
+          double lat = double.parse(geoPoints[0].trim());
+          double lng = double.parse(geoPoints[1].trim());
           memberData = {
+            ...memberData,
             "defaultAddress": _addressController.text.trim(),
             "defaultGPS": GeoPoint(lat, lng),
-            "role": 0
           };
         }
 
         if (_address2Controller.text.isNotEmpty &&
             _gps2Controller.text.contains(",")) {
           var geoPoints = _gps2Controller.text.split(',');
-          double lat = double.parse(geoPoints[0]);
-          double lng = double.parse(geoPoints[1]);
+          double lat = double.parse(geoPoints[0].trim());
+          double lng = double.parse(geoPoints[1].trim());
           memberData = {
             ...memberData,
             "secondAddress": _address2Controller.text.trim(),
             "secondGPS": GeoPoint(lat, lng),
-            "role": 0
           };
         }
 
@@ -152,9 +164,12 @@ class _RegisterPageState extends State<RegisterPage> {
       } else {
         log("Register as rider");
 
-        // อัปโหลดรูปยานพาหนะ
         await uploadImageVehiclePicture();
         String? vehicleUrl = _vehicleImageUrl;
+        
+        if (vehicleUrl.isEmpty) {
+          throw Exception("การอัปโหลดรูปยานพาหนะล้มเหลว");
+        }
 
         Position pos = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
@@ -174,15 +189,24 @@ class _RegisterPageState extends State<RegisterPage> {
 
       _showSuccessDialog(context);
       setState(() {});
+      Get.offAll(() => SpeedDerApp());
     } on FirebaseAuthException catch (e) {
       log("FirebaseAuth error: ${e.code}");
-      _showErrorDialog(
-          title: "Auth Error", message: e.message ?? "เกิดข้อผิดพลาด");
+      String message;
+      if (e.code == 'weak-password') {
+        message = "รหัสผ่านอ่อนเกินไป กรุณาใช้รหัสผ่านอย่างน้อย 6 ตัวที่ซับซ้อนกว่านี้";
+      } else if (e.code == 'email-already-in-use') {
+        message = "มีผู้ใช้เบอร์โทรศัพท์นี้ (อีเมล) อยู่ในระบบแล้ว กรุณาใช้เบอร์อื่น";
+      } else if (e.code == 'invalid-email') {
+        message = "รูปแบบเบอร์โทรศัพท์ไม่ถูกต้อง";
+      } else {
+        message = "เกิดข้อผิดพลาดในการลงทะเบียน: ${e.message ?? 'Unknown Error'}";
+      }
+      _showErrorDialog(title: "Auth Error", message: message);
     } catch (e) {
       log("Register error: $e");
       _showErrorDialog(title: "Error", message: e.toString());
     }
-    Get.off(() => SpeedDerApp());
   }
 
   void _showErrorDialog({required String title, required String message}) {
@@ -216,7 +240,6 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   Future<void> _selectImageSource(bool isProfile) async {
     showModalBottomSheet(
@@ -282,7 +305,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
   Future<void> uploadImageProfile() async {
     if (_profileImagePath == null || !await _profileImagePath!.exists()) {
-      Get.snackbar("System", "โปรดเลือกรูปโปรไฟล์");
+      _profileImageUrl = ''; 
       return;
     }
     try {
@@ -302,15 +325,18 @@ class _RegisterPageState extends State<RegisterPage> {
       setState(() {
         _profileImageUrl = response.secureUrl;
       });
-      log("✅ Vehicle image uploaded: ${response.secureUrl}");
+      log("✅ Profile image uploaded: ${response.secureUrl}");
     } catch (e) {
-      log("❌ Vehicle image upload error: $e");
+      log("❌ Profile image upload error: $e");
+      setState(() {
+        _profileImageUrl = '';
+      });
     }
   }
 
   Future<void> uploadImageVehiclePicture() async {
     if (_vehicleImagePath == null) {
-      Get.snackbar("System", "โปรดเลือกรูปยานพาหนะ");
+      _vehicleImageUrl = '';
       return;
     }
 
@@ -334,6 +360,9 @@ class _RegisterPageState extends State<RegisterPage> {
       log("✅ Vehicle image uploaded: ${response.secureUrl}");
     } catch (e) {
       log("❌ Vehicle image upload error: $e");
+      setState(() {
+        _vehicleImageUrl = '';
+      });
     }
   }
 
@@ -439,7 +468,7 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFDE9E9), // Background color
+      backgroundColor: const Color(0xFFFDE9E9), 
       body: SingleChildScrollView(
         child: Form(
           key: _formKey,
@@ -466,7 +495,6 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Header Section
   Widget _buildHeader(BuildContext context) {
     return Column(
       children: [
@@ -496,7 +524,7 @@ class _RegisterPageState extends State<RegisterPage> {
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFFC70808), // ใช้สีหลักของธีม
+                color: Color(0xFFC70808), 
               ),
             ),
           ),
@@ -505,7 +533,6 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // User Type Selector
   Widget _buildUserTypeSelector() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
@@ -530,9 +557,9 @@ class _RegisterPageState extends State<RegisterPage> {
         onTap: () {
           setState(() {
             _isRider = title == 'ไรเดอร์';
-            // Clear vehicle image when switching back to user
             if (!_isRider) {
               _vehicleImage = null;
+              _vehicleImagePath = null;
               _vehicleRegController.clear();
             }
           });
@@ -556,10 +583,9 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Profile Image Section
   Widget _buildProfileImage() {
     return GestureDetector(
-      onTap: () => _selectImageSource(true), // isProfile = true
+      onTap: () => _selectImageSource(true), 
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -597,48 +623,46 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Vehicle Image Section (เฉพาะไรเดอร์)
   Widget _buildVehicleImage() {
     return GestureDetector(
-      onTap: () => _selectImageSource(false), // isProfile = false
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-            width: 100,
-            height: 100,
-            decoration: BoxDecoration(
-              color: const Color(0xFFE0E0E0),
-              shape: BoxShape.circle,
-              image: _vehicleImage != null
-                  ? DecorationImage(
-                      image: FileImage(File(_vehicleImage!.path)),
-                      fit: BoxFit.cover,
-                    )
+      onTap: () => _selectImageSource(false), 
+        child: Stack( 
+          alignment: Alignment.center,
+          children: [
+            Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE0E0E0),
+                shape: BoxShape.circle,
+                image: _vehicleImage != null
+                    ? DecorationImage(
+                        image: FileImage(File(_vehicleImage!.path)),
+                        fit: BoxFit.cover,
+                      )
+                    : null,
+              ),
+              child: _vehicleImage == null
+                  ? const Icon(Icons.motorcycle, size: 60, color: Colors.grey)
                   : null,
             ),
-            child: _vehicleImage == null
-                ? const Icon(Icons.motorcycle, size: 60, color: Colors.grey)
-                : null,
-          ),
-          Positioned(
-            bottom: 0,
-            right: 0,
-            child: Container(
-              padding: const EdgeInsets.all(5),
-              decoration: const BoxDecoration(
-                color: Colors.green,
-                shape: BoxShape.circle,
+            Positioned(
+              bottom: 0,
+              right: 0,
+              child: Container(
+                padding: const EdgeInsets.all(5),
+                decoration: const BoxDecoration(
+                  color: Colors.green,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.add, color: Colors.white, size: 20),
               ),
-              child: const Icon(Icons.add, color: Colors.white, size: 20),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
     );
   }
 
-  // User Registration Form
   Widget _buildUserForm() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
@@ -684,7 +708,6 @@ class _RegisterPageState extends State<RegisterPage> {
           }),
           const SizedBox(height: 20),
 
-          // 1. ที่อยู่หลัก
           _buildTextField('ที่อยู่หลัก', controller: _addressController,
               validator: (val) {
             if (val!.isEmpty && _isRider == false) {
@@ -746,7 +769,12 @@ class _RegisterPageState extends State<RegisterPage> {
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
       child: Column(
         children: [
-          _buildTextField('ชื่อ-สกุล', controller: _fullNameController),
+          _buildTextField('ชื่อ-สกุล', controller: _fullNameController, validator: (val) {
+            if (val!.isEmpty && _isRider == true) {
+              return "กรุณากรอกชื่อขสกุล";
+            }
+            return null;
+          }),
           const SizedBox(height: 20),
           _buildTextField('เบอร์โทรศัพท์',
               controller: _phoneController,
@@ -783,6 +811,7 @@ class _RegisterPageState extends State<RegisterPage> {
             if (val!.isEmpty && _isRider == true) {
               return "กรุณากรอกหมายเลขทะเบียนยานพาหะนะ";
             }
+            return null;
           }),
           const SizedBox(height: 20),
           _buildVehicleImage(),
@@ -791,7 +820,6 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Generic TextField
   Widget _buildTextField(
     String label, {
     TextEditingController? controller,
@@ -817,7 +845,6 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // TextField with icon
   Widget _buildTextFieldWithIcon(
     String label,
     IconData icon, {
@@ -849,7 +876,6 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Submit Button
   Widget _buildSubmitButton(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40),
@@ -880,7 +906,6 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // Success Dialog
   void _showSuccessDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -970,7 +995,6 @@ class _MapPickerModalState extends State<MapPickerModal> {
   final TextEditingController _searchController = TextEditingController();
   LatLng? _selectedPos;
 
-  // *** API KEY ที่ท่านระบุ ***
   static const String thunderforestApiKey = 'cb153d15cb4e41f59e25cfda6468f1a0';
   static const String thunderforestUrl =
       'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=$thunderforestApiKey';
@@ -1058,7 +1082,6 @@ class _MapPickerModalState extends State<MapPickerModal> {
             ),
           ),
           const SizedBox(height: 15),
-          // 4.3 Search Bar
           TextField(
             controller: _searchController,
             decoration: InputDecoration(
@@ -1109,13 +1132,11 @@ class _MapPickerModalState extends State<MapPickerModal> {
             ),
           ),
           const SizedBox(height: 15),
-          // 4.5 Save Button
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
               onPressed: () {
                 if (_selectedPos != null) {
-                  // ส่ง LatLng กลับไปยังหน้า RegisterPage
                   Navigator.pop(context, _selectedPos);
                 } else {
                   Navigator.pop(context);

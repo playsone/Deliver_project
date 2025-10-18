@@ -6,7 +6,7 @@ import 'package:delivery_project/page/home_rider.dart';
 import 'package:delivery_project/page/register.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Import Firebase Auth
+import 'package:firebase_auth/firebase_auth.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -69,7 +69,6 @@ class _LoginPageState extends State<LoginPage> {
       var db = FirebaseFirestore.instance;
       var usersCollection = db.collection("users");
 
-      // ดึง user ตาม phone
       var query = usersCollection.where("phone",
           isEqualTo: phoneController.text.trim());
       var data = await query.get();
@@ -78,9 +77,9 @@ class _LoginPageState extends State<LoginPage> {
       if (data.docs.isEmpty) {
         Get.snackbar("Error", "Can't Login");
       } else {
-        var userData = data.docs.first.data(); // Map<String, dynamic>
+        var userData = data.docs.first.data();
         var uid = userData['uid'];
-        var role = userData['role']; // ดึงค่า role
+        var role = userData['role'];
 
         if (role == 0) {
           Get.to(() => HomeScreen(
