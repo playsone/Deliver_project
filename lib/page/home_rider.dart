@@ -493,8 +493,6 @@ class RiderHomeScreen extends StatelessWidget {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'หน้าแรก'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.history), label: 'ประวัติการส่ง'),
-          BottomNavigationBarItem(
               icon: Icon(Icons.logout), label: 'ออกจากระบบ'),
         ],
         currentIndex: 0,
