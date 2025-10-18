@@ -37,6 +37,8 @@ class _RegisterPageState extends State<RegisterPage> {
   String _profileImageUrl = '';
   String _vehicleImageUrl = '';
 
+  bool _isLoading = false; // <-- 1. เพิ่ม State สำหรับ Loading
+
   final _formKey = GlobalKey<FormState>();
   final _fullNameController = TextEditingController();
   final _emailController = TextEditingController();
@@ -70,45 +72,62 @@ class _RegisterPageState extends State<RegisterPage> {
     return "${phone.trim()}@e.com";
   }
 
+  // 2. ปรับปรุงฟังก์ชัน register ทั้งหมด
   Future<void> register() async {
-    log("Start register...");
+    if (_isLoading) return;
 
-    if (!_formKey.currentState!.validate()) {
-      log("Form validate failed");
-      return _showErrorDialog(
-        title: "ข้อมูลไม่ถูกต้อง",
-        message: "โปรดตรวจสอบข้อมูลในช่องกรอกข้อมูลอีกครั้ง",
-      );
-    }
-
-    if (_profileImagePath == null || !await _profileImagePath!.exists()) {
-      return _showErrorDialog(
-        title: "ข้อมูลไม่ถูกต้อง",
-        message: "โปรดเลือกรูปโปรไฟล์",
-      );
-    }
-
-    if (_isRider &&
-        (_vehicleImagePath == null || !await _vehicleImagePath!.exists())) {
-      return _showErrorDialog(
-        title: "ข้อมูลไม่ถูกต้อง",
-        message: "เนื่องจากเลือกเป็น 'ไรเดอร์' โปรดเลือกรูปยานพาหนะของท่าน",
-      );
-    }
+    setState(() {
+      _isLoading = true;
+    });
 
     try {
+      log("Start register...");
+
+      if (!_formKey.currentState!.validate()) {
+        log("Form validate failed");
+        _showErrorDialog(
+          title: "ข้อมูลไม่ถูกต้อง",
+          message: "โปรดตรวจสอบข้อมูลในช่องกรอกข้อมูลอีกครั้ง",
+        );
+        return;
+      }
+
+      if (_profileImagePath == null || !await _profileImagePath!.exists()) {
+        _showErrorDialog(
+          title: "ข้อมูลไม่ถูกต้อง",
+          message: "โปรดเลือกรูปโปรไฟล์",
+        );
+        return;
+      }
+
+      if (_isRider &&
+          (_vehicleImagePath == null || !await _vehicleImagePath!.exists())) {
+        _showErrorDialog(
+          title: "ข้อมูลไม่ถูกต้อง",
+          message: "เนื่องจากเลือกเป็น 'ไรเดอร์' โปรดเลือกรูปยานพาหนะของท่าน",
+        );
+        return;
+      }
+
       final query = await FirebaseFirestore.instance
           .collection('users')
           .where('phone', isEqualTo: _phoneController.text.trim())
           .get();
 
       if (query.docs.isNotEmpty) {
-        return _showErrorDialog(
+        _showErrorDialog(
           title: "ข้อมูลไม่ถูกต้อง",
           message: "มีผู้ใช้เบอร์นี้แล้ว กรุณาใช้เบอร์อื่น",
         );
+        return;
       }
 
+      await uploadImageProfile();
+
+      String? profileUrl = _profileImageUrl;
+      if (profileUrl.isEmpty) {
+        throw Exception("การอัปโหลดรูปโปรไฟล์ล้มเหลว");
+      }
       log("Phone is unique, continue register");
 
       var email = phoneToEmail(_phoneController.text.trim());
@@ -118,12 +137,6 @@ class _RegisterPageState extends State<RegisterPage> {
           .createUserWithEmailAndPassword(email: email, password: password);
 
       String uid = result.user!.uid;
-
-      await uploadImageProfile();
-      String? profileUrl = _profileImageUrl;
-      if (profileUrl.isEmpty) {
-        throw Exception("การอัปโหลดรูปโปรไฟล์ล้มเหลว");
-      }
 
       var user = <String, dynamic>{
         "uid": uid,
@@ -188,8 +201,6 @@ class _RegisterPageState extends State<RegisterPage> {
 
       await FirebaseFirestore.instance.collection('users').doc(uid).set(user);
 
-      setState(() {});
-      // **เรียกใช้ await เพื่อรอผู้ใช้กด 'ตกลง' ก่อนนำทาง**
       await _showSuccessDialog(context);
     } on FirebaseAuthException catch (e) {
       log("FirebaseAuth error: ${e.code}");
@@ -210,6 +221,12 @@ class _RegisterPageState extends State<RegisterPage> {
     } catch (e) {
       log("Register error: $e");
       _showErrorDialog(title: "Error", message: e.toString());
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -874,16 +891,19 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
+  // 3. ปรับปรุง Widget ของปุ่ม Submit
   Widget _buildSubmitButton(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40),
       child: SizedBox(
         width: double.infinity,
         child: ElevatedButton(
-          onPressed: () async {
-            log("click");
-            await register();
-          },
+          onPressed: _isLoading
+              ? null
+              : () async {
+                  log("click");
+                  await register();
+                },
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFFC70808),
             padding: const EdgeInsets.symmetric(vertical: 15),
@@ -891,14 +911,18 @@ class _RegisterPageState extends State<RegisterPage> {
               borderRadius: BorderRadius.circular(10),
             ),
           ),
-          child: const Text(
-            'สมัครสมาชิก',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          child: _isLoading
+              ? const CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                )
+              : const Text(
+                  'สมัครสมาชิก',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
         ),
       ),
     );
@@ -907,7 +931,7 @@ class _RegisterPageState extends State<RegisterPage> {
   Future<void> _showSuccessDialog(BuildContext context) async {
     await showDialog(
       context: context,
-      barrierDismissible: false, // ป้องกันการปิด dialog โดยการแตะที่อื่น
+      barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
           shape: RoundedRectangleBorder(
@@ -931,8 +955,8 @@ class _RegisterPageState extends State<RegisterPage> {
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () {
-                    Navigator.of(context).pop(); // ปิด dialog
-                    Get.offAll(() => SpeedDerApp()); // **นำทางไปหน้าหลัก**
+                    Navigator.of(context).pop();
+                    Get.offAll(() => SpeedDerApp());
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,

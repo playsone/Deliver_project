@@ -1,4 +1,3 @@
-
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -17,6 +16,9 @@ import 'package:delivery_project/models/user_model.dart';
 const Color _primaryColor = Color(0xFFC70808);
 const Color _backgroundColor = Color(0xFFFDE9E9);
 
+// ==================================================================
+// Controller (ไม่มีการเปลี่ยนแปลง)
+// ==================================================================
 class SendPackageController extends GetxController {
   final String uid;
   final int role;
@@ -330,9 +332,9 @@ class SendPackageController extends GetxController {
   }
 }
 
-// ------------------------------------------------------------------
-// Page (UI)
-// ------------------------------------------------------------------
+// ==================================================================
+// Page (UI) - ส่วนนี้คือส่วนที่ปรับปรุง
+// ==================================================================
 class SendPackagePage extends StatelessWidget {
   final String uid;
   final int role;
@@ -397,6 +399,7 @@ class SendPackagePage extends StatelessWidget {
     );
   }
 
+  // == [START] Widget ที่ปรับปรุง ==
   Widget _buildStepOneForm(
       BuildContext context, SendPackageController controller) {
     return Column(
@@ -410,11 +413,35 @@ class SendPackagePage extends StatelessWidget {
         _buildTextField(controller.pickupAddressController,
             'รายละเอียดที่อยู่ต้นทาง (เช่น ตึก, ห้อง)', Icons.store),
         const SizedBox(height: 25),
+
+        // --- ส่วนข้อมูลผู้รับที่ปรับปรุง ---
         const Text("ข้อมูลผู้รับ",
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
+
+        // 1. ฟังก์ชันเดิม: ปุ่มสำหรับเลือก/ค้นหาผู้รับ
         _buildReceiverSelectionField(context, controller),
         const SizedBox(height: 15),
+
+        // 2. UI เพิ่มเติม: เส้นคั่นเพื่อบอกว่าสามารถกรอกข้อมูลเองได้
+        const Row(
+          children: [
+            Expanded(child: Divider()),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8.0),
+              child: Text("หรือ", style: TextStyle(color: Colors.grey)),
+            ),
+            Expanded(child: Divider()),
+          ],
+        ),
+        const SizedBox(height: 10),
+        const Center(
+          child: Text("กรอกข้อมูลผู้รับด้วยตนเอง",
+              style: TextStyle(fontSize: 16, color: Colors.black54)),
+        ),
+        const SizedBox(height: 15),
+
+        // 3. ฟังก์ชันใหม่: ช่องกรอกข้อมูลที่แก้ไขได้ (เมื่อยังไม่เลือกผู้รับ)
         Obx(() => _buildTextField(controller.receiverNameController,
             'ชื่อผู้รับ', Icons.person_outline,
             isReadOnly: controller.selectedReceiver.value != null)),
@@ -428,6 +455,8 @@ class SendPackagePage extends StatelessWidget {
             'รายละเอียดที่อยู่ปลายทาง', Icons.location_city,
             maxLines: 3,
             isReadOnly: controller.selectedReceiver.value != null)),
+        // --- จบส่วนข้อมูลผู้รับ ---
+
         const SizedBox(height: 15),
         _buildMapPickerField(controller),
         const SizedBox(height: 25),
@@ -446,6 +475,37 @@ class SendPackagePage extends StatelessWidget {
       ],
     );
   }
+
+  // ปรับปรุง `_buildTextField` ให้เปลี่ยนสีพื้นหลังเมื่อ read-only
+  Widget _buildTextField(
+      TextEditingController controller, String hint, IconData icon,
+      {int maxLines = 1,
+      TextInputType? keyboardType,
+      bool isReadOnly = false}) {
+    return TextField(
+      controller: controller,
+      maxLines: maxLines,
+      keyboardType: keyboardType,
+      readOnly: isReadOnly,
+      decoration: InputDecoration(
+        hintText: hint,
+        filled: true,
+        fillColor: isReadOnly
+            ? Colors.grey.shade200
+            : Colors.white, // << ปรับปรุงตรงนี้
+        prefixIcon: Icon(icon, color: _primaryColor),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: Colors.grey.shade300)),
+        enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: Colors.grey.shade300)),
+        contentPadding:
+            const EdgeInsets.symmetric(vertical: 15, horizontal: 10),
+      ),
+    );
+  }
+  // == [END] Widget ที่ปรับปรุง ==
 
   Widget _buildReceiverSelectionField(
       BuildContext context, SendPackageController controller) {
@@ -474,7 +534,7 @@ class SendPackagePage extends StatelessWidget {
                   child: Text(
                     controller.selectedReceiver.value != null
                         ? 'ผู้รับ: ${controller.selectedReceiver.value!.fullname}'
-                        : 'แตะเพื่อเลือก/ค้นหาผู้รับ',
+                        : 'แตะเพื่อเลือก/ค้นหาผู้รับจากรายชื่อ',
                     style: TextStyle(
                       color: controller.selectedReceiver.value != null
                           ? Colors.black
@@ -705,33 +765,6 @@ class SendPackagePage extends StatelessWidget {
     );
   }
 
-  Widget _buildTextField(
-      TextEditingController controller, String hint, IconData icon,
-      {int maxLines = 1,
-      TextInputType? keyboardType,
-      bool isReadOnly = false}) {
-    return TextField(
-      controller: controller,
-      maxLines: maxLines,
-      keyboardType: keyboardType,
-      readOnly: isReadOnly,
-      decoration: InputDecoration(
-        hintText: hint,
-        filled: true,
-        fillColor: Colors.white,
-        prefixIcon: Icon(icon, color: _primaryColor),
-        border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: Colors.grey.shade300)),
-        enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: Colors.grey.shade300)),
-        contentPadding:
-            const EdgeInsets.symmetric(vertical: 15, horizontal: 10),
-      ),
-    );
-  }
-
   Widget _buildPrimaryButton(String text, VoidCallback onPressed) {
     return SizedBox(
       width: double.infinity,
@@ -809,6 +842,9 @@ class SendPackagePage extends StatelessWidget {
   }
 }
 
+// ==================================================================
+// Helper Widgets (ไม่มีการเปลี่ยนแปลง)
+// ==================================================================
 class _MapPickerModal extends StatefulWidget {
   final LatLng initialLocation;
   const _MapPickerModal({required this.initialLocation});
