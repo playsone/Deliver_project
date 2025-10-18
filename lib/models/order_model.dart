@@ -60,7 +60,7 @@ class OrderModel {
       pickupAddress: AddressModel.fromMap(data['pickupAddress'] ?? {}),
       deliveryAddress: AddressModel.fromMap(data['deliveryAddress'] ?? {}),
       statusHistory: historyList,
-      currentLocation: data['currentLocation'], // << ดึงข้อมูลจาก Firestore
+      currentLocation: data['currentLocation'],
     );
   }
 

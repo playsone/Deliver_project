@@ -27,6 +27,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final MapController mapController = MapController();
+  Map<String, Marker> _markerMap = {};
   static const LatLng _initialCenter = LatLng(16.2470, 103.2522);
   static const double _initialZoom = 14.0;
 
@@ -35,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Marker> _orderMarkers = [];
   StreamSubscription? _ordersSubscription;
   StreamSubscription<Position>? _positionStreamSubscription;
+
   List<Marker> get _fixedMarkers {
     if (_currentUser != null && _currentUser!.defaultGPS != null) {
       final userGps = _currentUser!.defaultGPS!;
@@ -151,32 +153,32 @@ class _HomeScreenState extends State<HomeScreen> {
         .where('currentStatus', whereIn: statusesToTrack)
         .snapshots();
 
-    final receiverStream = FirebaseFirestore.instance
-        .collection('orders')
-        .where('deliveryAddress.receiverPhone', isEqualTo: _currentUser!.phone)
-        .where('currentStatus', whereIn: statusesToTrack)
-        .snapshots();
-
     final riderStream = FirebaseFirestore.instance
         .collection('orders')
         .where('riderId', isEqualTo: widget.uid)
         .where('currentStatus', whereIn: statusesToTrack)
         .snapshots();
 
-    final mergedStream =
-        StreamGroup.merge([senderStream, receiverStream, riderStream]);
+    final mergedStream = StreamGroup.merge([senderStream, riderStream]);
 
     _ordersSubscription = mergedStream.listen((snapshot) {
       if (!mounted) return;
-      final Map<String, Marker> markerMap = {};
+
+      log("ORDERS STREAM UPDATE: Found ${snapshot.docs.length} documents.");
+
       for (var doc in snapshot.docs) {
         final data = doc.data();
         final String orderId = doc.id;
 
+        log("Processing Order ID: $orderId, Status: ${data['currentStatus']}, Has Location: ${data.containsKey('currentLocation')}");
+
         if (data.containsKey('currentLocation') &&
             data['currentLocation'] is GeoPoint) {
           final GeoPoint position = data['currentLocation'];
-          markerMap[orderId] = Marker(
+          log("✅ Creating/Updating marker for Order ID: $orderId");
+
+          // อัปเดต Marker ใน Map หลัก
+          _markerMap[orderId] = Marker(
             point: LatLng(position.latitude, position.longitude),
             width: 40,
             height: 40,
@@ -192,7 +194,8 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
       setState(() {
-        _orderMarkers = markerMap.values.toList();
+        // อัปเดต UI ด้วยข้อมูลทั้งหมดใน Map
+        _orderMarkers = _markerMap.values.toList();
       });
     }, onError: (error) {
       log("Error listening to orders: $error");

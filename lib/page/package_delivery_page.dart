@@ -44,7 +44,7 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
   final MapController _mapController = MapController();
   StreamSubscription<LocationData>? _locationSubscription;
 
-  static const double maxDistanceToTarget = 20.0; 
+  static const double maxDistanceToTarget = 20.0;
 
   @override
   void initState() {
@@ -71,7 +71,7 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
       if (permissionGranted != PermissionStatus.granted) return;
     }
 
-    _location.changeSettings(interval: 10000, distanceFilter: 10);
+    _location.changeSettings(interval: 3000, distanceFilter: 10);
 
     _locationSubscription =
         _location.onLocationChanged.listen((currentLocation) {
@@ -413,7 +413,7 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
       // จุดหมายคือจุดส่งของ
       targetGps = orderData['deliveryAddress']?['gps'] as GeoPoint?;
     } else {
-      return const SizedBox.shrink(); 
+      return const SizedBox.shrink();
     }
 
     final GeoPoint? riderLoc = orderData['currentLocation'] as GeoPoint?;

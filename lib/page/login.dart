@@ -180,6 +180,7 @@ class _LoginPageState extends State<LoginPage> {
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
       child: Column(
         children: [
+          const SizedBox(height: 50),
           _buildTextField(
             label: 'เบอร์โทรศัพท์',
             isPassword: false,
@@ -193,20 +194,7 @@ class _LoginPageState extends State<LoginPage> {
             controller: passwordController,
             keyboardType: TextInputType.text,
           ),
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: () {
-                _showSnackBar("ฟังก์ชันรีเซ็ตรหัสผ่านยังไม่พร้อมใช้งาน");
-              },
-              child: const Text(
-                'รีเซ็ตรหัสผ่าน',
-                style: TextStyle(color: Color(0xFFC70808), fontSize: 14),
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 80),
           _buildLoginButton(context),
         ],
       ),
