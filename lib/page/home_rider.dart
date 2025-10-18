@@ -497,7 +497,7 @@ class RiderHomeScreen extends StatelessWidget {
         ],
         currentIndex: 0,
         onTap: (index) {
-          if (index == 2) {
+          if (index == 1) {
             Get.offAll(() => const SpeedDerApp());
           }
         },
