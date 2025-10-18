@@ -1,523 +1,665 @@
-import 'package:async/async.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+// package_pickup_page.dart
+
 import 'package:delivery_project/page/history_page.dart';
 import 'package:delivery_project/page/home.dart';
 import 'package:delivery_project/page/index.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
-import 'package:intl/date_symbol_data_local.dart';
-import 'package:intl/intl.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+// ต้องแน่ใจว่าคุณมีไฟล์นี้:
+import 'package:delivery_project/page/order_status_page.dart';
 
+// Constants (อ้างอิงจากธีมหลัก)
 const Color _primaryColor = Color(0xFFC70808);
 const Color _backgroundColor = Color(0xFFFDE9E9);
+const Color _accentColor = Color(0xFF0D47A1);
 
-class OrderStatusPage extends StatefulWidget {
-  final String? orderId;
-  final String uid;
-  final int role;
-
-  const OrderStatusPage({
-    super.key,
-    this.orderId,
-    required this.uid,
-    required this.role,
-  });
-
-  @override
-  State<OrderStatusPage> createState() => _OrderStatusPageState();
+// ------------------------------------------------------------------
+// Model
+// ------------------------------------------------------------------
+class UserInfo {
+  final String name;
+  final String phone;
+  UserInfo(this.name, this.phone);
 }
 
-class _OrderStatusPageState extends State<OrderStatusPage> {
-  final MapController _mapController = MapController();
-  String? _selectedOrderId;
+class PackageModel {
+  final String id;
+  final String source;
+  final String destination;
+  final String currentStatus;
+  final String customerId;
+  final String? riderId;
+  final String orderDetails;
+  final String? deliveredImageUrl;
+  UserInfo? senderInfo;
+  UserInfo? riderInfo;
 
-  final TextEditingController _searchController = TextEditingController();
-  String _searchTerm = '';
+  PackageModel({
+    required this.id,
+    required this.source,
+    required this.destination,
+    required this.currentStatus,
+    required this.customerId,
+    this.riderId,
+    required this.orderDetails,
+    this.deliveredImageUrl,
+    this.senderInfo,
+    this.riderInfo,
+  });
+
+  factory PackageModel.fromFirestore(DocumentSnapshot doc) {
+    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+
+    String sourceDetail = data['pickupAddress']?['detail'] ?? 'ไม่ระบุต้นทาง';
+    String destinationDetail =
+        data['deliveryAddress']?['detail'] ?? 'ไม่ระบุปลายทาง';
+
+    String? deliveredImgUrl;
+    if (data['currentStatus'] == 'delivered' ||
+        data['currentStatus'] == 'completed') {
+      deliveredImgUrl = data['deliveredImageUrl'];
+
+      if (deliveredImgUrl == null && data['statusHistory'] is List) {
+        final deliveredEntry = (data['statusHistory'] as List).firstWhereOrNull(
+            (h) =>
+                h['status'] == 'delivered' &&
+                h['imgOfStatus']?.isNotEmpty == true);
+        deliveredImgUrl = deliveredEntry?['imgOfStatus'];
+      }
+    }
+
+    return PackageModel(
+      id: doc.id,
+      source: 'จาก: $sourceDetail',
+      destination: 'ไปที่: $destinationDetail',
+      currentStatus: data['currentStatus'] ?? 'unknown',
+      customerId: data['customerId'] ?? '',
+      riderId: data['riderId'],
+      orderDetails: data['orderDetails'] ?? 'ไม่ระบุรายละเอียดสินค้า',
+      deliveredImageUrl: deliveredImgUrl,
+    );
+  }
+}
+
+// ------------------------------------------------------------------
+// Controller
+// ------------------------------------------------------------------
+class PackagePickupController extends GetxController {
+  final String uid;
+  final RxString userPhone = ''.obs;
+  final TextEditingController searchController = TextEditingController();
+  final RxString searchText = ''.obs;
+  final RxBool isSearching = false.obs;
+
+  PackagePickupController(this.uid);
 
   @override
-  void initState() {
-    super.initState();
-    initializeDateFormatting('th', null);
-    _selectedOrderId = widget.orderId;
-    _searchController.addListener(() {
-      setState(() {
-        _searchTerm = _searchController.text;
+  void onInit() {
+    _fetchUserPhone();
+    super.onInit();
+  }
+
+  @override
+  void onClose() {
+    searchController.dispose();
+    super.onClose();
+  }
+
+  Future<void> _fetchUserPhone() async {
+    try {
+      final doc =
+          await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      if (doc.exists) {
+        userPhone.value = doc.data()?['phone'] ?? '';
+      }
+    } catch (e) {
+      print('Error fetching user phone: $e');
+    }
+  }
+
+  Future<void> performSearch() async {
+    isSearching.value = true;
+    await Future.delayed(const Duration(milliseconds: 100));
+    searchText.value = searchController.text.trim();
+    isSearching.value = false;
+  }
+
+  // Stream สำหรับดึงพัสดุที่ถูกส่งมายังผู้ใช้คนนี้ (ผ่านเบอร์โทร)
+  Stream<QuerySnapshot> getRecipientPackagesStream() {
+    if (userPhone.value.isEmpty) {
+      return Stream.empty();
+    }
+
+    // NOTE: ลบ orderBy ออกเพื่อเลี่ยง Composite Index Error
+    final baseQuery = FirebaseFirestore.instance
+        .collection('orders')
+        .where('deliveryAddress.receiverPhone', isEqualTo: userPhone.value);
+
+    return baseQuery.snapshots();
+  }
+
+  // ฟังก์ชันสำหรับดึงชื่อและเบอร์โทรผู้ใช้ (ผู้ส่ง/ไรเดอร์) จาก UID
+  Future<UserInfo> getUserInfo(String? userId, String defaultName) async {
+    if (userId == null || userId.isEmpty) return UserInfo(defaultName, '-');
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .get();
+      if (doc.exists) {
+        return UserInfo(doc.data()?['fullname'] ?? defaultName,
+            doc.data()?['phone'] ?? '-');
+      }
+      return UserInfo(defaultName, '-');
+    } catch (e) {
+      return UserInfo(defaultName, '-');
+    }
+  }
+
+  // ฟังก์ชันอัพเดทสถานะ 'completed'
+  Future<void> confirmPackageReception(String orderId) async {
+    Get.dialog(
+        const Center(child: CircularProgressIndicator(color: _primaryColor)),
+        barrierDismissible: false);
+    try {
+      final orderRef =
+          FirebaseFirestore.instance.collection('orders').doc(orderId);
+
+      await orderRef.update({
+        'currentStatus': 'completed',
+        'statusHistory': FieldValue.arrayUnion([
+          {
+            'imgOfStatus': 'received by recipient',
+            'status': 'completed',
+            'timestamp': Timestamp.now()
+          }
+        ]),
       });
-    });
-  }
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
+      Get.back();
+      Get.snackbar('สำเร็จ', 'ยืนยันการรับพัสดุ $orderId เรียบร้อยแล้ว',
+          backgroundColor: Colors.green, colorText: Colors.white);
+    } catch (e) {
+      Get.back();
+      Get.snackbar('เกิดข้อผิดพลาด', 'ไม่สามารถยืนยันการรับได้: $e',
+          backgroundColor: _primaryColor, colorText: Colors.white);
+    }
   }
+}
+
+// ------------------------------------------------------------------
+// Page (UI) - PackagePickupPage
+// ------------------------------------------------------------------
+class PackagePickupPage extends StatelessWidget {
+  final String uid;
+  final int role;
+  const PackagePickupPage({super.key, required this.uid, required this.role});
 
   @override
   Widget build(BuildContext context) {
-    bool isDetailPage =
-        _selectedOrderId != null && _selectedOrderId!.isNotEmpty;
+    final controller = Get.put(PackagePickupController(uid));
 
-    return WillPopScope(
-      onWillPop: () async {
-        if (isDetailPage) {
-          setState(() {
-            _selectedOrderId = null;
-          });
-          return false;
-        }
-        return true;
-      },
-      child: Scaffold(
-        backgroundColor: _backgroundColor,
-        appBar: AppBar(
-          title: Text(isDetailPage ? 'ติดตามสถานะการจัดส่ง' : 'รายการส่งของ',
-              style: const TextStyle(color: Colors.white)),
-          backgroundColor: _primaryColor,
-          iconTheme: const IconThemeData(color: Colors.white),
-          leading: isDetailPage
-              ? IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: () {
-                    setState(() {
-                      _selectedOrderId = null;
-                    });
-                  },
-                )
-              : null,
-          automaticallyImplyLeading: !isDetailPage,
-        ),
-        body: isDetailPage
-            ? _buildOrderDetailView(_selectedOrderId!)
-            : _buildOrderListView(),
-        bottomNavigationBar: _buildBottomNavigationBar(context),
-      ),
-    );
-  }
-
-  Widget _buildOrderListView() {
-    return Column(
-      children: [
-        _buildSearchBar(),
-        Expanded(child: _buildOrderList()),
-      ],
-    );
-  }
-
-  Widget _buildSearchBar() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: TextField(
-        controller: _searchController,
-        decoration: InputDecoration(
-          hintText: 'ค้นหา Order ID, ชื่อ/เบอร์ ผู้รับ...',
-          prefixIcon: const Icon(Icons.search),
-          suffixIcon: _searchTerm.isNotEmpty
-              ? IconButton(
-                  icon: const Icon(Icons.clear),
-                  onPressed: () {
-                    _searchController.clear();
-                  },
-                )
-              : null,
-          filled: true,
-          fillColor: Colors.white,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(30),
-            borderSide: BorderSide.none,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildOrderList() {
-    final senderStream = FirebaseFirestore.instance
-        .collection('orders')
-        .where('customerId', isEqualTo: widget.uid)
-        .snapshots();
-
-    return StreamBuilder<QuerySnapshot>(
-      stream: senderStream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return const Center(child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล'));
-        }
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return const Center(child: Text('คุณยังไม่มีรายการส่งของ'));
-        }
-
-        final uniqueDocs = {for (var doc in snapshot.data!.docs) doc.id: doc};
-        var allDocs = uniqueDocs.values.toList();
-
-        if (_searchTerm.isNotEmpty) {
-          String lowerCaseSearch = _searchTerm.toLowerCase();
-          allDocs = allDocs.where((doc) {
-            final data = doc.data() as Map<String, dynamic>;
-            final deliveryAddress =
-                data['deliveryAddress'] as Map<String, dynamic>? ?? {};
-
-            final orderId = doc.id.toLowerCase();
-            final receiverName =
-                (deliveryAddress['receiverName'] as String?)?.toLowerCase() ??
-                    '';
-            final receiverPhone =
-                (deliveryAddress['receiverPhone'] as String?)?.toLowerCase() ??
-                    '';
-
-            return orderId.contains(lowerCaseSearch) ||
-                receiverName.contains(lowerCaseSearch) ||
-                receiverPhone.contains(lowerCaseSearch);
-          }).toList();
-        }
-
-        if (allDocs.isEmpty) {
-          return const Center(child: Text('ไม่พบรายการที่ค้นหา'));
-        }
-
-        allDocs.sort((a, b) {
-          final aTime = (a.data() as Map)['createdAt'] as Timestamp?;
-          final bTime = (b.data() as Map)['createdAt'] as Timestamp?;
-          if (aTime == null || bTime == null) return 0;
-          return bTime.compareTo(aTime);
-        });
-
-        return ListView.builder(
-          padding: const EdgeInsets.fromLTRB(8, 8, 8, 20),
-          itemCount: allDocs.length,
-          itemBuilder: (context, index) {
-            final doc = allDocs[index];
-            return OrderListItem(
-              orderData: doc.data() as Map<String, dynamic>,
-              orderId: doc.id,
-              onTap: () {
-                setState(() {
-                  _selectedOrderId = doc.id;
-                });
-              },
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildOrderDetailView(String orderId) {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('orders')
-          .doc(orderId)
-          .snapshots(),
-      builder: (context, orderSnapshot) {
-        if (orderSnapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (!orderSnapshot.hasData || !orderSnapshot.data!.exists) {
-          return const Center(child: Text('ไม่พบข้อมูลออเดอร์'));
-        }
-
-        final orderData = orderSnapshot.data!.data() as Map<String, dynamic>;
-        final riderId = orderData['riderId'] as String?;
-
-        LatLng? riderPosition;
-        if (orderData.containsKey('currentLocation') &&
-            orderData['currentLocation'] is GeoPoint) {
-          final geoPoint = orderData['currentLocation'] as GeoPoint;
-          riderPosition = LatLng(geoPoint.latitude, geoPoint.longitude);
-        }
-
-        if (riderId == null || riderId.isEmpty) {
-          return _buildContent(orderData, null, riderPosition);
-        }
-
-        return StreamBuilder<DocumentSnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('users')
-              .doc(riderId)
-              .snapshots(),
-          builder: (context, riderSnapshot) {
-            final riderData =
-                riderSnapshot.data?.data() as Map<String, dynamic>?;
-            return _buildContent(orderData, riderData, riderPosition);
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildContent(Map<String, dynamic> orderData,
-      Map<String, dynamic>? riderData, LatLng? riderPosition) {
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildMapSection(orderData, riderPosition),
-          const SizedBox(height: 20),
-          _buildCurrentStatusHeader(orderData, riderData),
-          _buildStatusTimeline(orderData['statusHistory'] ?? []),
-          const SizedBox(height: 20),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMapSection(
-      Map<String, dynamic> orderData, LatLng? riderPosition) {
-    final deliveryAddress =
-        orderData['deliveryAddress'] as Map<String, dynamic>? ?? {};
-    final deliveryGps = deliveryAddress['gps'] as GeoPoint?;
-    final LatLng? deliveryLatLng = deliveryGps != null
-        ? LatLng(deliveryGps.latitude, deliveryGps.longitude)
-        : null;
-
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.4,
-      margin: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: const [
-          BoxShadow(color: Colors.black26, offset: Offset(0, 4), blurRadius: 8)
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(15),
-        child: FlutterMap(
-          mapController: _mapController,
-          options: MapOptions(
-            initialCenter:
-                riderPosition ?? deliveryLatLng ?? const LatLng(16.24, 103.25),
-            initialZoom: 15.0,
-          ),
-          children: [
-            TileLayer(
-              urlTemplate:
-                  'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=cb153d15cb4e41f59e25cfda6468f1a0',
-              userAgentPackageName: 'com.example.app',
-            ),
-            MarkerLayer(
-              markers: [
-                if (riderPosition != null)
-                  Marker(
-                    point: riderPosition,
-                    width: 80,
-                    height: 80,
-                    child: const Icon(Icons.two_wheeler,
-                        color: Colors.blue, size: 40),
-                  ),
-                if (deliveryLatLng != null)
-                  Marker(
-                    point: deliveryLatLng,
-                    width: 80,
-                    height: 80,
-                    child: const Tooltip(
-                      message: 'จุดหมายปลายทาง',
-                      child: Icon(Icons.flag, color: Colors.red, size: 40),
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCurrentStatusHeader(
-      Map<String, dynamic> orderData, Map<String, dynamic>? riderData) {
-    final status = orderData['currentStatus'] ?? 'pending';
-    final orderDetails =
-        orderData['orderDetails'].toString().trim() ?? 'ไม่มีรายละเอียด';
-    final deliveryAddress =
-        orderData['deliveryAddress'] as Map<String, dynamic>? ?? {};
-    final receiverName = deliveryAddress['receiverName'] ?? 'ไม่มีข้อมูล';
-    final receiverPhone = deliveryAddress['receiverPhone'] ?? '-';
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(orderDetails,
-              style:
-                  const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-          const Divider(height: 20),
-          Row(
-            children: [
-              Text('สถานะปัจจุบัน: ',
-                  style: TextStyle(fontSize: 16, color: Colors.grey.shade700)),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: _getStatusColor(status).withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  _translateStatus(status),
-                  style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: _getStatusColor(status)),
-                ),
-              ),
-            ],
-          ),
-          const Divider(height: 20),
-          const Text('ข้อมูลผู้รับ',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          Text('ชื่อ: $receiverName'),
-          Text('เบอร์โทร: $receiverPhone'),
-          if (riderData != null) ...[
-            const Divider(height: 20),
-            _buildRiderInfoSection(riderData),
-          ],
-          const Divider(height: 20),
-          const Text('ประวัติการจัดส่ง',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRiderInfoSection(Map<String, dynamic> riderData) {
-    final riderName = riderData['fullname'] ?? 'ไม่มีข้อมูล';
-    final riderPhone = riderData['phone'] ?? '-';
-    final vehicleNo = riderData['vehicle_no'] ?? '-';
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('ข้อมูลไรเดอร์',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        Text('ชื่อ: $riderName'),
-        Text('เบอร์โทร: $riderPhone'),
-        Text('ทะเบียนรถ: $vehicleNo'),
-      ],
-    );
-  }
-
-  Widget _buildStatusTimeline(List<dynamic> statusHistory) {
-    if (statusHistory.isEmpty) {
-      return const Center(child: Text('ไม่มีประวัติสถานะ'));
-    }
-    statusHistory.sort((a, b) =>
-        (b['timestamp'] as Timestamp).compareTo(a['timestamp'] as Timestamp));
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: statusHistory.length,
-      itemBuilder: (context, index) {
-        final history = statusHistory[index] as Map<String, dynamic>;
-        final status = history['status'] as String;
-        final timestamp = (history['timestamp'] as Timestamp?)?.toDate();
-        final imageUrl = history['imgOfStatus'] as String?;
-        final formattedTime = timestamp != null
-            ? DateFormat('dd MMM yyyy, HH:mm', 'th').format(timestamp)
-            : 'ไม่มีข้อมูลเวลา';
-        bool isFirst = index == 0;
-
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Column(
-                children: [
-                  Icon(
-                    isFirst
-                        ? Icons.radio_button_checked
-                        : Icons.circle_outlined,
-                    color: isFirst ? _getStatusColor(status) : Colors.grey,
-                    size: 20,
-                  ),
-                  if (index != statusHistory.length - 1)
-                    Container(
-                        height: (imageUrl != null && imageUrl.isNotEmpty)
-                            ? 120
-                            : 40,
-                        width: 2,
-                        color: Colors.grey.shade300)
+    return Scaffold(
+      backgroundColor: _backgroundColor,
+      body: CustomScrollView(
+        slivers: [
+          _buildHeader(context),
+          SliverPadding(
+            padding: const EdgeInsets.all(20.0),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate(
+                [
+                  _buildSearchBar(controller),
+                  const SizedBox(height: 20),
+                  Obx(() {
+                    if (controller.userPhone.value.isEmpty ||
+                        controller.isSearching.value) {
+                      return const Center(
+                          child: Padding(
+                        padding: EdgeInsets.only(top: 50),
+                        child: Column(
+                          children: [
+                            CircularProgressIndicator(color: _primaryColor),
+                            SizedBox(height: 10),
+                            Text('กำลังโหลดข้อมูล...')
+                          ],
+                        ),
+                      ));
+                    }
+                    return _buildPackagesList(controller);
+                  }),
                 ],
               ),
-              const SizedBox(width: 15),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _translateStatus(status),
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight:
-                            isFirst ? FontWeight.bold : FontWeight.normal,
-                        color: isFirst ? Colors.black : Colors.grey.shade700,
-                      ),
-                    ),
-                    Text(formattedTime,
-                        style: TextStyle(
-                            color: Colors.grey.shade600, fontSize: 12)),
-                    if (imageUrl != null && imageUrl.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8.0),
-                        child: GestureDetector(
-                          onTap: () => _showFullScreenImage(context, imageUrl),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8.0),
-                            child: Image.network(
-                              imageUrl,
-                              height: 100,
-                              width: 100,
-                              fit: BoxFit.cover,
-                              loadingBuilder: (context, child, progress) {
-                                return progress == null
-                                    ? child
-                                    : const SizedBox(
-                                        height: 100,
-                                        width: 100,
-                                        child: Center(
-                                            child: CircularProgressIndicator(
-                                                strokeWidth: 2)));
-                              },
-                              errorBuilder: (context, error, stackTrace) {
-                                return const Icon(Icons.error,
-                                    color: Colors.red);
-                              },
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
+        ],
+      ),
+      bottomNavigationBar: _buildBottomNavigationBar(context),
+    );
+  }
+
+  Widget _buildPackagesList(PackagePickupController controller) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: controller.getRecipientPackagesStream(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+              child: CircularProgressIndicator(color: _primaryColor));
+        }
+
+        if (snapshot.hasError) {
+          return Center(child: Text('เกิดข้อผิดพลาด: ${snapshot.error}'));
+        }
+
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.only(top: 50.0),
+              child: Text(
+                '📦 ไม่มีรายการพัสดุที่กำลังถูกส่งถึงคุณในขณะนี้',
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+            ),
+          );
+        }
+
+        final allPackages = snapshot.data!.docs
+            .map((doc) => PackageModel.fromFirestore(doc))
+            .toList();
+        final filterText = controller.searchText.value.toLowerCase();
+
+        if (filterText.isNotEmpty) {
+          return FutureBuilder<List<PackageModel>>(
+            future: _fetchNamesAndFilter(controller, allPackages, filterText),
+            builder: (context, filterSnapshot) {
+              if (filterSnapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                    child: CircularProgressIndicator(color: Colors.orange));
+              }
+              final filteredPackages = filterSnapshot.data ?? [];
+              return _buildFilteredPackageList(controller, filteredPackages);
+            },
+          );
+        }
+
+        // Default list display (without search filter)
+        return Column(
+          children: allPackages.map((package) {
+            return FutureBuilder<Map<String, String>>(
+              future:
+                  _fetchNames(controller, package.customerId, package.riderId),
+              builder: (context, nameSnapshot) {
+                return _buildPackageItemFromFuture(
+                    package, nameSnapshot, controller);
+              },
+            );
+          }).toList(),
         );
       },
     );
   }
 
-  void _showFullScreenImage(BuildContext context, String imageUrl) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.all(10),
-          child: GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
-            child: InteractiveViewer(
-              panEnabled: false,
-              boundaryMargin: const EdgeInsets.all(20),
-              minScale: 0.5,
-              maxScale: 4,
-              child: Image.network(imageUrl),
+  // ดึงชื่อและเบอร์โทรผู้ส่ง/ไรเดอร์พร้อมกัน
+  Future<Map<String, String>> _fetchNames(PackagePickupController controller,
+      String customerId, String? riderId) async {
+    final senderInfo = await controller.getUserInfo(customerId, 'ผู้ส่ง');
+    final riderInfo = riderId != null
+        ? await controller.getUserInfo(riderId, 'ไรเดอร์')
+        : UserInfo('ยังไม่มีไรเดอร์', '-');
+
+    return {
+      'sender': '${senderInfo.name}|${senderInfo.phone}',
+      'rider': '${riderInfo.name}|${riderInfo.phone}',
+    };
+  }
+
+  // ดึงชื่อผู้ส่ง/ไรเดอร์ และกรองข้อมูล
+  Future<List<PackageModel>> _fetchNamesAndFilter(
+      PackagePickupController controller,
+      List<PackageModel> allPackages,
+      String filterText) async {
+    final filteredList = <PackageModel>[];
+    final lowerCaseFilter = filterText.toLowerCase();
+
+    for (var package in allPackages) {
+      final senderInfo =
+          await controller.getUserInfo(package.customerId, 'ผู้ส่ง');
+      final riderInfo = package.riderId != null
+          ? await controller.getUserInfo(package.riderId, 'ไรเดอร์')
+          : UserInfo('ยังไม่มีไรเดอร์', '-');
+
+      bool matches = false;
+
+      // Filter Logic (Package ID, Sender Info, Rider Info, Order Details)
+      if (package.id.toLowerCase().contains(lowerCaseFilter)) matches = true;
+      if (senderInfo.name.toLowerCase().contains(lowerCaseFilter) ||
+          senderInfo.phone.contains(lowerCaseFilter)) matches = true;
+      if (riderInfo.name.toLowerCase().contains(lowerCaseFilter) ||
+          riderInfo.phone.contains(lowerCaseFilter)) matches = true;
+      if (package.orderDetails.toLowerCase().contains(lowerCaseFilter))
+        matches = true;
+
+      if (matches) {
+        package.senderInfo = senderInfo;
+        package.riderInfo = riderInfo;
+        filteredList.add(package);
+      }
+    }
+    return filteredList;
+  }
+
+  Widget _buildFilteredPackageList(
+      PackagePickupController controller, List<PackageModel> filteredPackages) {
+    if (filteredPackages.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.only(top: 50.0),
+          child: Text(
+            'ไม่พบรายการพัสดุที่ตรงกับคำค้นหา',
+            style: TextStyle(fontSize: 16, color: Colors.grey),
+          ),
+        ),
+      );
+    }
+    return Column(
+      children: filteredPackages.map((package) {
+        final senderInfo = package.senderInfo!;
+        final riderInfo = package.riderInfo!;
+        return _buildPackageItem(
+          package,
+          _getStatusText(package.currentStatus),
+          _getStatusColor(package.currentStatus),
+          false,
+          senderInfo.name,
+          senderInfo.phone,
+          riderInfo.name,
+          riderInfo.phone,
+          controller.confirmPackageReception,
+          uid,
+          role,
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildPackageItemFromFuture(
+    PackageModel package,
+    AsyncSnapshot<Map<String, String>> nameSnapshot,
+    PackagePickupController controller,
+  ) {
+    if (nameSnapshot.connectionState == ConnectionState.waiting) {
+      return const Center(
+          child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 10),
+              child: LinearProgressIndicator()));
+    }
+
+    String senderInfo = nameSnapshot.data?['sender'] ?? 'กำลังโหลด...';
+    String riderInfo = nameSnapshot.data?['rider'] ?? 'กำลังโหลด...';
+
+    final senderParts = senderInfo.split('|');
+    final riderParts = riderInfo.split('|');
+
+    return _buildPackageItem(
+      package,
+      _getStatusText(package.currentStatus),
+      _getStatusColor(package.currentStatus),
+      false,
+      senderParts[0],
+      senderParts.length > 1 ? senderParts[1] : '-',
+      riderParts[0],
+      riderParts.length > 1 ? riderParts[1] : '-',
+      controller.confirmPackageReception,
+      uid,
+      role,
+    );
+  }
+
+  String _getStatusText(String status) {
+    switch (status) {
+      case 'pending':
+        return 'รอไรเดอร์รับงาน';
+      case 'assigned':
+        return 'ไรเดอร์รับงานแล้ว';
+      case 'picked_up':
+        return 'รับพัสดุแล้ว';
+      case 'in_transit':
+        return 'กำลังนำส่ง';
+      case 'delivered':
+        return 'จัดส่งสำเร็จ';
+      case 'completed':
+        return 'ได้รับสินค้าแล้ว ✔️';
+      default:
+        return 'สถานะไม่ทราบ';
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'pending':
+        return Colors.blueGrey;
+      case 'assigned':
+        return Colors.orange;
+      case 'picked_up':
+        return Colors.amber.shade800;
+      case 'in_transit':
+        return Colors.amber.shade800;
+      case 'delivered':
+        return Colors.green.shade600;
+      case 'completed':
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  Widget _buildPackageItem(
+      PackageModel package,
+      String statusText,
+      Color statusColor,
+      bool showConfirmButton,
+      String senderName,
+      String senderPhone,
+      String riderName,
+      String riderPhone,
+      Function(String) onConfirm,
+      String currentUid,
+      int currentRole) {
+    final bool showDeliveredImage = (package.currentStatus == 'delivered' ||
+            package.currentStatus == 'completed') &&
+        package.deliveredImageUrl?.isNotEmpty == true;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 15),
+      elevation: 5,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: InkWell(
+        onTap: () {
+          // ไปหน้า OrderStatusPage
+          Get.to(() => OrderStatusPage(
+              orderId: package.id, uid: currentUid, role: currentRole));
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(15.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.inventory_2_outlined,
+                          color: _primaryColor),
+                      const SizedBox(width: 8),
+                      Text(
+                          'พัสดุ: ${package.orderDetails.length > 30 ? package.orderDetails.substring(0, 30) + '...' : package.orderDetails}',
+                          style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: _primaryColor)),
+                    ],
+                  ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: statusColor,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      statusText,
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+              const Divider(height: 15, thickness: 1),
+              _buildDetailRow(Icons.person, 'ผู้ส่ง:', senderName, senderPhone),
+              _buildDetailRow(Icons.two_wheeler_outlined, 'ไรเดอร์:', riderName,
+                  riderPhone),
+              _buildDetailRow(Icons.qr_code, 'รหัสพัสดุ:', package.id, null),
+              if (showDeliveredImage)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 10),
+                    const Text('หลักฐานการจัดส่งสำเร็จ:',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 14)),
+                    const SizedBox(height: 5),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        package.deliveredImageUrl!,
+                        height: 100,
+                        width: 100,
+                        fit: BoxFit.cover,
+                        errorBuilder: (c, e, s) =>
+                            const Icon(Icons.broken_image, size: 100),
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(
+      IconData icon, String title, String name, String? phone) {
+    String detailText = phone != null && phone != '-'
+        ? '$name (Tel: $phone)'
+        : (name.isEmpty || name == 'ไม่ระบุรายละเอียดสินค้า'
+            ? 'ไม่ระบุ'
+            : name);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20, color: _accentColor),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 80,
+            child: Text(title,
+                style:
+                    const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+          ),
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.grey.shade300, width: 0.5),
+              ),
+              child: Text(detailText,
+                  style: const TextStyle(fontSize: 14, color: Colors.black87)),
             ),
           ),
-        );
-      },
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    return SliverAppBar(
+      expandedHeight: 150.0,
+      floating: false,
+      pinned: true,
+      backgroundColor: _primaryColor,
+      flexibleSpace: FlexibleSpaceBar(
+        titlePadding: EdgeInsets.zero,
+        centerTitle: false,
+        title: const Padding(
+          padding: EdgeInsets.only(left: 20, bottom: 8),
+          child: Text(
+            'พัสดุถึงคุณ',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ),
+        background: ClipPath(
+          clipper: HeaderClipper(),
+          child: Container(
+            color: _primaryColor,
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.only(left: 20, top: 50),
+            child: const Text(
+              'รายการพัสดุรอรับ',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+      ),
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back, color: Colors.white),
+        onPressed: () => Get.back(),
+      ),
+    );
+  }
+
+  Widget _buildSearchBar(PackagePickupController controller) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      height: 50,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.shade300,
+            blurRadius: 5,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: TextField(
+        controller: controller.searchController,
+        decoration: InputDecoration(
+          hintText: 'ค้นหาด้วยชื่อ/เบอร์โทร หรือ รหัสพัสดุ',
+          border: InputBorder.none,
+          prefixIcon: const Icon(Icons.search, color: _primaryColor),
+          suffixIcon: IconButton(
+            // ปุ่มค้นหา
+            icon: const Icon(Icons.send, color: _primaryColor),
+            onPressed: controller.performSearch,
+          ),
+        ),
+        onSubmitted: (_) => controller.performSearch(),
+      ),
     );
   }
 
@@ -526,7 +668,8 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
       decoration: const BoxDecoration(
         color: _primaryColor,
         boxShadow: [
-          BoxShadow(color: Colors.black12, offset: Offset(0, -2), blurRadius: 5)
+          BoxShadow(
+              color: Colors.black12, offset: Offset(0, -2), blurRadius: 5),
         ],
       ),
       child: BottomNavigationBar(
@@ -538,16 +681,20 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'หน้าแรก'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.history), label: 'ประวัติการส่ง'),
+            icon: Icon(Icons.history),
+            label: 'ประวัติการส่งสินค้า',
+          ),
           BottomNavigationBarItem(
-              icon: Icon(Icons.logout), label: 'ออกจากระบบ'),
+            icon: Icon(Icons.logout),
+            label: 'ออกจากระบบ',
+          ),
         ],
         currentIndex: 0,
         onTap: (index) {
           if (index == 0) {
-            Get.offAll(() => HomeScreen(uid: widget.uid, role: widget.role));
+            Get.offAll(() => HomeScreen(uid: uid, role: role));
           } else if (index == 1) {
-            Get.to(() => HistoryPage(uid: widget.uid, role: widget.role));
+            Get.to(() => HistoryPage(uid: uid, role: role));
           } else if (index == 2) {
             Get.offAll(() => const SpeedDerApp());
           }
@@ -557,159 +704,21 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
   }
 }
 
-class OrderListItem extends StatefulWidget {
-  final Map<String, dynamic> orderData;
-  final String orderId;
-  final VoidCallback onTap;
-
-  const OrderListItem({
-    super.key,
-    required this.orderData,
-    required this.orderId,
-    required this.onTap,
-  });
-
+class HeaderClipper extends CustomClipper<Path> {
   @override
-  State<OrderListItem> createState() => _OrderListItemState();
-}
+  Path getClip(Size size) {
+    double h = size.height;
+    double w = size.width;
+    Path path = Path();
 
-class _OrderListItemState extends State<OrderListItem> {
-  Map<String, dynamic>? _riderData;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchRiderData();
-  }
-
-  Future<void> _fetchRiderData() async {
-    final riderId = widget.orderData['riderId'] as String?;
-    if (riderId == null || riderId.isEmpty) return;
-
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(riderId)
-          .get();
-      if (doc.exists && mounted) {
-        setState(() {
-          _riderData = doc.data();
-        });
-      }
-    } catch (e) {
-      // Handle error
-    }
+    path.lineTo(0, h * 0.85);
+    path.quadraticBezierTo(w * 0.15, h * 0.95, w * 0.45, h * 0.85);
+    path.quadraticBezierTo(w * 0.65, h * 0.75, w, h * 0.8);
+    path.lineTo(w, 0);
+    path.close();
+    return path;
   }
 
   @override
-  Widget build(BuildContext context) {
-    final data = widget.orderData;
-    final deliveryAddress =
-        data['deliveryAddress'] as Map<String, dynamic>? ?? {};
-    final status = data['currentStatus'] ?? 'N/A';
-
-    return InkWell(
-      onTap: widget.onTap,
-      child: Card(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _getStatusColor(status).withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      _translateStatus(status),
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: _getStatusColor(status),
-                      ),
-                    ),
-                  ),
-                  Text(
-                    'ID: ${widget.orderId}',
-                    style: const TextStyle(color: Colors.grey, fontSize: 12),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-              const Divider(height: 16),
-              _buildInfoRow(Icons.person_pin_circle_outlined, 'ผู้รับ',
-                  deliveryAddress['receiverName'] ?? 'N/A'),
-              _buildInfoRow(Icons.phone_outlined, 'เบอร์โทร',
-                  deliveryAddress['receiverPhone'] ?? 'N/A'),
-              const SizedBox(height: 8),
-              if (_riderData != null) ...[
-                _buildInfoRow(Icons.two_wheeler_outlined, 'Rider',
-                    _riderData!['fullname'] ?? 'N/A'),
-                _buildInfoRow(Icons.phone_android_outlined, 'เบอร์โทร Rider',
-                    _riderData!['phone'] ?? 'N/A'),
-                _buildInfoRow(Icons.badge_outlined, 'ทะเบียนรถ',
-                    _riderData!['vehicle_no'] ?? 'N/A'),
-              ] else if (data['riderId'] != null) ...[
-                const Text('กำลังโหลดข้อมูลไรเดอร์...'),
-              ]
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInfoRow(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2.0),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.grey.shade600, size: 16),
-          const SizedBox(width: 8),
-          Text('$label: ', style: const TextStyle(fontWeight: FontWeight.bold)),
-          Expanded(child: Text(value, overflow: TextOverflow.ellipsis)),
-        ],
-      ),
-    );
-  }
-}
-
-String _translateStatus(String status) {
-  switch (status) {
-    case 'pending':
-      return 'รอไรเดอร์รับงาน';
-    case 'accepted':
-      return 'ไรเดอร์รับงานแล้ว';
-    case 'picked_up':
-      return 'รับพัสดุแล้ว';
-    case 'in_transit':
-      return 'กำลังนำส่ง';
-    case 'delivered':
-      return 'จัดส่งสำเร็จ';
-    default:
-      return status;
-  }
-}
-
-Color _getStatusColor(String status) {
-  switch (status) {
-    case 'pending':
-    case 'accepted':
-      return Colors.blue;
-    case 'picked_up':
-    case 'in_transit':
-      return Colors.orange;
-    case 'delivered':
-      return Colors.green;
-    default:
-      return Colors.grey;
-  }
+  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
 }
