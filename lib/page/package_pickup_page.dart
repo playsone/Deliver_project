@@ -6,11 +6,22 @@ import 'package:delivery_project/page/index.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+// ต้องแน่ใจว่าคุณมีไฟล์นี้:
 import 'package:delivery_project/page/order_status_page.dart';
 
+// Constants (อ้างอิงจากธีมหลัก)
 const Color _primaryColor = Color(0xFFC70808);
 const Color _backgroundColor = Color(0xFFFDE9E9);
 const Color _accentColor = Color(0xFF0D47A1);
+
+// ------------------------------------------------------------------
+// Model
+// ------------------------------------------------------------------
+class UserInfo {
+  final String name;
+  final String phone;
+  UserInfo(this.name, this.phone);
+}
 
 class PackageModel {
   final String id;
@@ -71,12 +82,6 @@ class PackageModel {
   }
 }
 
-class UserInfo {
-  final String name;
-  final String phone;
-  UserInfo(this.name, this.phone);
-}
-
 class PackagePickupController extends GetxController {
   final String uid;
   final RxString userPhone = ''.obs;
@@ -115,11 +120,13 @@ class PackagePickupController extends GetxController {
     isSearching.value = false;
   }
 
+  // Stream สำหรับดึงพัสดุที่ถูกส่งมายังผู้ใช้คนนี้ (ผ่านเบอร์โทร)
   Stream<QuerySnapshot> getRecipientPackagesStream() {
     if (userPhone.value.isEmpty) {
       return Stream.empty();
     }
 
+    // NOTE: ลบ orderBy ออกเพื่อเลี่ยง Composite Index Error
     final baseQuery = FirebaseFirestore.instance
         .collection('orders')
         .where('deliveryAddress.receiverPhone', isEqualTo: userPhone.value);
@@ -127,6 +134,7 @@ class PackagePickupController extends GetxController {
     return baseQuery.snapshots();
   }
 
+  // ฟังก์ชันสำหรับดึงชื่อและเบอร์โทรผู้ใช้ (ผู้ส่ง/ไรเดอร์) จาก UID
   Future<UserInfo> getUserInfo(String? userId, String defaultName) async {
     if (userId == null || userId.isEmpty) return UserInfo(defaultName, '-');
     try {
@@ -144,6 +152,7 @@ class PackagePickupController extends GetxController {
     }
   }
 
+  // ฟังก์ชันอัพเดทสถานะ 'completed'
   Future<void> confirmPackageReception(String orderId) async {
     Get.dialog(
         const Center(child: CircularProgressIndicator(color: _primaryColor)),
@@ -266,6 +275,7 @@ class PackagePickupPage extends StatelessWidget {
           );
         }
 
+        // Default list display (without search filter)
         return Column(
           children: allPackages.map((package) {
             return FutureBuilder<Map<String, String>>(
@@ -282,6 +292,7 @@ class PackagePickupPage extends StatelessWidget {
     );
   }
 
+  // ดึงชื่อและเบอร์โทรผู้ส่ง/ไรเดอร์พร้อมกัน
   Future<Map<String, String>> _fetchNames(PackagePickupController controller,
       String customerId, String? riderId) async {
     final senderInfo = await controller.getUserInfo(customerId, 'ผู้ส่ง');
@@ -295,6 +306,7 @@ class PackagePickupPage extends StatelessWidget {
     };
   }
 
+  // ดึงชื่อผู้ส่ง/ไรเดอร์ และกรองข้อมูล
   Future<List<PackageModel>> _fetchNamesAndFilter(
       PackagePickupController controller,
       List<PackageModel> allPackages,
@@ -311,14 +323,12 @@ class PackagePickupPage extends StatelessWidget {
 
       bool matches = false;
 
+      // Filter Logic (Package ID, Sender Info, Rider Info, Order Details)
       if (package.id.toLowerCase().contains(lowerCaseFilter)) matches = true;
-
       if (senderInfo.name.toLowerCase().contains(lowerCaseFilter) ||
           senderInfo.phone.contains(lowerCaseFilter)) matches = true;
-
       if (riderInfo.name.toLowerCase().contains(lowerCaseFilter) ||
           riderInfo.phone.contains(lowerCaseFilter)) matches = true;
-
       if (package.orderDetails.toLowerCase().contains(lowerCaseFilter))
         matches = true;
 
@@ -458,6 +468,7 @@ class PackagePickupPage extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: InkWell(
         onTap: () {
+          // ไปหน้า OrderStatusPage
           Get.to(() => OrderStatusPage(
               orderId: package.id, uid: currentUid, role: currentRole));
         },
@@ -654,10 +665,8 @@ class PackagePickupPage extends StatelessWidget {
         currentIndex: 0,
         onTap: (index) {
           if (index == 0) {
-            // แก้ไข: ใช้ 'uid' และ 'role' โดยตรง
             Get.offAll(() => HomeScreen(uid: uid, role: role));
           } else if (index == 1) {
-            // แก้ไข: ใช้ 'uid' และ 'role' โดยตรง
             Get.to(() => HistoryPage(uid: uid, role: role));
           } else if (index == 2) {
             Get.offAll(() => const SpeedDerApp());
