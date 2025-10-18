@@ -1,85 +1,23 @@
-// package_pickup_page.dart
-
+import 'dart:async';
+import 'dart:ui' as ui;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:delivery_project/models/package_model.dart';
+import 'package:delivery_project/models/user_model.dart';
+import 'package:delivery_project/models/userinfo_model.dart';
 import 'package:delivery_project/page/history_page.dart';
 import 'package:delivery_project/page/home.dart';
 import 'package:delivery_project/page/index.dart';
+import 'package:firebase_auth/firebase_auth.dart' hide UserInfo;
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:delivery_project/page/order_status_page.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/intl.dart';
+import 'package:latlong2/latlong.dart';
 
-// Constants (อ้างอิงจากธีมหลัก)
 const Color _primaryColor = Color(0xFFC70808);
 const Color _backgroundColor = Color(0xFFFDE9E9);
 const Color _accentColor = Color(0xFF0D47A1);
-
-// ------------------------------------------------------------------
-// Model & Controller (ย้ายมาอยู่ในไฟล์เดียวกันเพื่อความสมบูรณ์)
-// ------------------------------------------------------------------
-class UserInfo {
-  final String name;
-  final String phone;
-  UserInfo(this.name, this.phone);
-}
-
-class PackageModel {
-  final String id;
-  final String source;
-  final String destination;
-  final String currentStatus;
-  final String customerId;
-  final String? riderId;
-  final String orderDetails;
-  final String? deliveredImageUrl;
-  UserInfo? senderInfo;
-  UserInfo? riderInfo;
-
-  PackageModel({
-    required this.id,
-    required this.source,
-    required this.destination,
-    required this.currentStatus,
-    required this.customerId,
-    this.riderId,
-    required this.orderDetails,
-    this.deliveredImageUrl,
-    this.senderInfo,
-    this.riderInfo,
-  });
-
-  factory PackageModel.fromFirestore(DocumentSnapshot doc) {
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-
-    String sourceDetail = data['pickupAddress']?['detail'] ?? 'ไม่ระบุต้นทาง';
-    String destinationDetail =
-        data['deliveryAddress']?['detail'] ?? 'ไม่ระบุปลายทาง';
-
-    String? deliveredImgUrl;
-    if (data['currentStatus'] == 'delivered' ||
-        data['currentStatus'] == 'completed') {
-      deliveredImgUrl = data['deliveredImageUrl'];
-
-      if (deliveredImgUrl == null && data['statusHistory'] is List) {
-        final deliveredEntry = (data['statusHistory'] as List).firstWhereOrNull(
-            (h) =>
-                h['status'] == 'delivered' &&
-                h['imgOfStatus']?.isNotEmpty == true);
-        deliveredImgUrl = deliveredEntry?['imgOfStatus'];
-      }
-    }
-
-    return PackageModel(
-      id: doc.id,
-      source: 'จาก: $sourceDetail',
-      destination: 'ไปที่: $destinationDetail',
-      currentStatus: data['currentStatus'] ?? 'unknown',
-      customerId: data['customerId'] ?? '',
-      riderId: data['riderId'],
-      orderDetails: data['orderDetails'] ?? 'ไม่ระบุรายละเอียดสินค้า',
-      deliveredImageUrl: deliveredImgUrl,
-    );
-  }
-}
 
 class PackagePickupController extends GetxController {
   final String uid;
@@ -87,6 +25,7 @@ class PackagePickupController extends GetxController {
   final TextEditingController searchController = TextEditingController();
   final RxString searchText = ''.obs;
   final RxBool isSearching = false.obs;
+  UserModel? sender;
 
   PackagePickupController(this.uid);
 
@@ -94,6 +33,7 @@ class PackagePickupController extends GetxController {
   void onInit() {
     _fetchUserPhone();
     super.onInit();
+    initializeDateFormatting('th', null);
   }
 
   @override
@@ -121,18 +61,14 @@ class PackagePickupController extends GetxController {
     isSearching.value = false;
   }
 
-  // Stream สำหรับดึงพัสดุที่ถูกส่งมายังผู้ใช้คนนี้ (ผ่านเบอร์โทร)
   Stream<QuerySnapshot> getRecipientPackagesStream() {
     if (userPhone.value.isEmpty) {
       return Stream.empty();
     }
-
-    // NOTE: ลบ orderBy ออกเพื่อเลี่ยง Composite Index Error
-    final baseQuery = FirebaseFirestore.instance
+    return FirebaseFirestore.instance
         .collection('orders')
-        .where('deliveryAddress.receiverPhone', isEqualTo: userPhone.value);
-
-    return baseQuery.snapshots();
+        .where('deliveryAddress.receiverPhone', isEqualTo: userPhone.value)
+        .snapshots();
   }
 
   Future<UserInfo> getUserInfo(String? userId, String defaultName) async {
@@ -182,58 +118,200 @@ class PackagePickupController extends GetxController {
   }
 }
 
-// ------------------------------------------------------------------
-// Page (UI) - PackagePickupPage
-// ------------------------------------------------------------------
-class PackagePickupPage extends StatelessWidget {
+class PackagePickupPage extends StatefulWidget {
   final String uid;
-  final int role; // 0 = User (Sender/Recipient), 1 = Rider
+  final int role;
   const PackagePickupPage({super.key, required this.uid, required this.role});
 
   @override
-  Widget build(BuildContext context) {
-    final controller = Get.put(PackagePickupController(uid));
+  State<PackagePickupPage> createState() => _PackagePickupPageState();
+}
 
-    return Scaffold(
-      backgroundColor: _backgroundColor,
-      body: CustomScrollView(
-        slivers: [
-          _buildHeader(context),
-          SliverPadding(
-            padding: const EdgeInsets.all(20.0),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate(
-                [
-                  _buildSearchBar(controller),
-                  const SizedBox(height: 20),
-                  Obx(() {
-                    if (controller.userPhone.value.isEmpty ||
-                        controller.isSearching.value) {
-                      return const Center(
-                          child: Padding(
-                            padding: EdgeInsets.only(top: 50),
-                            child: Column(
-                              children: [
-                                CircularProgressIndicator(color: _primaryColor),
-                                SizedBox(height: 10),
-                                Text('กำลังโหลดข้อมูล...')
-                              ],
-                            ),
-                          ));
-                    }
-                    return _buildPackagesList(controller);
-                  }),
-                ],
-              ),
-            ),
-          ),
-        ],
+class _PackagePickupPageState extends State<PackagePickupPage> {
+  String? _selectedPackageId;
+  late final PackagePickupController _controller;
+  final MapController _mapController = MapController();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = Get.put(PackagePickupController(widget.uid));
+  }
+
+  String _translateStatus(String status) {
+    switch (status) {
+      case 'pending':
+        return 'รอไรเดอร์รับงาน';
+      case 'accepted':
+        return 'ไรเดอร์รับงานแล้ว';
+      case 'picked_up':
+        return 'รับพัสดุแล้ว';
+      case 'in_transit':
+        return 'กำลังนำส่ง';
+      case 'delivered':
+        return 'จัดส่งสำเร็จ';
+      case 'completed':
+        return 'ได้รับสินค้าแล้ว';
+      default:
+        return status;
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'pending':
+      case 'accepted':
+        return Colors.blue;
+      case 'picked_up':
+      case 'in_transit':
+        return Colors.orange;
+      case 'delivered':
+      case 'completed':
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    bool isDetailPage = _selectedPackageId != null;
+
+    return WillPopScope(
+      onWillPop: () async {
+        if (isDetailPage) {
+          setState(() {
+            _selectedPackageId = null;
+          });
+          return false;
+        }
+        return true;
+      },
+      child: Scaffold(
+        backgroundColor: _backgroundColor,
+        body: isDetailPage
+            ? _buildPackageDetailView(_selectedPackageId!)
+            : _buildPackageListView(),
+        bottomNavigationBar: _buildBottomNavigationBar(context),
       ),
-      bottomNavigationBar: _buildBottomNavigationBar(context),
     );
   }
 
-  Widget _buildPackagesList(PackagePickupController controller) {
+  Widget _buildPackageListView() {
+    return CustomScrollView(
+      slivers: [
+        _buildListHeader(),
+        SliverPadding(
+          padding: const EdgeInsets.all(20.0),
+          sliver: SliverList(
+            delegate: SliverChildListDelegate(
+              [
+                _buildSearchBar(_controller),
+                const SizedBox(height: 20),
+                Obx(() {
+                  if (_controller.userPhone.value.isEmpty ||
+                      _controller.isSearching.value) {
+                    return const Center(
+                        child: Padding(
+                      padding: EdgeInsets.only(top: 50),
+                      child: Column(
+                        children: [
+                          CircularProgressIndicator(color: _primaryColor),
+                          SizedBox(height: 10),
+                          Text('กำลังโหลดข้อมูล...')
+                        ],
+                      ),
+                    ));
+                  }
+                  return _buildPackagesListStream(_controller);
+                }),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPackageDetailView(String packageId) {
+    return Column(
+      children: [
+        AppBar(
+          title: const Text('ติดตามสถานะการจัดส่ง',
+              style: TextStyle(color: Colors.white)),
+          backgroundColor: _primaryColor,
+          iconTheme: const IconThemeData(color: Colors.white),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {
+              setState(() {
+                _selectedPackageId = null;
+              });
+            },
+          ),
+        ),
+        Expanded(
+          child: StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('orders')
+                .doc(packageId)
+                .snapshots(),
+            builder: (context, orderSnapshot) {
+              if (orderSnapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (!orderSnapshot.hasData || !orderSnapshot.data!.exists) {
+                return const Center(child: Text('ไม่พบข้อมูลออเดอร์'));
+              }
+
+              final orderData =
+                  orderSnapshot.data!.data() as Map<String, dynamic>;
+              final riderId = orderData['riderId'] as String?;
+              final customerId = orderData['customerId'] as String?;
+
+              LatLng? riderPosition;
+              if (orderData.containsKey('currentLocation') &&
+                  orderData['currentLocation'] is GeoPoint) {
+                final geoPoint = orderData['currentLocation'] as GeoPoint;
+                riderPosition = LatLng(geoPoint.latitude, geoPoint.longitude);
+              }
+
+              return StreamBuilder<DocumentSnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(customerId)
+                    .snapshots(),
+                builder: (context, senderSnapshot) {
+                  final senderData =
+                      senderSnapshot.data?.data() as Map<String, dynamic>?;
+
+                  if (riderId == null || riderId.isEmpty) {
+                    return _buildDetailContent(
+                        orderData, senderData, null, riderPosition);
+                  }
+
+                  return StreamBuilder<DocumentSnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(riderId)
+                        .snapshots(),
+                    builder: (context, riderSnapshot) {
+                      final riderData =
+                          riderSnapshot.data?.data() as Map<String, dynamic>?;
+                      return _buildDetailContent(
+                          orderData, senderData, riderData, riderPosition);
+                    },
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPackagesListStream(PackagePickupController controller) {
     return StreamBuilder<QuerySnapshot>(
       stream: controller.getRecipientPackagesStream(),
       builder: (context, snapshot) {
@@ -241,11 +319,9 @@ class PackagePickupPage extends StatelessWidget {
           return const Center(
               child: CircularProgressIndicator(color: _primaryColor));
         }
-
         if (snapshot.hasError) {
           return Center(child: Text('เกิดข้อผิดพลาด: ${snapshot.error}'));
         }
-
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return const Center(
             child: Padding(
@@ -277,6 +353,13 @@ class PackagePickupPage extends StatelessWidget {
           );
         }
 
+        allPackages.sort((a, b) {
+          int statusCompare = _statusOrder(a.currentStatus)
+              .compareTo(_statusOrder(b.currentStatus));
+          if (statusCompare != 0) return statusCompare;
+          return 0;
+        });
+
         return Column(
           children: allPackages.map((package) {
             return FutureBuilder<Map<String, String>>(
@@ -293,13 +376,307 @@ class PackagePickupPage extends StatelessWidget {
     );
   }
 
+  int _statusOrder(String status) {
+    switch (status) {
+      case 'delivered':
+        return 0;
+      case 'in_transit':
+        return 1;
+      case 'picked_up':
+        return 2;
+      case 'accepted':
+        return 3;
+      case 'pending':
+        return 4;
+      case 'completed':
+        return 5;
+      default:
+        return 6;
+    }
+  }
+
+  Widget _buildDetailContent(
+      Map<String, dynamic> orderData,
+      Map<String, dynamic>? senderData,
+      Map<String, dynamic>? riderData,
+      LatLng? riderPosition) {
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildMapSection(orderData, riderPosition),
+          const SizedBox(height: 20),
+          _buildCurrentStatusHeader(orderData, senderData, riderData),
+          _buildStatusTimeline(orderData['statusHistory'] ?? []),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMapSection(
+      Map<String, dynamic> orderData, LatLng? riderPosition) {
+    final deliveryAddress =
+        orderData['deliveryAddress'] as Map<String, dynamic>? ?? {};
+    final deliveryGps = deliveryAddress['gps'] as GeoPoint?;
+    final LatLng? deliveryLatLng = deliveryGps != null
+        ? LatLng(deliveryGps.latitude, deliveryGps.longitude)
+        : null;
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.4,
+      margin: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: const [
+          BoxShadow(color: Colors.black26, offset: Offset(0, 4), blurRadius: 8)
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(15),
+        child: FlutterMap(
+          mapController: _mapController,
+          options: MapOptions(
+            initialCenter:
+                riderPosition ?? deliveryLatLng ?? const LatLng(16.24, 103.25),
+            initialZoom: 15.0,
+          ),
+          children: [
+            TileLayer(
+              urlTemplate:
+                  'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=cb153d15cb4e41f59e25cfda6468f1a0',
+              userAgentPackageName: 'com.example.app',
+            ),
+            MarkerLayer(
+              markers: [
+                if (riderPosition != null)
+                  Marker(
+                    point: riderPosition,
+                    width: 80,
+                    height: 80,
+                    child: const Icon(Icons.two_wheeler,
+                        color: Colors.blue, size: 40),
+                  ),
+                if (deliveryLatLng != null)
+                  Marker(
+                    point: deliveryLatLng,
+                    width: 80,
+                    height: 80,
+                    child: const Tooltip(
+                      message: 'จุดหมายปลายทาง',
+                      child: Icon(Icons.gps_fixed, color: Colors.red, size: 40),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCurrentStatusHeader(Map<String, dynamic> orderData,
+      Map<String, dynamic>? senderData, Map<String, dynamic>? riderData) {
+    final status = orderData['currentStatus'] ?? 'pending';
+    final orderDetails =
+        orderData['orderDetails']?.toString().trim() ?? 'ไม่มีรายละเอียด';
+
+    final senderName = senderData?['fullname'] ?? 'ไม่มีข้อมูล';
+    final senderPhone = senderData?['phone'] ?? '-';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(orderDetails,
+              style:
+                  const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          const Divider(height: 20),
+          Row(
+            children: [
+              Text('สถานะปัจจุบัน: ',
+                  style: TextStyle(fontSize: 16, color: Colors.grey.shade700)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _getStatusColor(status).withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  _translateStatus(status),
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: _getStatusColor(status)),
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 20),
+          const Text('ข้อมูลผู้ส่ง',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          Text('ชื่อ: $senderName'),
+          Text('เบอร์โทร: $senderPhone'),
+          if (riderData != null) ...[
+            const Divider(height: 20),
+            _buildRiderInfoSection(riderData),
+          ],
+          const Divider(height: 20),
+          const Text('ประวัติการจัดส่ง',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRiderInfoSection(Map<String, dynamic> riderData) {
+    final riderName = riderData['fullname'] ?? 'ไม่มีข้อมูล';
+    final riderPhone = riderData['phone'] ?? '-';
+    final vehicleNo = riderData['vehicle_no'] ?? '-';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('ข้อมูลไรเดอร์',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        Text('ชื่อ: $riderName'),
+        Text('เบอร์โทร: $riderPhone'),
+        Text('ทะเบียนรถ: $vehicleNo'),
+      ],
+    );
+  }
+
+  Widget _buildStatusTimeline(List<dynamic> statusHistory) {
+    if (statusHistory.isEmpty) {
+      return const Center(child: Text('ไม่มีประวัติสถานะ'));
+    }
+    statusHistory.sort((a, b) =>
+        (b['timestamp'] as Timestamp).compareTo(a['timestamp'] as Timestamp));
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: statusHistory.length,
+      itemBuilder: (context, index) {
+        final history = statusHistory[index] as Map<String, dynamic>;
+        final status = history['status'] as String;
+        final timestamp = (history['timestamp'] as Timestamp?)?.toDate();
+        final imageUrl = history['imgOfStatus'] as String?;
+        final formattedTime = timestamp != null
+            ? DateFormat('dd MMM yyyy, HH:mm', 'th').format(timestamp)
+            : 'ไม่มีข้อมูลเวลา';
+        bool isFirst = index == 0;
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Column(
+                children: [
+                  Icon(
+                    isFirst
+                        ? Icons.radio_button_checked
+                        : Icons.circle_outlined,
+                    color: isFirst ? _getStatusColor(status) : Colors.grey,
+                    size: 20,
+                  ),
+                  if (index != statusHistory.length - 1)
+                    Container(
+                        height: (imageUrl != null && imageUrl.isNotEmpty)
+                            ? 120
+                            : 40,
+                        width: 2,
+                        color: Colors.grey.shade300)
+                ],
+              ),
+              const SizedBox(width: 15),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _translateStatus(status),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight:
+                            isFirst ? FontWeight.bold : FontWeight.normal,
+                        color: isFirst ? Colors.black : Colors.grey.shade700,
+                      ),
+                    ),
+                    Text(formattedTime,
+                        style: TextStyle(
+                            color: Colors.grey.shade600, fontSize: 12)),
+                    if (imageUrl != null &&
+                        imageUrl.isNotEmpty &&
+                        imageUrl != 'received by recipient')
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: GestureDetector(
+                          onTap: () => _showFullScreenImage(context, imageUrl),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8.0),
+                            child: Image.network(
+                              imageUrl,
+                              height: 100,
+                              width: 100,
+                              fit: BoxFit.cover,
+                              loadingBuilder: (context, child, progress) {
+                                return progress == null
+                                    ? child
+                                    : const SizedBox(
+                                        height: 100,
+                                        width: 100,
+                                        child: Center(
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2)));
+                              },
+                              errorBuilder: (context, error, stackTrace) {
+                                return const Icon(Icons.error,
+                                    color: Colors.red);
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showFullScreenImage(BuildContext context, String imageUrl) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(10),
+          child: GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            child: InteractiveViewer(
+              panEnabled: false,
+              boundaryMargin: const EdgeInsets.all(20),
+              minScale: 0.5,
+              maxScale: 4,
+              child: Image.network(imageUrl),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<Map<String, String>> _fetchNames(PackagePickupController controller,
       String customerId, String? riderId) async {
     final senderInfo = await controller.getUserInfo(customerId, 'ผู้ส่ง');
     final riderInfo = riderId != null
         ? await controller.getUserInfo(riderId, 'ไรเดอร์')
         : UserInfo('ยังไม่มีไรเดอร์', '-');
-
     return {
       'sender': '${senderInfo.name}|${senderInfo.phone}',
       'rider': '${riderInfo.name}|${riderInfo.phone}',
@@ -311,23 +688,19 @@ class PackagePickupPage extends StatelessWidget {
       List<PackageModel> allPackages,
       String filterText) async {
     final filteredList = <PackageModel>[];
-    final lowerCaseFilter = filterText.toLowerCase();
-
     for (var package in allPackages) {
       final senderInfo =
           await controller.getUserInfo(package.customerId, 'ผู้ส่ง');
       final riderInfo = package.riderId != null
           ? await controller.getUserInfo(package.riderId, 'ไรเดอร์')
           : UserInfo('ยังไม่มีไรเดอร์', '-');
-
       bool matches = false;
-
-      if (package.id.toLowerCase().contains(lowerCaseFilter)) matches = true;
-      if (senderInfo.name.toLowerCase().contains(lowerCaseFilter) ||
-          senderInfo.phone.contains(lowerCaseFilter)) matches = true;
-      if (riderInfo.name.toLowerCase().contains(lowerCaseFilter) ||
-          riderInfo.phone.contains(lowerCaseFilter)) matches = true;
-      if (package.orderDetails.toLowerCase().contains(lowerCaseFilter))
+      if (package.id.toLowerCase().contains(filterText)) matches = true;
+      if (senderInfo.name.toLowerCase().contains(filterText) ||
+          senderInfo.phone.contains(filterText)) matches = true;
+      if (riderInfo.name.toLowerCase().contains(filterText) ||
+          riderInfo.phone.contains(filterText)) matches = true;
+      if (package.orderDetails.toLowerCase().contains(filterText))
         matches = true;
 
       if (matches) {
@@ -357,17 +730,17 @@ class PackagePickupPage extends StatelessWidget {
         final senderInfo = package.senderInfo!;
         final riderInfo = package.riderInfo!;
         return _buildPackageItem(
-          package,
-          _getStatusText(package.currentStatus),
-          _getStatusColor(package.currentStatus),
-          false,
-          senderInfo.name,
-          senderInfo.phone,
-          riderInfo.name,
-          riderInfo.phone,
-          controller.confirmPackageReception,
-          uid,
-          role,
+          package: package,
+          senderName: senderInfo.name,
+          senderPhone: senderInfo.phone,
+          riderName: riderInfo.name,
+          riderPhone: riderInfo.phone,
+          onConfirm: controller.confirmPackageReception,
+          onTap: () {
+            setState(() {
+              _selectedPackageId = package.id;
+            });
+          },
         );
       }).toList(),
     );
@@ -387,90 +760,44 @@ class PackagePickupPage extends StatelessWidget {
 
     String senderInfo = nameSnapshot.data?['sender'] ?? 'กำลังโหลด...';
     String riderInfo = nameSnapshot.data?['rider'] ?? 'กำลังโหลด...';
-
     final senderParts = senderInfo.split('|');
     final riderParts = riderInfo.split('|');
 
     return _buildPackageItem(
-      package,
-      _getStatusText(package.currentStatus),
-      _getStatusColor(package.currentStatus),
-      false,
-      senderParts[0],
-      senderParts.length > 1 ? senderParts[1] : '-',
-      riderParts[0],
-      riderParts.length > 1 ? riderParts[1] : '-',
-      controller.confirmPackageReception,
-      uid,
-      role,
+      package: package,
+      senderName: senderParts[0],
+      senderPhone: senderParts.length > 1 ? senderParts[1] : '-',
+      riderName: riderParts[0],
+      riderPhone: riderParts.length > 1 ? riderParts[1] : '-',
+      onConfirm: controller.confirmPackageReception,
+      onTap: () {
+        setState(() {
+          _selectedPackageId = package.id;
+        });
+      },
     );
   }
 
-  String _getStatusText(String status) {
-    switch (status) {
-      case 'pending':
-        return 'รอไรเดอร์รับงาน';
-      case 'assigned':
-        return 'ไรเดอร์รับงานแล้ว';
-      case 'picked_up':
-        return 'รับพัสดุแล้ว';
-      case 'in_transit':
-        return 'กำลังนำส่ง';
-      case 'delivered':
-        return 'จัดส่งสำเร็จ';
-      case 'completed':
-        return 'ได้รับสินค้าแล้ว ✔️';
-      default:
-        return 'สถานะไม่ทราบ';
-    }
-  }
-
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'pending':
-        return Colors.blueGrey;
-      case 'assigned':
-        return Colors.orange;
-      case 'picked_up':
-        return Colors.amber.shade800;
-      case 'in_transit':
-        return Colors.amber.shade800;
-      case 'delivered':
-        return Colors.green.shade600;
-      case 'completed':
-        return Colors.green;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  Widget _buildPackageItem(
-      PackageModel package,
-      String statusText,
-      Color statusColor,
-      bool showConfirmButton,
-      String senderName,
-      String senderPhone,
-      String riderName,
-      String riderPhone,
-      Function(String) onConfirm,
-      String currentUid,
-      int currentRole) {
-    final bool showDeliveredImage = (package.currentStatus == 'delivered' ||
-            package.currentStatus == 'completed') &&
-        package.deliveredImageUrl?.isNotEmpty == true;
+  Widget _buildPackageItem({
+    required PackageModel package,
+    required String senderName,
+    required String senderPhone,
+    required String riderName,
+    required String riderPhone,
+    required Function(String) onConfirm,
+    required VoidCallback onTap,
+  }) {
+    final statusText = _translateStatus(package.currentStatus);
+    final statusColor = _getStatusColor(package.currentStatus);
+    final bool showConfirmButton = package.currentStatus == 'delivered';
 
     return Card(
       margin: const EdgeInsets.only(bottom: 15),
       elevation: 5,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: InkWell(
-        onTap: () {
-          // *** สำคัญ: ส่ง role: 0 (User/Recipient) ไปยังหน้าติดตามสถานะ ***
-          // เราใช้ role 0 ที่หมายถึง User ในฐานะผู้รับ
-          Get.to(() => OrderStatusPage(
-              orderId: package.id, uid: currentUid, role: 0)); 
-        },
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(15),
         child: Padding(
           padding: const EdgeInsets.all(15.0),
           child: Column(
@@ -479,18 +806,16 @@ class PackagePickupPage extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.inventory_2_outlined,
-                          color: _primaryColor),
-                      const SizedBox(width: 8),
-                      Text(
-                          'พัสดุ: ${package.orderDetails.length > 30 ? package.orderDetails.substring(0, 30) + '...' : package.orderDetails}',
-                          style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: _primaryColor)),
-                    ],
+                  Flexible(
+                    child: Text(
+                      'พัสดุ: ${package.orderDetails}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: _primaryColor,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                   Container(
                     padding:
@@ -508,31 +833,23 @@ class PackagePickupPage extends StatelessWidget {
               ),
               const Divider(height: 15, thickness: 1),
               _buildDetailRow(Icons.person, 'ผู้ส่ง:', senderName, senderPhone),
-              _buildDetailRow(
-                  Icons.two_wheeler_outlined, 'ไรเดอร์:', riderName, riderPhone),
+              _buildDetailRow(Icons.two_wheeler_outlined, 'ไรเดอร์:', riderName,
+                  riderPhone),
               _buildDetailRow(Icons.qr_code, 'รหัสพัสดุ:', package.id, null),
-              if (showDeliveredImage)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 10),
-                    const Text('หลักฐานการจัดส่งสำเร็จ:',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 14)),
-                    const SizedBox(height: 5),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.network(
-                        package.deliveredImageUrl!,
-                        height: 100,
-                        width: 100,
-                        fit: BoxFit.cover,
-                        errorBuilder: (c, e, s) =>
-                            const Icon(Icons.broken_image, size: 100),
-                      ),
+              if (showConfirmButton)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10.0),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      icon: const Icon(Icons.check_circle_outline),
+                      label: const Text('ฉันได้รับพัสดุแล้ว'),
+                      onPressed: () => onConfirm(package.id),
+                      style:
+                          FilledButton.styleFrom(backgroundColor: Colors.green),
                     ),
-                  ],
-                ),
+                  ),
+                )
             ],
           ),
         ),
@@ -578,39 +895,22 @@ class PackagePickupPage extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildListHeader() {
     return SliverAppBar(
-      expandedHeight: 150.0,
       floating: false,
       pinned: true,
       backgroundColor: _primaryColor,
-      flexibleSpace: FlexibleSpaceBar(
-        titlePadding: EdgeInsets.zero,
+      flexibleSpace: const FlexibleSpaceBar(
+        titlePadding: EdgeInsets.only(left: 40),
         centerTitle: false,
-        title: const Padding(
-          padding: EdgeInsets.only(left: 20, bottom: 8),
+        title: Padding(
+          padding: EdgeInsets.only(left: 20, bottom: 15),
           child: Text(
-            'พัสดุถึงคุณ',
+            'พัสดุที่ต้องรับ',
             style: TextStyle(
-              fontSize: 18,
+              fontSize: 30,
               fontWeight: FontWeight.bold,
               color: Colors.white,
-            ),
-          ),
-        ),
-        background: ClipPath(
-          clipper: HeaderClipper(),
-          child: Container(
-            color: _primaryColor,
-            alignment: Alignment.centerLeft,
-            padding: const EdgeInsets.only(left: 20, top: 50),
-            child: const Text(
-              'รายการพัสดุรอรับ',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
             ),
           ),
         ),
@@ -644,7 +944,6 @@ class PackagePickupPage extends StatelessWidget {
           border: InputBorder.none,
           prefixIcon: const Icon(Icons.search, color: _primaryColor),
           suffixIcon: IconButton(
-            // ปุ่มค้นหา
             icon: const Icon(Icons.send, color: _primaryColor),
             onPressed: controller.performSearch,
           ),
@@ -659,8 +958,7 @@ class PackagePickupPage extends StatelessWidget {
       decoration: const BoxDecoration(
         color: _primaryColor,
         boxShadow: [
-          BoxShadow(
-              color: Colors.black12, offset: Offset(0, -2), blurRadius: 5),
+          BoxShadow(color: Colors.black12, offset: Offset(0, -2), blurRadius: 5)
         ],
       ),
       child: BottomNavigationBar(
@@ -683,9 +981,9 @@ class PackagePickupPage extends StatelessWidget {
         currentIndex: 0,
         onTap: (index) {
           if (index == 0) {
-            Get.offAll(() => HomeScreen(uid: uid, role: role));
+            Get.offAll(() => HomeScreen(uid: widget.uid, role: widget.role));
           } else if (index == 1) {
-            Get.to(() => HistoryPage(uid: uid, role: role));
+            Get.to(() => HistoryPage(uid: widget.uid, role: widget.role));
           } else if (index == 2) {
             Get.offAll(() => const SpeedDerApp());
           }
@@ -695,12 +993,12 @@ class PackagePickupPage extends StatelessWidget {
   }
 }
 
-class HeaderClipper extends CustomClipper<Path> {
+class HeaderClipper extends CustomClipper<ui.Path> {
   @override
-  Path getClip(Size size) {
+  ui.Path getClip(Size size) {
     double h = size.height;
     double w = size.width;
-    Path path = Path();
+    ui.Path path = ui.Path();
 
     path.lineTo(0, h * 0.85);
     path.quadraticBezierTo(w * 0.15, h * 0.95, w * 0.45, h * 0.85);
@@ -711,5 +1009,5 @@ class HeaderClipper extends CustomClipper<Path> {
   }
 
   @override
-  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
+  bool shouldReclip(CustomClipper<ui.Path> oldClipper) => false;
 }

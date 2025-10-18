@@ -1,5 +1,10 @@
 // file: lib/models/package_model.dart
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:delivery_project/models/userinfo_model.dart';
+import 'package:delivery_project/page/package_pickup_page.dart';
+import 'package:get/get.dart';
+
 class Package {
   final String id;
   final String title;
@@ -14,4 +19,62 @@ class Package {
     required this.destination,
     this.imageUrl,
   });
+}
+
+class PackageModel {
+  final String id;
+  final String source;
+  final String destination;
+  final String currentStatus;
+  final String customerId;
+  final String? riderId;
+  final String orderDetails;
+  final String? deliveredImageUrl;
+  UserInfo? senderInfo;
+  UserInfo? riderInfo;
+
+  PackageModel({
+    required this.id,
+    required this.source,
+    required this.destination,
+    required this.currentStatus,
+    required this.customerId,
+    this.riderId,
+    required this.orderDetails,
+    this.deliveredImageUrl,
+    this.senderInfo,
+    this.riderInfo,
+  });
+
+  factory PackageModel.fromFirestore(DocumentSnapshot doc) {
+    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    String sourceDetail = data['pickupAddress']?['detail'] ?? 'ไม่ระบุต้นทาง';
+    String destinationDetail =
+        data['deliveryAddress']?['detail'] ?? 'ไม่ระบุปลายทาง';
+
+    String? deliveredImgUrl;
+    if (data['currentStatus'] == 'delivered' ||
+        data['currentStatus'] == 'completed') {
+      deliveredImgUrl = data['deliveredImageUrl'];
+
+      if (deliveredImgUrl == null && data['statusHistory'] is List) {
+        final deliveredEntry = (data['statusHistory'] as List).firstWhereOrNull(
+            (h) =>
+                h['status'] == 'delivered' &&
+                h['imgOfStatus']?.isNotEmpty == true);
+        deliveredImgUrl = deliveredEntry?['imgOfStatus'];
+      }
+    }
+
+    return PackageModel(
+      id: doc.id,
+      source: 'จาก: $sourceDetail',
+      destination: 'ไปที่: $destinationDetail',
+      currentStatus: data['currentStatus'] ?? 'unknown',
+      customerId: data['customerId'] ?? '',
+      riderId: data['riderId'],
+      orderDetails: data['orderDetails'] ?? 'ไม่ระบุรายละเอียดสินค้า',
+      deliveredImageUrl: deliveredImgUrl,
+    );
+  }
 }
