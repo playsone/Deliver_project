@@ -13,6 +13,37 @@ import 'package:location/location.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:delivery_project/page/order_status_page.dart';
 
+// Constants
+const Color _primaryColor = Color(0xFFC70808);
+
+// ------------------------------------------------------------------
+// NEW: User Info Model for Receiver Selection
+// ------------------------------------------------------------------
+class UserInfo {
+  final String uid;
+  final String name;
+  final String phone;
+  final String addressDetail; // ใช้สำหรับแสดงที่อยู่หลักของผู้รับ (ถ้ามี)
+
+  UserInfo({
+    required this.uid,
+    required this.name,
+    required this.phone,
+    this.addressDetail = '',
+  });
+
+  factory UserInfo.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return UserInfo(
+      uid: doc.id,
+      name: data['fullname'] ?? 'ไม่ระบุชื่อ',
+      phone: data['phone'] ?? '-',
+      addressDetail:
+          data['addressDetail'] ?? '', // สมมติว่ามี addressDetail ใน users
+    );
+  }
+}
+
 // ------------------------------------------------------------------
 // Controller (จัดการ Logic ทั้งหมดของหน้า)
 // ------------------------------------------------------------------
@@ -42,6 +73,9 @@ class SendPackageController extends GetxController {
   final Rx<LatLng?> selectedDestinationLocation = Rx(null);
   final RxString destinationAddressText = 'แตะเพื่อเลือกบนแผนที่'.obs;
   StreamSubscription<LocationData>? _locationSubscription;
+
+  // NEW: Receiver Info State
+  final Rx<UserInfo?> selectedReceiver = Rx(null);
 
   @override
   void onInit() {
@@ -101,7 +135,47 @@ class SendPackageController extends GetxController {
     });
   }
 
-  // **แก้ไข:** เปลี่ยนจากการไปหน้าใหม่ เป็นการเปิด Modal Bottom Sheet
+  // NEW: ฟังก์ชันค้นหาผู้รับ
+  Future<List<UserInfo>> searchReceiverByPhone(String phone) async {
+    if (phone.isEmpty || phone.length < 9) return [];
+
+    try {
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where('phone', isEqualTo: phone)
+          .limit(1)
+          .get();
+
+      return querySnapshot.docs
+          .map((doc) => UserInfo.fromFirestore(doc))
+          .toList();
+    } catch (e) {
+      print('Error searching user: $e');
+      return [];
+    }
+  }
+
+  // NEW: ฟังก์ชันเลือกผู้รับจากผลการค้นหา
+  void selectReceiver(UserInfo info) {
+    selectedReceiver.value = info;
+    receiverNameController.text = info.name;
+    receiverPhoneController.text = info.phone;
+    deliveryAddressController.text = info.addressDetail;
+    Get.back(); // ปิด Modal
+  }
+
+  // NEW: เปิด Modal ค้นหาผู้รับ
+  Future<void> openReceiverSearchModal() async {
+    await Get.bottomSheet(
+      _ReceiverSearchModal(controller: this),
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+    );
+  }
+
   Future<void> selectDestinationOnMap() async {
     final initialLatLng = currentUserLocation.value != null
         ? LatLng(currentUserLocation.value!.latitude!,
@@ -243,18 +317,14 @@ class SendPackagePage extends StatelessWidget {
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
                   Obx(() {
-                    if (controller.step.value == 1) {
+                    if (controller.step.value == 1)
                       return _buildStepOneForm(context, controller);
-                    }
-                    if (controller.step.value == 2) {
+                    if (controller.step.value == 2)
                       return _buildStepTwoConfirmation(context, controller);
-                    }
-                    if (controller.step.value == 3) {
+                    if (controller.step.value == 3)
                       return _buildStepThreeFinalConfirmation(controller);
-                    }
-                    if (controller.step.value == 4) {
+                    if (controller.step.value == 4)
                       return _buildStepFourSuccess();
-                    }
                     return const SizedBox.shrink();
                   }),
                 ]),
@@ -301,15 +371,23 @@ class SendPackagePage extends StatelessWidget {
         const Text("ข้อมูลผู้รับ",
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
+
+        // NEW: ปุ่มสำหรับค้นหาผู้รับ
+        _buildSearchReceiverButton(controller),
+        const SizedBox(height: 15),
+
         _buildTextField(controller.receiverNameController, 'ชื่อผู้รับ',
-            Icons.person_outline),
+            Icons.person_outline,
+            isReadOnly: controller.selectedReceiver.value != null),
         const SizedBox(height: 15),
         _buildTextField(controller.receiverPhoneController, 'เบอร์โทรผู้รับ',
             Icons.phone_outlined,
-            keyboardType: TextInputType.phone),
+            keyboardType: TextInputType.phone,
+            isReadOnly: controller.selectedReceiver.value != null),
         const SizedBox(height: 15),
         _buildTextField(controller.deliveryAddressController,
-            'รายละเอียดที่อยู่ปลายทาง', Icons.location_city),
+            'รายละเอียดที่อยู่ปลายทาง', Icons.location_city,
+            maxLines: 3, isReadOnly: controller.selectedReceiver.value != null),
         const SizedBox(height: 15),
         _buildMapPickerField(controller),
         const SizedBox(height: 25),
@@ -325,6 +403,53 @@ class SendPackagePage extends StatelessWidget {
         _buildPrimaryButton('ดำเนินการต่อ', controller.submitStep1),
       ],
     );
+  }
+
+  // NEW: Widget ปุ่มค้นหาผู้รับ
+  Widget _buildSearchReceiverButton(SendPackageController controller) {
+    return Obx(() => GestureDetector(
+          onTap: controller.openReceiverSearchModal,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: controller.selectedReceiver.value != null
+                    ? Colors.green
+                    : Colors.grey.shade300,
+                width: controller.selectedReceiver.value != null ? 2 : 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.contact_phone,
+                    color: controller.selectedReceiver.value != null
+                        ? Colors.green
+                        : _primaryColor),
+                const SizedBox(width: 10),
+                Expanded(
+                    child: Text(
+                  controller.selectedReceiver.value != null
+                      ? 'ผู้รับที่เลือก: ${controller.selectedReceiver.value!.name} (${controller.selectedReceiver.value!.phone})'
+                      : 'แตะเพื่อค้นหาผู้รับจากเบอร์โทร',
+                  style: TextStyle(
+                      color: controller.selectedReceiver.value != null
+                          ? Colors.black
+                          : Colors.grey.shade600,
+                      fontWeight: controller.selectedReceiver.value != null
+                          ? FontWeight.bold
+                          : FontWeight.normal),
+                )),
+                Icon(Icons.search,
+                    size: 20,
+                    color: controller.selectedReceiver.value != null
+                        ? Colors.green
+                        : Colors.grey),
+              ],
+            ),
+          ),
+        ));
   }
 
   Widget _buildUserInfoMap(SendPackageController controller) {
@@ -521,11 +646,14 @@ class SendPackagePage extends StatelessWidget {
 
   Widget _buildTextField(
       TextEditingController controller, String hint, IconData icon,
-      {int maxLines = 1, TextInputType? keyboardType}) {
+      {int maxLines = 1,
+      TextInputType? keyboardType,
+      bool isReadOnly = false}) {
     return TextField(
       controller: controller,
       maxLines: maxLines,
       keyboardType: keyboardType,
+      readOnly: isReadOnly, // NEW: เพิ่ม readOnly
       decoration: InputDecoration(
         hintText: hint,
         filled: true,
@@ -614,6 +742,110 @@ class SendPackagePage extends StatelessWidget {
           Text(message,
               style:
                   const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+}
+
+// ------------------------------------------------------------------
+// **NEW:** WIDGET สำหรับ Modal ค้นหาผู้รับ
+// ------------------------------------------------------------------
+class _ReceiverSearchModal extends StatefulWidget {
+  final SendPackageController controller;
+  const _ReceiverSearchModal({required this.controller});
+
+  @override
+  State<_ReceiverSearchModal> createState() => _ReceiverSearchModalState();
+}
+
+class _ReceiverSearchModalState extends State<_ReceiverSearchModal> {
+  final TextEditingController _phoneController = TextEditingController();
+  List<UserInfo> _searchResults = [];
+  bool _isLoading = false;
+
+  Future<void> _search() async {
+    setState(() {
+      _isLoading = true;
+      _searchResults = [];
+    });
+
+    final results = await widget.controller
+        .searchReceiverByPhone(_phoneController.text.trim());
+
+    setState(() {
+      _searchResults = results;
+      _isLoading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.8,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('ค้นหาผู้รับจากเบอร์โทร',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              IconButton(
+                  onPressed: () => Get.back(), icon: const Icon(Icons.close)),
+            ],
+          ),
+          const Divider(),
+          TextField(
+            controller: _phoneController,
+            keyboardType: TextInputType.phone,
+            decoration: InputDecoration(
+              hintText: 'กรอกเบอร์โทรศัพท์ผู้รับ',
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.search, color: _primaryColor),
+                onPressed: _search,
+              ),
+              border: const OutlineInputBorder(),
+            ),
+            onSubmitted: (_) => _search(),
+          ),
+          const SizedBox(height: 20),
+          if (_isLoading)
+            const Center(child: CircularProgressIndicator(color: _primaryColor))
+          else if (_searchResults.isEmpty)
+            Center(
+              child: Text(
+                _phoneController.text.isEmpty
+                    ? 'กรุณากรอกเบอร์โทรเพื่อค้นหา'
+                    : 'ไม่พบผู้ใช้ที่ลงทะเบียนด้วยเบอร์โทร ${_phoneController.text}',
+                style: const TextStyle(color: Colors.grey),
+              ),
+            )
+          else
+            Expanded(
+              child: ListView.builder(
+                itemCount: _searchResults.length,
+                itemBuilder: (context, index) {
+                  final user = _searchResults[index];
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    child: ListTile(
+                      leading:
+                          const Icon(Icons.person_pin, color: Colors.green),
+                      title: Text(user.name,
+                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: Text(
+                          '${user.phone}\nที่อยู่: ${user.addressDetail.isEmpty ? "ไม่มีข้อมูลที่อยู่หลัก" : user.addressDetail}'),
+                      isThreeLine: true,
+                      onTap: () {
+                        widget.controller.selectReceiver(user);
+                      },
+                    ),
+                  );
+                },
+              ),
+            ),
         ],
       ),
     );
