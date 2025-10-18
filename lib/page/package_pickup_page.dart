@@ -9,6 +9,7 @@ import 'package:delivery_project/page/order_status_page.dart';
 // Constants (อ้างอิงจากธีมหลัก)
 const Color _primaryColor = Color(0xFFC70808);
 const Color _backgroundColor = Color(0xFFFDE9E9);
+const Color _accentColor = Color(0xFF0D47A1); // New accent color for details
 
 // ------------------------------------------------------------------
 // Model (ปรับปรุง: เพิ่ม orderDetails และ deliveredImageUrl)
@@ -138,7 +139,10 @@ class PackagePickupController extends GetxController {
 
     final baseQuery = FirebaseFirestore.instance
         .collection('orders')
-        .where('deliveryAddress.receiverPhone', isEqualTo: userPhone.value);
+        .where('deliveryAddress.receiverPhone', isEqualTo: userPhone.value)
+        // **BUG FIX: ต้องมี orderBy เพื่อให้ Firebase ทำงานได้หากไม่มี index field**
+        // Re-added orderBy for better UX (newest first)
+        .orderBy('createdAt', descending: true); 
 
     return baseQuery.snapshots();
   }
@@ -161,8 +165,10 @@ class PackagePickupController extends GetxController {
     }
   }
 
-  // 3. ฟังก์ชันสำหรับอัพเดทสถานะเป็น 'completed' (เหมือนเดิม)
+  // 3. ฟังก์ชันสำหรับอัพเดทสถานะเป็น 'completed' (ถูกเอาออกจาก UI แต่ยังคงไว้ใน Controller)
   Future<void> confirmPackageReception(String orderId) async {
+    // ฟังก์ชันนี้ไม่ได้ถูกเรียกใช้แล้วหลังจากเอาปุ่มออก
+    // แต่ยังคงไว้ในกรณีที่ต้องมีการยืนยันผ่านช่องทางอื่น
     Get.dialog(
         const Center(child: CircularProgressIndicator(color: _primaryColor)),
         barrierDismissible: false);
@@ -224,15 +230,15 @@ class PackagePickupPage extends StatelessWidget {
                         controller.isSearching.value) {
                       return const Center(
                           child: Padding(
-                        padding: EdgeInsets.only(top: 50),
-                        child: Column(
-                          children: [
-                            CircularProgressIndicator(color: _primaryColor),
-                            SizedBox(height: 10),
-                            Text('กำลังโหลดข้อมูล...')
-                          ],
-                        ),
-                      ));
+                            padding: EdgeInsets.only(top: 50),
+                            child: Column(
+                              children: [
+                                CircularProgressIndicator(color: _primaryColor),
+                                SizedBox(height: 10),
+                                Text('กำลังโหลดข้อมูล...')
+                              ],
+                            ),
+                          ));
                     }
                     // เรียกใช้ StreamBuilder
                     return _buildPackagesList(controller);
@@ -310,7 +316,6 @@ class PackagePickupPage extends StatelessWidget {
     );
   }
 
-  /// **NEW: ฟังก์ชันที่ขาดหายไป**
   /// ดึงชื่อผู้ส่งและไรเดอร์พร้อมกัน
   Future<Map<String, String>> _fetchNames(PackagePickupController controller,
       String customerId, String? riderId) async {
@@ -326,7 +331,7 @@ class PackagePickupPage extends StatelessWidget {
     };
   }
 
-  // NEW: ฟังก์ชันที่ใช้ดึงชื่อผู้ส่ง/ไรเดอร์ และกรองข้อมูล
+  // ฟังก์ชันที่ใช้ดึงชื่อผู้ส่ง/ไรเดอร์ และกรองข้อมูล
   Future<List<PackageModel>> _fetchNamesAndFilter(
       PackagePickupController controller,
       List<PackageModel> allPackages,
@@ -370,7 +375,7 @@ class PackagePickupPage extends StatelessWidget {
     return filteredList;
   }
 
-  // NEW: ฟังก์ชันที่สร้างรายการเมื่อมีการค้นหา
+  // ฟังก์ชันที่สร้างรายการเมื่อมีการค้นหา
   Widget _buildFilteredPackageList(
       PackagePickupController controller, List<PackageModel> filteredPackages) {
     if (filteredPackages.isEmpty) {
@@ -393,7 +398,7 @@ class PackagePickupPage extends StatelessWidget {
           package,
           _getStatusText(package.currentStatus),
           _getStatusColor(package.currentStatus),
-          package.currentStatus == 'delivered',
+          false, // เอาปุ่มยืนยันออก
           senderInfo.name,
           senderInfo.phone,
           riderInfo.name,
@@ -406,7 +411,7 @@ class PackagePickupPage extends StatelessWidget {
     );
   }
 
-  // NEW: ฟังก์ชันย่อยสำหรับสร้าง Item (กรณีไม่มีการค้นหา)
+  // ฟังก์ชันย่อยสำหรับสร้าง Item (กรณีไม่มีการค้นหา)
   Widget _buildPackageItemFromFuture(
     PackageModel package,
     AsyncSnapshot<Map<String, String>> nameSnapshot,
@@ -430,7 +435,7 @@ class PackagePickupPage extends StatelessWidget {
       package,
       _getStatusText(package.currentStatus),
       _getStatusColor(package.currentStatus),
-      package.currentStatus == 'delivered',
+      false, // เอาปุ่มยืนยันออก
       senderParts[0],
       senderParts.length > 1 ? senderParts[1] : '-',
       riderParts[0],
@@ -441,7 +446,7 @@ class PackagePickupPage extends StatelessWidget {
     );
   }
 
-  // NEW: Helper สำหรับดึง Status Text
+  // Helper สำหรับดึง Status Text
   String _getStatusText(String status) {
     switch (status) {
       case 'pending':
@@ -461,16 +466,19 @@ class PackagePickupPage extends StatelessWidget {
     }
   }
 
-  // NEW: Helper สำหรับดึง Status Color
+  // Helper สำหรับดึง Status Color (ปรับปรุงสี Completed/Delivered ให้เป็นสีเดียว)
   Color _getStatusColor(String status) {
     switch (status) {
       case 'pending':
+        return Colors.blueGrey;
       case 'assigned':
         return Colors.orange;
       case 'picked_up':
+        return Colors.amber.shade800;
       case 'in_transit':
         return Colors.amber.shade800;
       case 'delivered':
+        return Colors.green.shade600; // ใช้สีเข้มขึ้น
       case 'completed':
         return Colors.green;
       default:
@@ -478,12 +486,12 @@ class PackagePickupPage extends StatelessWidget {
     }
   }
 
-  // 5. Widget แสดงรายการพัสดุ (ปรับปรุงให้แสดงชื่อผู้ส่ง/ไรเดอร์ + รูปหลักฐาน)
+  // 5. Widget แสดงรายการพัสดุ (ปรับปรุงให้แสดงชื่อผู้ส่ง/ไรเดอร์ + รูปหลักฐาน + ตัดปุ่มออก)
   Widget _buildPackageItem(
       PackageModel package,
       String statusText,
       Color statusColor,
-      bool showConfirmButton,
+      bool showConfirmButton, // NOTE: Removed the confirmation logic
       String senderName,
       String senderPhone,
       String riderName,
@@ -498,7 +506,7 @@ class PackagePickupPage extends StatelessWidget {
 
     return Card(
       margin: const EdgeInsets.only(bottom: 15),
-      elevation: 3,
+      elevation: 5, // เพิ่มเงา
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: InkWell(
         onTap: () {
@@ -515,11 +523,18 @@ class PackagePickupPage extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('พัสดุที่ได้รับ',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: _primaryColor)),
+                  Row(
+                    children: [
+                      const Icon(Icons.inventory_2_outlined,
+                          color: _primaryColor),
+                      const SizedBox(width: 8),
+                      Text('พัสดุ: ${package.orderDetails.length > 30 ? package.orderDetails.substring(0, 30) + '...' : package.orderDetails}',
+                          style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: _primaryColor)),
+                    ],
+                  ),
                   Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -534,23 +549,19 @@ class PackagePickupPage extends StatelessWidget {
                   ),
                 ],
               ),
-              const Divider(),
+              const Divider(height: 15, thickness: 1),
 
               // ------------------ รายละเอียดพัสดุ/ผู้ติดต่อ ------------------
-              // รายละเอียดสินค้า
-              _buildDetailRow(Icons.inventory_2_outlined,
-                  'รายละเอียดสินค้า: ${package.orderDetails}'),
 
               // ผู้ส่ง
-              _buildDetailRow(
-                  Icons.person, 'ผู้ส่ง: $senderName (Tel: $senderPhone)'),
+              _buildDetailRow(Icons.person, 'ผู้ส่ง:', senderName, senderPhone),
 
               // ไรเดอร์
-              _buildDetailRow(Icons.two_wheeler_outlined,
-                  'ไรเดอร์: $riderName (Tel: $riderPhone)'),
+              _buildDetailRow(Icons.two_wheeler_outlined, 'ไรเดอร์:', riderName,
+                  riderPhone),
 
               // รหัสพัสดุ
-              _buildDetailRow(Icons.qr_code, 'รหัสพัสดุ: ${package.id}'),
+              _buildDetailRow(Icons.qr_code, 'รหัสพัสดุ:', package.id, null),
 
               // ------------------ รูปภาพหลักฐาน (ถ้ามี) ------------------
               if (showDeliveredImage)
@@ -575,27 +586,48 @@ class PackagePickupPage extends StatelessWidget {
                     ),
                   ],
                 ),
-
-              const SizedBox(height: 10),
-              // ------------------ ปุ่มยืนยัน (ถ้ามี) ------------------
-              if (showConfirmButton)
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: ElevatedButton.icon(
-                    onPressed: () => onConfirm(package.id),
-                    icon: const Icon(Icons.check_circle, color: Colors.white),
-                    label: const Text('ยืนยันการรับ',
-                        style: TextStyle(color: Colors.white)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green.shade600,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8)),
-                    ),
-                  ),
-                ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // Helper Widget for Detail Row (Improved look)
+  Widget _buildDetailRow(
+      IconData icon, String title, String name, String? phone) {
+    String detailText = phone != null && phone != '-'
+        ? '$name (Tel: $phone)'
+        : (name.isEmpty || name == 'ไม่ระบุรายละเอียดสินค้า'
+            ? 'ไม่ระบุ'
+            : name);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20, color: _accentColor),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 80, // กำหนดความกว้างของ Title
+            child: Text(title,
+                style:
+                    const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+          ),
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.grey.shade300, width: 0.5),
+              ),
+              child: Text(detailText,
+                  style: const TextStyle(fontSize: 14, color: Colors.black87)),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -653,7 +685,13 @@ class PackagePickupPage extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.grey.shade300),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.shade300,
+            blurRadius: 5,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: TextField(
         controller: controller.searchController,
@@ -668,19 +706,6 @@ class PackagePickupPage extends StatelessWidget {
           ),
         ),
         onSubmitted: (_) => controller.performSearch(),
-      ),
-    );
-  }
-
-  Widget _buildDetailRow(IconData icon, String text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: Colors.grey.shade700),
-          const SizedBox(width: 8),
-          Expanded(child: Text(text, style: const TextStyle(fontSize: 14))),
-        ],
       ),
     );
   }
