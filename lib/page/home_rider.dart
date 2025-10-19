@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'dart:async'; 
 import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/models/package_model.dart';
@@ -22,8 +22,7 @@ class RiderHomeController extends GetxController {
   final db = FirebaseFirestore.instance;
 
   final Rx<GeoPoint?> riderCurrentLocation = Rx(null);
-  // **ลบ: locationSearchTimedOut และ LOCATION_TIMEOUT_SECONDS ออกแล้ว**
-
+  
   static const double MAX_DISTANCE_METERS = 20.0;
 
   @override
@@ -48,7 +47,7 @@ class RiderHomeController extends GetxController {
     if (!serviceEnabled) {
       Get.snackbar(
           'แจ้งเตือน GPS', 'กรุณาเปิดบริการระบุตำแหน่ง (GPS) เพื่อรับงาน');
-      return;
+      return; 
     }
     permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
@@ -57,7 +56,7 @@ class RiderHomeController extends GetxController {
           permission == LocationPermission.deniedForever) {
         Get.snackbar(
             'ข้อจำกัด', 'ไม่ได้รับอนุญาตให้เข้าถึงตำแหน่ง. กรุณาตั้งค่าในแอป.');
-        return;
+        return; 
       }
     }
 
@@ -66,7 +65,7 @@ class RiderHomeController extends GetxController {
       distanceFilter: 10,
     );
 
-    // **เริ่มติดตามตำแหน่งทันที ไม่ต้องมี Timeout**
+    // เริ่มติดตามตำแหน่งทันที
     Geolocator.getPositionStream(locationSettings: locationSettings).listen(
         (Position position) {
       // อัปเดตตำแหน่งทุกครั้ง
@@ -172,7 +171,7 @@ class RiderHomeController extends GetxController {
     });
   }
 
-  // **การแก้ไข: ใช้ Firestore Transaction เพื่อป้องกันการแย่งงาน (คงเดิม)**
+  // **ฟังก์ชัน Transaction เพื่อป้องกันการแย่งงาน**
   Future<void> acceptOrder(OrderModel order) async {
     Get.dialog(const Center(child: CircularProgressIndicator()),
         barrierDismissible: false);
@@ -318,12 +317,12 @@ class RiderHomeScreen extends StatelessWidget {
     );
   }
 
-  // **การแก้ไข: เน้นแสดง "ไม่พบงาน" ทันทีหากยังไม่มีตำแหน่ง GPS**
+  // **การแก้ไข: แสดง "ไม่พบงาน" ทันทีหากยังไม่มีตำแหน่ง GPS**
   Widget _buildPackageList(RiderHomeController controller) {
     return Obx(() {
       final hasLocation = controller.riderCurrentLocation.value != null;
 
-      // 1. ถ้ายังไม่มีตำแหน่ง GPS (แสดงข้อความ "ไม่มีงาน" ทันที)
+      // 1. ถ้ายังไม่มีตำแหน่ง GPS (แสดงข้อความ "ยังไม่พบงาน" ทันที)
       if (!hasLocation) {
         return Center(
             child: Padding(
@@ -332,15 +331,12 @@ class RiderHomeScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               // วงหมุนเล็กๆ แสดงว่าแอปยังทำงานเบื้องหลังอยู่
-              const CircularProgressIndicator(strokeWidth: 2),
+              const CircularProgressIndicator(strokeWidth: 2), 
               const SizedBox(height: 15),
               Text(
                   'ยังไม่พบงานในระยะ ${RiderHomeController.MAX_DISTANCE_METERS} เมตรในขณะนี้',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.grey[800],
-                      fontWeight: FontWeight.bold)),
+                  style: TextStyle(fontSize: 18, color: Colors.grey[800], fontWeight: FontWeight.bold)),
               const SizedBox(height: 5),
               const Text('(ระบบกำลังระบุตำแหน่ง GPS เพื่อยืนยันงานใกล้เคียง)',
                   textAlign: TextAlign.center,
@@ -350,18 +346,26 @@ class RiderHomeScreen extends StatelessWidget {
         ));
       }
 
-      // 2. ถ้ามีตำแหน่ง GPS แล้ว (Logic เดิมที่ถูกต้อง)
+      // 2. ถ้ามีตำแหน่ง GPS แล้ว
       return StreamBuilder<List<OrderModel>>(
         stream: controller.getPendingOrdersStream(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            // สถานะนี้จะเกิดขึ้นเร็วมาก
-            return const Center(child: CircularProgressIndicator());
+            // สถานะนี้จะเกิดขึ้นแค่ช่วงสั้นๆ ขณะรอ Firestore Response
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 10),
+                  Text('กำลังโหลดรายการงาน...', style: TextStyle(color: Colors.grey)),
+                ],
+              ),
+            );
           }
           if (snapshot.hasError) {
             return Center(
-                child:
-                    Text('เกิดข้อผิดพลาดในการโหลดข้อมูล: ${snapshot.error}'));
+                child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล: ${snapshot.error}'));
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
             // ถ้ามีตำแหน่งแล้ว แต่ไม่มีงานในระยะ 20 เมตร
@@ -371,10 +375,7 @@ class RiderHomeScreen extends StatelessWidget {
               child: Text(
                   '✅ ตำแหน่งยืนยันแล้ว:\nไม่มีงานที่อยู่ในรัศมี ${RiderHomeController.MAX_DISTANCE_METERS} เมตรให้รับในขณะนี้',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey,
-                      fontWeight: FontWeight.bold)),
+                  style: const TextStyle(fontSize: 16, color: Colors.grey, fontWeight: FontWeight.bold)),
             ));
           }
 
@@ -544,7 +545,7 @@ class RiderHomeScreen extends StatelessWidget {
               const SizedBox(height: 20),
             ],
           ),
-        );
+          );
       },
     );
   }
