@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'dart:math' show cos, sqrt, asin, pi, atan2, sin;
 import 'package:geolocator/geolocator.dart';
-import 'package:rxdart/rxdart.dart' as RxDart;
+import 'package:rxdart/rxdart.dart' as RxDart; // ยังคงใช้ RxDart
 import '../models/order_model.dart';
 import 'package:delivery_project/page/edit_profile.dart';
 import 'package:delivery_project/page/index.dart';
@@ -135,9 +135,11 @@ class RiderHomeController extends GetxController {
     return riderCurrentLocation.stream.switchMap((riderLoc) {
       if (riderLoc == null) {
         log('Rider location is not available, returning empty list.');
+        // ถ้ายังไม่มีตำแหน่ง GPS จะคืนค่า Stream เปล่าไปก่อน
         return Stream.value([]);
       }
 
+      // ถ้ามีตำแหน่งแล้ว ค่อยเริ่มดึงและกรองตามระยะทาง
       return db
           .collection('orders')
           .where('currentStatus', isEqualTo: 'pending')
@@ -167,22 +169,37 @@ class RiderHomeController extends GetxController {
     });
   }
 
+  // **ฟังก์ชันรับงานที่ใช้ Firestore Transaction เพื่อป้องกันการแย่งงาน**
   Future<void> acceptOrder(OrderModel order) async {
     Get.dialog(const Center(child: CircularProgressIndicator()),
         barrierDismissible: false);
     try {
       final orderRef = db.collection('orders').doc(order.id);
 
-      await orderRef.update({
-        'riderId': uid,
-        'currentStatus': 'accepted',
-        'statusHistory': FieldValue.arrayUnion([
-          {'status': 'accepted', 'timestamp': Timestamp.now()}
-        ]),
+      // ใช้ Transaction เพื่อให้แน่ใจว่าการอ่านและเขียนเป็น Atomic
+      await db.runTransaction((transaction) async {
+        final freshSnapshot = await transaction.get(orderRef);
+        final freshOrder = OrderModel.fromFirestore(freshSnapshot);
+
+        // ตรวจสอบสถานะ: ถ้าไม่ใช่ 'pending' แสดงว่ามีคนรับไปแล้ว
+        if (freshOrder.currentStatus != 'pending') {
+          throw Exception(
+              'Order is no longer pending. Status: ${freshOrder.currentStatus}');
+        }
+
+        // อัปเดตงาน
+        transaction.update(orderRef, {
+          'riderId': uid,
+          'currentStatus': 'accepted',
+          'statusHistory': FieldValue.arrayUnion([
+            {'status': 'accepted', 'timestamp': Timestamp.now()}
+          ]),
+        });
       });
 
-      Get.back();
+      Get.back(); // ปิด loading dialog
 
+      // นำทางไปยังหน้าส่งของและลบหน้า Home ออกจาก Stack
       final package = Package(
         id: order.id,
         title: order.orderDetails,
@@ -190,17 +207,30 @@ class RiderHomeController extends GetxController {
         destination: order.deliveryAddress.detail,
         imageUrl: order.orderPicture,
       );
-      Get.to(() => PackageDeliveryPage(
+      Get.offAll(() => PackageDeliveryPage(
             package: package,
             uid: uid,
             role: role,
           ));
     } catch (e) {
-      Get.back();
-      Get.snackbar('เกิดข้อผิดพลาด', 'ไม่สามารถรับงานนี้ได้: $e');
+      Get.back(); // ปิด loading dialog
+      log('Error accepting order: $e');
+
+      // แสดงข้อความตามชนิดของ Error
+      if (e.toString().contains('Order is no longer pending')) {
+        Get.snackbar('ไม่สำเร็จ', 'งานนี้ถูกรับไปแล้วโดยไรเดอร์ท่านอื่น',
+            backgroundColor: Colors.red.shade100, colorText: Colors.red);
+      } else {
+        Get.snackbar('เกิดข้อผิดพลาด', 'ไม่สามารถรับงานนี้ได้: $e',
+            backgroundColor: Colors.red.shade100, colorText: Colors.red);
+      }
     }
   }
 }
+
+// -------------------------------------------------------------------
+// ส่วนของ UI (RiderHomeScreen)
+// -------------------------------------------------------------------
 
 class RiderHomeScreen extends StatelessWidget {
   final String uid;
@@ -289,46 +319,62 @@ class RiderHomeScreen extends StatelessWidget {
     );
   }
 
+  // **ปรับปรุง: ใช้ Obx ตรวจสอบตำแหน่งก่อนเริ่ม StreamBuilder**
   Widget _buildPackageList(RiderHomeController controller) {
-    return StreamBuilder<List<OrderModel>>(
-      stream: controller.getPendingOrdersStream(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          if (controller.riderCurrentLocation.value == null) {
+    return Obx(() {
+      final hasLocation = controller.riderCurrentLocation.value != null;
+
+      // 1. ถ้ายังไม่มีตำแหน่ง GPS
+      if (!hasLocation) {
+        return const Center(
+            child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 10),
+            Text('กำลังค้นหาตำแหน่งของคุณเพื่อแสดงงานใกล้เคียง...'),
+            SizedBox(height: 5),
+            Text('(ตำแหน่งจำเป็นสำหรับงานที่อยู่ในรัศมี 20 เมตร)'),
+          ],
+        ));
+      }
+
+      // 2. ถ้ามีตำแหน่ง GPS แล้ว
+      return StreamBuilder<List<OrderModel>>(
+        stream: controller.getPendingOrdersStream(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(
+                child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล: ${snapshot.error}'));
+          }
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            // ข้อความนี้จะแสดงเร็วขึ้นเมื่อได้ตำแหน่ง GPS แล้ว
             return const Center(
-                child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 10),
-                Text('กำลังค้นหาตำแหน่งของคุณ...'),
-              ],
+                child: Padding(
+              padding: EdgeInsets.all(20.0),
+              child: Text(
+                  'ไม่มีงานที่อยู่ในรัศมี ${RiderHomeController.MAX_DISTANCE_METERS} เมตรให้รับในขณะนี้\n(กรุณารอหรือขยับตำแหน่ง)',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 16, color: Colors.grey)),
             ));
           }
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(
-              child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล: ${snapshot.error}'));
-        }
-        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return const Center(
-              child: Text('ไม่มีงานที่อยู่ในรัศมี 20 เมตรให้รับในขณะนี้',
-                  style: TextStyle(fontSize: 16, color: Colors.grey)));
-        }
 
-        final orders = snapshot.data!;
+          final orders = snapshot.data!;
 
-        return ListView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-          itemCount: orders.length,
-          itemBuilder: (context, index) {
-            final order = orders[index];
-            return _buildPackageCard(context, order, controller);
-          },
-        );
-      },
-    );
+          return ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            itemCount: orders.length,
+            itemBuilder: (context, index) {
+              final order = orders[index];
+              return _buildPackageCard(context, order, controller);
+            },
+          );
+        },
+      );
+    });
   }
 
   Widget _buildPackageCard(
@@ -443,6 +489,7 @@ class RiderHomeScreen extends StatelessWidget {
         currentIndex: 0,
         onTap: (index) {
           if (index == 1) {
+            // เปลี่ยนเป็น Get.offAll เพื่อออกจากระบบ
             Get.offAll(() => const SpeedDerApp());
           }
         },
@@ -482,7 +529,7 @@ class RiderHomeScreen extends StatelessWidget {
               const SizedBox(height: 20),
             ],
           ),
-        );
+          );
       },
     );
   }
