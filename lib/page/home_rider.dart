@@ -145,8 +145,6 @@ class RiderHomeController extends GetxController {
         final activeOrderDoc = querySnapshot.docs.first;
         final orderModel = OrderModel.fromFirestore(activeOrderDoc);
 
-        log('Rider has an active order: ${orderModel.id}. Navigating...');
-
         final package = Package(
           id: orderModel.id,
           title: orderModel.orderDetails,

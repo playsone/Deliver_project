@@ -87,35 +87,6 @@ class PackagePickupController extends GetxController {
       return UserInfo(defaultName, '-');
     }
   }
-
-  Future<void> confirmPackageReception(String orderId) async {
-    Get.dialog(
-        const Center(child: CircularProgressIndicator(color: _primaryColor)),
-        barrierDismissible: false);
-    try {
-      final orderRef =
-          FirebaseFirestore.instance.collection('orders').doc(orderId);
-
-      await orderRef.update({
-        'currentStatus': 'completed',
-        'statusHistory': FieldValue.arrayUnion([
-          {
-            'imgOfStatus': 'received by recipient',
-            'status': 'completed',
-            'timestamp': Timestamp.now()
-          }
-        ]),
-      });
-
-      Get.back();
-      Get.snackbar('สำเร็จ', 'ยืนยันการรับพัสดุ $orderId เรียบร้อยแล้ว',
-          backgroundColor: Colors.green, colorText: Colors.white);
-    } catch (e) {
-      Get.back();
-      Get.snackbar('เกิดข้อผิดพลาด', 'ไม่สามารถยืนยันการรับได้: $e',
-          backgroundColor: _primaryColor, colorText: Colors.white);
-    }
-  }
 }
 
 class PackagePickupPage extends StatefulWidget {
@@ -150,8 +121,6 @@ class _PackagePickupPageState extends State<PackagePickupPage> {
         return 'กำลังนำส่ง';
       case 'delivered':
         return 'จัดส่งสำเร็จ';
-      case 'completed':
-        return 'ได้รับสินค้าแล้ว';
       default:
         return status;
     }
@@ -166,8 +135,6 @@ class _PackagePickupPageState extends State<PackagePickupPage> {
       case 'in_transit':
         return Colors.orange;
       case 'delivered':
-      case 'completed':
-        return Colors.green;
       default:
         return Colors.grey;
     }
@@ -388,10 +355,8 @@ class _PackagePickupPageState extends State<PackagePickupPage> {
         return 3;
       case 'pending':
         return 4;
-      case 'completed':
-        return 5;
       default:
-        return 6;
+        return 5;
     }
   }
 
@@ -735,7 +700,6 @@ class _PackagePickupPageState extends State<PackagePickupPage> {
           senderPhone: senderInfo.phone,
           riderName: riderInfo.name,
           riderPhone: riderInfo.phone,
-          onConfirm: controller.confirmPackageReception,
           onTap: () {
             setState(() {
               _selectedPackageId = package.id;
@@ -769,7 +733,6 @@ class _PackagePickupPageState extends State<PackagePickupPage> {
       senderPhone: senderParts.length > 1 ? senderParts[1] : '-',
       riderName: riderParts[0],
       riderPhone: riderParts.length > 1 ? riderParts[1] : '-',
-      onConfirm: controller.confirmPackageReception,
       onTap: () {
         setState(() {
           _selectedPackageId = package.id;
@@ -784,12 +747,10 @@ class _PackagePickupPageState extends State<PackagePickupPage> {
     required String senderPhone,
     required String riderName,
     required String riderPhone,
-    required Function(String) onConfirm,
     required VoidCallback onTap,
   }) {
     final statusText = _translateStatus(package.currentStatus);
     final statusColor = _getStatusColor(package.currentStatus);
-    final bool showConfirmButton = package.currentStatus == 'delivered';
 
     return Card(
       margin: const EdgeInsets.only(bottom: 15),
@@ -836,20 +797,6 @@ class _PackagePickupPageState extends State<PackagePickupPage> {
               _buildDetailRow(Icons.two_wheeler_outlined, 'ไรเดอร์:', riderName,
                   riderPhone),
               _buildDetailRow(Icons.qr_code, 'รหัสพัสดุ:', package.id, null),
-              if (showConfirmButton)
-                Padding(
-                  padding: const EdgeInsets.only(top: 10.0),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      icon: const Icon(Icons.check_circle_outline),
-                      label: const Text('ฉันได้รับพัสดุแล้ว'),
-                      onPressed: () => onConfirm(package.id),
-                      style:
-                          FilledButton.styleFrom(backgroundColor: Colors.green),
-                    ),
-                  ),
-                )
             ],
           ),
         ),

@@ -53,8 +53,7 @@ class PackageModel {
         data['deliveryAddress']?['detail'] ?? 'ไม่ระบุปลายทาง';
 
     String? deliveredImgUrl;
-    if (data['currentStatus'] == 'delivered' ||
-        data['currentStatus'] == 'completed') {
+    if (data['currentStatus'] == 'delivered') {
       deliveredImgUrl = data['deliveredImageUrl'];
 
       if (deliveredImgUrl == null && data['statusHistory'] is List) {

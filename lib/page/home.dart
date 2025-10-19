@@ -134,6 +134,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _positionStreamSubscription =
         Geolocator.getPositionStream(locationSettings: locationSettings)
             .listen((Position? position) {
+      log('Position Update: $position');
       if (position != null && mounted) {
         setState(() {
           currentPos = LatLng(position.latitude, position.longitude);
@@ -228,6 +229,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _moveCameraToCurrentLocation() {
     if (currentPos != null) {
+      log('FloatingActionButton pressed. currentPos is: $currentPos');
       mapController.move(currentPos!, 16.0);
     }
   }

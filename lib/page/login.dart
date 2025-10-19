@@ -72,8 +72,6 @@ class _LoginPageState extends State<LoginPage> {
       var query = usersCollection.where("phone",
           isEqualTo: phoneController.text.trim());
       var data = await query.get();
-
-      log(data.docs.first.data().toString());
       if (data.docs.isEmpty) {
         Get.snackbar("Error", "Can't Login");
       } else {

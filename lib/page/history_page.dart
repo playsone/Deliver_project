@@ -109,7 +109,7 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
-  List<String> statusesToTrack = ['delivered', 'completed'];
+  List<String> statusesToTrack = ['delivered'];
   Widget _buildOrderList() {
     final senderStream = FirebaseFirestore.instance
         .collection('orders')
