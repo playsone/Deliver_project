@@ -1,4 +1,3 @@
-import 'dart:async'; 
 import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/models/package_model.dart';
@@ -22,7 +21,6 @@ class RiderHomeController extends GetxController {
   final db = FirebaseFirestore.instance;
 
   final Rx<GeoPoint?> riderCurrentLocation = Rx(null);
-  
   static const double MAX_DISTANCE_METERS = 20.0;
 
   @override
@@ -47,7 +45,7 @@ class RiderHomeController extends GetxController {
     if (!serviceEnabled) {
       Get.snackbar(
           'แจ้งเตือน GPS', 'กรุณาเปิดบริการระบุตำแหน่ง (GPS) เพื่อรับงาน');
-      return; 
+      return;
     }
     permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
@@ -56,7 +54,7 @@ class RiderHomeController extends GetxController {
           permission == LocationPermission.deniedForever) {
         Get.snackbar(
             'ข้อจำกัด', 'ไม่ได้รับอนุญาตให้เข้าถึงตำแหน่ง. กรุณาตั้งค่าในแอป.');
-        return; 
+        return;
       }
     }
 
@@ -65,15 +63,13 @@ class RiderHomeController extends GetxController {
       distanceFilter: 10,
     );
 
-    // เริ่มติดตามตำแหน่งทันที
     Geolocator.getPositionStream(locationSettings: locationSettings).listen(
         (Position position) {
-      // อัปเดตตำแหน่งทุกครั้ง
       riderCurrentLocation.value =
           GeoPoint(position.latitude, position.longitude);
       log('GPS Location Updated: ${position.latitude}, ${position.longitude}');
     }, onError: (e) {
-      log('Error getting location stream: $e');
+      log('Error getting location: $e');
       Get.snackbar('ข้อผิดพลาด', 'ไม่สามารถติดตามตำแหน่ง GPS ได้: $e');
     });
   }
@@ -171,37 +167,22 @@ class RiderHomeController extends GetxController {
     });
   }
 
-  // **ฟังก์ชัน Transaction เพื่อป้องกันการแย่งงาน**
   Future<void> acceptOrder(OrderModel order) async {
     Get.dialog(const Center(child: CircularProgressIndicator()),
         barrierDismissible: false);
     try {
       final orderRef = db.collection('orders').doc(order.id);
 
-      // ใช้ Transaction เพื่อให้แน่ใจว่าการอ่านและเขียนเป็น Atomic
-      await db.runTransaction((transaction) async {
-        final freshSnapshot = await transaction.get(orderRef);
-        final freshOrder = OrderModel.fromFirestore(freshSnapshot);
-
-        // ตรวจสอบสถานะ: ถ้าไม่ใช่ 'pending' แสดงว่ามีคนรับไปแล้ว
-        if (freshOrder.currentStatus != 'pending') {
-          throw Exception(
-              'Order is no longer pending. Status: ${freshOrder.currentStatus}');
-        }
-
-        // อัปเดตงาน
-        transaction.update(orderRef, {
-          'riderId': uid,
-          'currentStatus': 'accepted',
-          'statusHistory': FieldValue.arrayUnion([
-            {'status': 'accepted', 'timestamp': Timestamp.now()}
-          ]),
-        });
+      await orderRef.update({
+        'riderId': uid,
+        'currentStatus': 'accepted',
+        'statusHistory': FieldValue.arrayUnion([
+          {'status': 'accepted', 'timestamp': Timestamp.now()}
+        ]),
       });
 
-      Get.back(); // ปิด loading dialog
+      Get.back();
 
-      // นำทางไปยังหน้าส่งของและลบหน้า Home ออกจาก Stack
       final package = Package(
         id: order.id,
         title: order.orderDetails,
@@ -209,23 +190,14 @@ class RiderHomeController extends GetxController {
         destination: order.deliveryAddress.detail,
         imageUrl: order.orderPicture,
       );
-      Get.offAll(() => PackageDeliveryPage(
+      Get.to(() => PackageDeliveryPage(
             package: package,
             uid: uid,
             role: role,
           ));
     } catch (e) {
-      Get.back(); // ปิด loading dialog
-      log('Error accepting order: $e');
-
-      // แสดงข้อความตามชนิดของ Error
-      if (e.toString().contains('Order is no longer pending')) {
-        Get.snackbar('ไม่สำเร็จ', 'งานนี้ถูกรับไปแล้วโดยไรเดอร์ท่านอื่น',
-            backgroundColor: Colors.red.shade100, colorText: Colors.red);
-      } else {
-        Get.snackbar('เกิดข้อผิดพลาด', 'ไม่สามารถรับงานนี้ได้: $e',
-            backgroundColor: Colors.red.shade100, colorText: Colors.red);
-      }
+      Get.back();
+      Get.snackbar('เกิดข้อผิดพลาด', 'ไม่สามารถรับงานนี้ได้: $e');
     }
   }
 }
@@ -317,81 +289,46 @@ class RiderHomeScreen extends StatelessWidget {
     );
   }
 
-  // **การแก้ไข: แสดง "ไม่พบงาน" ทันทีหากยังไม่มีตำแหน่ง GPS**
   Widget _buildPackageList(RiderHomeController controller) {
-    return Obx(() {
-      final hasLocation = controller.riderCurrentLocation.value != null;
-
-      // 1. ถ้ายังไม่มีตำแหน่ง GPS (แสดงข้อความ "ยังไม่พบงาน" ทันที)
-      if (!hasLocation) {
-        return Center(
-            child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // วงหมุนเล็กๆ แสดงว่าแอปยังทำงานเบื้องหลังอยู่
-              const CircularProgressIndicator(strokeWidth: 2), 
-              const SizedBox(height: 15),
-              Text(
-                  'ยังไม่พบงานในระยะ ${RiderHomeController.MAX_DISTANCE_METERS} เมตรในขณะนี้',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 18, color: Colors.grey[800], fontWeight: FontWeight.bold)),
-              const SizedBox(height: 5),
-              const Text('(ระบบกำลังระบุตำแหน่ง GPS เพื่อยืนยันงานใกล้เคียง)',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14, color: Colors.grey)),
-            ],
-          ),
-        ));
-      }
-
-      // 2. ถ้ามีตำแหน่ง GPS แล้ว
-      return StreamBuilder<List<OrderModel>>(
-        stream: controller.getPendingOrdersStream(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            // สถานะนี้จะเกิดขึ้นแค่ช่วงสั้นๆ ขณะรอ Firestore Response
+    return StreamBuilder<List<OrderModel>>(
+      stream: controller.getPendingOrdersStream(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          if (controller.riderCurrentLocation.value == null) {
             return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 10),
-                  Text('กำลังโหลดรายการงาน...', style: TextStyle(color: Colors.grey)),
-                ],
-              ),
-            );
-          }
-          if (snapshot.hasError) {
-            return Center(
-                child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล: ${snapshot.error}'));
-          }
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            // ถ้ามีตำแหน่งแล้ว แต่ไม่มีงานในระยะ 20 เมตร
-            return Center(
-                child: Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Text(
-                  '✅ ตำแหน่งยืนยันแล้ว:\nไม่มีงานที่อยู่ในรัศมี ${RiderHomeController.MAX_DISTANCE_METERS} เมตรให้รับในขณะนี้',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 16, color: Colors.grey, fontWeight: FontWeight.bold)),
+                child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 10),
+                Text('กำลังค้นหาตำแหน่งของคุณ...'),
+              ],
             ));
           }
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(
+              child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล: ${snapshot.error}'));
+        }
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return const Center(
+              child: Text('ไม่มีงานที่อยู่ในรัศมี 20 เมตรให้รับในขณะนี้',
+                  style: TextStyle(fontSize: 16, color: Colors.grey)));
+        }
 
-          final orders = snapshot.data!;
+        final orders = snapshot.data!;
 
-          return ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            itemCount: orders.length,
-            itemBuilder: (context, index) {
-              final order = orders[index];
-              return _buildPackageCard(context, order, controller);
-            },
-          );
-        },
-      );
-    });
+        return ListView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          itemCount: orders.length,
+          itemBuilder: (context, index) {
+            final order = orders[index];
+            return _buildPackageCard(context, order, controller);
+          },
+        );
+      },
+    );
   }
 
   Widget _buildPackageCard(
@@ -545,7 +482,7 @@ class RiderHomeScreen extends StatelessWidget {
               const SizedBox(height: 20),
             ],
           ),
-          );
+        );
       },
     );
   }
