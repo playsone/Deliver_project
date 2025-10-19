@@ -109,11 +109,12 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
+  List<String> statusesToTrack = ['delivered', 'completed'];
   Widget _buildOrderList() {
     final senderStream = FirebaseFirestore.instance
         .collection('orders')
         .where('customerId', isEqualTo: widget.uid)
-        .where('currentStatus', isEqualTo: 'delivered')
+        .where('currentStatus', whereIn: statusesToTrack)
         .snapshots();
 
     return StreamBuilder<QuerySnapshot>(
