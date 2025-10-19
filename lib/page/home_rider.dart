@@ -66,7 +66,7 @@ class RiderHomeController extends GetxController {
       distanceFilter: 10,
     );
 
-    // **แก้ไข: เริ่มติดตามตำแหน่งทันที ไม่ต้องมี Timeout**
+    // **เริ่มติดตามตำแหน่งทันที ไม่ต้องมี Timeout**
     Geolocator.getPositionStream(locationSettings: locationSettings).listen(
         (Position position) {
       // อัปเดตตำแหน่งทุกครั้ง
@@ -172,7 +172,7 @@ class RiderHomeController extends GetxController {
     });
   }
 
-  // **การแก้ไข: ใช้ Firestore Transaction เพื่อป้องกันการแย่งงาน**
+  // **การแก้ไข: ใช้ Firestore Transaction เพื่อป้องกันการแย่งงาน (คงเดิม)**
   Future<void> acceptOrder(OrderModel order) async {
     Get.dialog(const Center(child: CircularProgressIndicator()),
         barrierDismissible: false);
@@ -231,9 +231,6 @@ class RiderHomeController extends GetxController {
   }
 }
 
-// -------------------------------------------------------------------
-// ส่วนของ UI (RiderHomeScreen)
-// -------------------------------------------------------------------
 class RiderHomeScreen extends StatelessWidget {
   final String uid;
   final int role;
@@ -321,30 +318,39 @@ class RiderHomeScreen extends StatelessWidget {
     );
   }
 
-  // **การแก้ไข: เน้นแสดงสถานะการรอตำแหน่ง GPS จนกว่าจะได้ตำแหน่ง**
+  // **การแก้ไข: เน้นแสดง "ไม่พบงาน" ทันทีหากยังไม่มีตำแหน่ง GPS**
   Widget _buildPackageList(RiderHomeController controller) {
     return Obx(() {
       final hasLocation = controller.riderCurrentLocation.value != null;
 
-      // 1. ถ้ายังไม่มีตำแหน่ง GPS (รอนานเท่าไหร่ก็ได้)
+      // 1. ถ้ายังไม่มีตำแหน่ง GPS (แสดงข้อความ "ไม่มีงาน" ทันที)
       if (!hasLocation) {
         return Center(
-            child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 10),
-            Text('กำลังระบุตำแหน่ง GPS ของคุณ...',
-                style: TextStyle(fontSize: 16, color: Colors.grey[800])),
-            const SizedBox(height: 5),
-            const Text('งานใกล้เคียงจะแสดงขึ้นมาเมื่อระบุตำแหน่งได้สำเร็จ',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: Colors.grey)),
-          ],
+            child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // วงหมุนเล็กๆ แสดงว่าแอปยังทำงานเบื้องหลังอยู่
+              const CircularProgressIndicator(strokeWidth: 2),
+              const SizedBox(height: 15),
+              Text(
+                  'ยังไม่พบงานในระยะ ${RiderHomeController.MAX_DISTANCE_METERS} เมตรในขณะนี้',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.grey[800],
+                      fontWeight: FontWeight.bold)),
+              const SizedBox(height: 5),
+              const Text('(ระบบกำลังระบุตำแหน่ง GPS เพื่อยืนยันงานใกล้เคียง)',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, color: Colors.grey)),
+            ],
+          ),
         ));
       }
 
-      // 2. ถ้ามีตำแหน่ง GPS แล้ว
+      // 2. ถ้ามีตำแหน่ง GPS แล้ว (Logic เดิมที่ถูกต้อง)
       return StreamBuilder<List<OrderModel>>(
         stream: controller.getPendingOrdersStream(),
         builder: (context, snapshot) {
@@ -363,9 +369,12 @@ class RiderHomeScreen extends StatelessWidget {
                 child: Padding(
               padding: const EdgeInsets.all(20.0),
               child: Text(
-                  'ไม่มีงานที่อยู่ในรัศมี ${RiderHomeController.MAX_DISTANCE_METERS} เมตรให้รับในขณะนี้',
+                  '✅ ตำแหน่งยืนยันแล้ว:\nไม่มีงานที่อยู่ในรัศมี ${RiderHomeController.MAX_DISTANCE_METERS} เมตรให้รับในขณะนี้',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 16, color: Colors.grey)),
+                  style: const TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey,
+                      fontWeight: FontWeight.bold)),
             ));
           }
 
