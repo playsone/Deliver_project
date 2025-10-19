@@ -36,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Marker> _orderMarkers = [];
   StreamSubscription? _ordersSubscription;
   StreamSubscription<Position>? _positionStreamSubscription;
+  bool isProgressing = false;
 
   List<Marker> get _fixedMarkers {
     if (_currentUser != null && _currentUser!.defaultGPS != null) {
@@ -228,9 +229,29 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _moveCameraToCurrentLocation() {
-    if (currentPos != null) {
-      log('FloatingActionButton pressed. currentPos is: $currentPos');
-      mapController.move(currentPos!, 16.0);
+    if (isProgressing) return;
+    try {
+      if (currentPos != null) {
+        setState(() {
+          isProgressing = true;
+          mapController.move(currentPos!, 16.0);
+        });
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('กำลังค้นหาตำแหน่งปัจจุบัน... กรุณารอสักครู่'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      log(e.toString());
+    } finally {
+      setState(() {
+        isProgressing = false;
+      });
     }
   }
 
@@ -254,9 +275,13 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: const Color(0xFFC70808),
-        onPressed: _moveCameraToCurrentLocation,
+        onPressed: isProgressing ? null : _moveCameraToCurrentLocation,
         tooltip: 'ค้นหาตำแหน่งปัจจุบัน',
-        child: const Icon(Icons.gps_fixed, color: Colors.white),
+        child: isProgressing
+            ? const CircularProgressIndicator(
+                color: Colors.red,
+              )
+            : const Icon(Icons.gps_fixed, color: Colors.white),
       ),
       bottomNavigationBar: _buildBottomNavigationBar(context),
     );
@@ -538,12 +563,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 context,
                 'แก้ไขข้อมูลส่วนตัว',
                 Icons.person_outline,
-                () {
+                () async {
                   Get.back();
-                  Get.to(() => EditProfilePage(
+                  await Get.to(() => EditProfilePage(
                         role: widget.role,
                         uid: widget.uid,
                       ));
+                  _fetchUserData();
                 },
               ),
               _buildOptionButton(
