@@ -1,3 +1,4 @@
+import 'dart:async'; // ต้อง Import dart:async
 import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/models/package_model.dart';
@@ -6,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'dart:math' show cos, sqrt, asin, pi, atan2, sin;
 import 'package:geolocator/geolocator.dart';
-import 'package:rxdart/rxdart.dart' as RxDart; // ยังคงใช้ RxDart
+import 'package:rxdart/rxdart.dart' as RxDart;
 import '../models/order_model.dart';
 import 'package:delivery_project/page/edit_profile.dart';
 import 'package:delivery_project/page/index.dart';
@@ -21,7 +22,12 @@ class RiderHomeController extends GetxController {
   final db = FirebaseFirestore.instance;
 
   final Rx<GeoPoint?> riderCurrentLocation = Rx(null);
+  // **สถานะใหม่: เพื่อระบุว่าการค้นหาตำแหน่งล้มเหลวเนื่องจาก Timeout**
+  final RxBool locationSearchTimedOut = false.obs;
+
   static const double MAX_DISTANCE_METERS = 20.0;
+  // **ค่าคงที่: 10 วินาทีตามที่ร้องขอ**
+  static const int LOCATION_TIMEOUT_SECONDS = 10;
 
   @override
   void onInit() {
@@ -45,6 +51,8 @@ class RiderHomeController extends GetxController {
     if (!serviceEnabled) {
       Get.snackbar(
           'แจ้งเตือน GPS', 'กรุณาเปิดบริการระบุตำแหน่ง (GPS) เพื่อรับงาน');
+      // ตั้งค่า Timeout เป็น true เพื่อปลดบล็อก UI หากไม่มี GPS Service เลย
+      locationSearchTimedOut.value = true;
       return;
     }
     permission = await Geolocator.checkPermission();
@@ -54,6 +62,8 @@ class RiderHomeController extends GetxController {
           permission == LocationPermission.deniedForever) {
         Get.snackbar(
             'ข้อจำกัด', 'ไม่ได้รับอนุญาตให้เข้าถึงตำแหน่ง. กรุณาตั้งค่าในแอป.');
+        // ตั้งค่า Timeout เป็น true หากไม่มีสิทธิ์
+        locationSearchTimedOut.value = true;
         return;
       }
     }
@@ -63,15 +73,41 @@ class RiderHomeController extends GetxController {
       distanceFilter: 10,
     );
 
-    Geolocator.getPositionStream(locationSettings: locationSettings).listen(
-        (Position position) {
+    // **ส่วนที่เพิ่ม Timeout: ใช้ Future.timeout ในการรอตำแหน่งแรก 10 วินาที**
+    try {
+      final Position initialPosition = await Geolocator.getCurrentPosition(
+              desiredAccuracy: LocationAccuracy.high)
+          .timeout(const Duration(seconds: LOCATION_TIMEOUT_SECONDS));
+
+      // ถ้าได้ตำแหน่งก่อน Timeout
       riderCurrentLocation.value =
-          GeoPoint(position.latitude, position.longitude);
-      log('GPS Location Updated: ${position.latitude}, ${position.longitude}');
-    }, onError: (e) {
-      log('Error getting location: $e');
-      Get.snackbar('ข้อผิดพลาด', 'ไม่สามารถติดตามตำแหน่ง GPS ได้: $e');
-    });
+          GeoPoint(initialPosition.latitude, initialPosition.longitude);
+      log('GPS Initial Location Set: ${initialPosition.latitude}, ${initialPosition.longitude}');
+
+      // **เริ่มติดตามตำแหน่งต่อ**
+      Geolocator.getPositionStream(locationSettings: locationSettings).listen(
+          (Position position) {
+        // อัปเดตตำแหน่งทุกครั้ง
+        riderCurrentLocation.value =
+            GeoPoint(position.latitude, position.longitude);
+        log('GPS Location Updated: ${position.latitude}, ${position.longitude}');
+      }, onError: (e) {
+        log('Error getting location stream: $e');
+        Get.snackbar('ข้อผิดพลาด', 'ไม่สามารถติดตามตำแหน่ง GPS ได้: $e');
+      });
+    } on TimeoutException {
+      // **เกิด Timeout**
+      log('Location search timed out after $LOCATION_TIMEOUT_SECONDS seconds.');
+      locationSearchTimedOut.value = true; // ตั้งค่าสถานะ Timeout เป็นจริง
+      Get.snackbar('แจ้งเตือน',
+          'ไม่สามารถระบุตำแหน่ง GPS ได้ภายใน 10 วินาที. โปรดลองใหม่อีกครั้ง.',
+          backgroundColor: Colors.yellow.shade100, colorText: Colors.black87);
+    } catch (e) {
+      // ข้อผิดพลาดอื่นๆ
+      log('Error getting initial location: $e');
+      locationSearchTimedOut.value = true;
+      Get.snackbar('ข้อผิดพลาด', 'ไม่สามารถระบุตำแหน่ง GPS ได้: $e');
+    }
   }
 
   double _calculateDistanceMeters(GeoPoint riderLoc, GeoPoint pickupLoc) {
@@ -135,11 +171,9 @@ class RiderHomeController extends GetxController {
     return riderCurrentLocation.stream.switchMap((riderLoc) {
       if (riderLoc == null) {
         log('Rider location is not available, returning empty list.');
-        // ถ้ายังไม่มีตำแหน่ง GPS จะคืนค่า Stream เปล่าไปก่อน
         return Stream.value([]);
       }
 
-      // ถ้ามีตำแหน่งแล้ว ค่อยเริ่มดึงและกรองตามระยะทาง
       return db
           .collection('orders')
           .where('currentStatus', isEqualTo: 'pending')
@@ -169,7 +203,7 @@ class RiderHomeController extends GetxController {
     });
   }
 
-  // **ฟังก์ชันรับงานที่ใช้ Firestore Transaction เพื่อป้องกันการแย่งงาน**
+  // **การแก้ไข: ใช้ Firestore Transaction เพื่อป้องกันการแย่งงาน**
   Future<void> acceptOrder(OrderModel order) async {
     Get.dialog(const Center(child: CircularProgressIndicator()),
         barrierDismissible: false);
@@ -348,7 +382,8 @@ class RiderHomeScreen extends StatelessWidget {
           }
           if (snapshot.hasError) {
             return Center(
-                child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล: ${snapshot.error}'));
+                child:
+                    Text('เกิดข้อผิดพลาดในการโหลดข้อมูล: ${snapshot.error}'));
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
             // ข้อความนี้จะแสดงเร็วขึ้นเมื่อได้ตำแหน่ง GPS แล้ว
@@ -529,7 +564,7 @@ class RiderHomeScreen extends StatelessWidget {
               const SizedBox(height: 20),
             ],
           ),
-          );
+        );
       },
     );
   }
