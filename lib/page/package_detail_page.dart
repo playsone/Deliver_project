@@ -1,4 +1,4 @@
-// file: lib/page/package_detail_screen.dart
+// file: lib/page/package_detail_Page.dart
 
 import 'dart:async';
 import 'dart:developer';
@@ -49,11 +49,11 @@ class PackageDetailController extends GetxController {
 // ------------------------------------------------------------------
 // Page สำหรับแสดงรายละเอียดงานที่ 'pending' ก่อนการรับงาน
 // ------------------------------------------------------------------
-class PackageDetailScreen extends StatelessWidget {
+class PackageDetailPage extends StatelessWidget {
   final OrderModel order;
   final RiderHomeController riderController;
 
-  const PackageDetailScreen({
+  const PackageDetailPage({
     super.key,
     required this.order,
     required this.riderController,

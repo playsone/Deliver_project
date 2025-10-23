@@ -4,6 +4,9 @@ import 'dart:math' show cos, sqrt, asin, pi, atan2, sin;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloudinary_public/cloudinary_public.dart';
+import 'package:delivery_project/models/package_model.dart';
+import 'package:delivery_project/page/home_rider.dart';
+import 'package:delivery_project/page/index.dart';
 // Note: These files are typically separate in a real project
 // We define placeholders for missing classes/pages/models for compilation context.
 import 'package:flutter/material.dart';
@@ -12,40 +15,6 @@ import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:location/location.dart';
-
-//
-// ------------------------------------------------------------------
-// ** PLACEHOLDERS สำหรับไฟล์ที่ไม่ได้ให้มา **
-// ------------------------------------------------------------------
-class Package {
-  final String id;
-  final String title;
-  final String location;
-  final String destination;
-  final String? imageUrl;
-  Package({
-    required this.id,
-    required this.title,
-    required this.location,
-    required this.destination,
-    this.imageUrl,
-  });
-}
-
-class RiderHomeScreen extends StatelessWidget {
-  final String uid;
-  final int role;
-  const RiderHomeScreen({super.key, required this.uid, required this.role});
-  @override
-  Widget build(BuildContext context) => const Text('Rider Home');
-}
-
-class SpeedDerApp extends StatelessWidget {
-  const SpeedDerApp({super.key});
-  @override
-  Widget build(BuildContext context) => const Text('App Index');
-}
-// ------------------------------------------------------------------
 
 enum DeliveryStatus {
   accepted,
