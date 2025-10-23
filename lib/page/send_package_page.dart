@@ -8,7 +8,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloudinary_public/cloudinary_public.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
+// vvvv เพิ่ม Import นี้สำหรับ MapController vvvv
 import 'package:flutter_map/flutter_map.dart';
+// ^^^^ เพิ่ม Import นี้สำหรับ MapController ^^^^
 import 'package:delivery_project/page/order_status_page.dart';
 import 'dart:developer';
 import 'package:delivery_project/models/user_model.dart';
@@ -16,16 +18,16 @@ import 'package:delivery_project/models/user_model.dart';
 const Color _primaryColor = Color(0xFFC70808);
 const Color _backgroundColor = Color(0xFFFDE9E9);
 
-// ==================================================================
-// Controller (ไม่มีการเปลี่ยนแปลง)
-// ==================================================================
 class SendPackageController extends GetxController {
   final String uid;
   final int role;
   SendPackageController({required this.uid, required this.role});
 
+  // vvvv เพิ่ม MapController สำหรับควบคุมแผนที่ vvvv
+  final MapController mapDisplayController = MapController();
+  // ^^^^ เพิ่ม MapController สำหรับควบคุมแผนที่ ^^^^
+
   final detailController = TextEditingController();
-  final pickupAddressController = TextEditingController();
   final deliveryAddressController = TextEditingController();
   final receiverNameController = TextEditingController();
   final receiverPhoneController = TextEditingController();
@@ -47,16 +49,26 @@ class SendPackageController extends GetxController {
   void onInit() {
     super.onInit();
     _initialize();
+
+    // vvvv เพิ่ม: listener สำหรับการเลื่อนแผนที่ vvvv
+    // เมื่อตำแหน่งปลายทางเปลี่ยน (เลือกผู้รับ)
+    ever(selectedDestinationLocation, (LatLng? location) {
+      if (location != null) {
+        // ให้แผนที่เลื่อนไปยังตำแหน่งใหม่
+        mapDisplayController.move(location, 17.0);
+      }
+    });
+    // ^^^^ สิ้นสุดการเพิ่ม ^^^^
   }
 
   @override
   void onClose() {
     detailController.dispose();
-    pickupAddressController.dispose();
     deliveryAddressController.dispose();
     receiverNameController.dispose();
     receiverPhoneController.dispose();
     _positionStreamSubscription?.cancel();
+    mapDisplayController.dispose(); // <-- เพิ่มการ dispose controller
     super.onClose();
   }
 
@@ -221,6 +233,15 @@ class SendPackageController extends GetxController {
     deliveryAddressController.clear();
     selectedDestinationLocation.value = null;
     destinationAddressText.value = 'แตะเพื่อเลือกบนแผนที่';
+
+    // vvvv เพิ่ม: ย้ายแผนที่กลับไปที่ผู้ส่ง vvvv
+    if (currentUserLocation.value != null) {
+      mapDisplayController.move(
+          LatLng(currentUserLocation.value!.latitude,
+              currentUserLocation.value!.longitude),
+          17.0);
+    }
+    // ^^^^ สิ้นสุดการเพิ่ม ^^^^
   }
 
   Future<void> selectDestinationOnMap() async {
@@ -257,7 +278,6 @@ class SendPackageController extends GetxController {
 
   void submitStep1() {
     if (detailController.text.isEmpty ||
-        pickupAddressController.text.isEmpty ||
         deliveryAddressController.text.isEmpty ||
         receiverNameController.text.isEmpty ||
         receiverPhoneController.text.isEmpty ||
@@ -296,7 +316,7 @@ class SendPackageController extends GetxController {
         'orderDetails': detailController.text,
         'orderImageUrl': imageUrl,
         'pickupAddress': {
-          'detail': pickupAddressController.text,
+          'detail': 'ตำแหน่งปัจจุบันของผู้ส่ง',
           'gps': GeoPoint(currentUserLocation.value!.latitude,
               currentUserLocation.value!.longitude),
         },
@@ -332,9 +352,6 @@ class SendPackageController extends GetxController {
   }
 }
 
-// ==================================================================
-// Page (UI) - ส่วนนี้คือส่วนที่ปรับปรุง
-// ==================================================================
 class SendPackagePage extends StatelessWidget {
   final String uid;
   final int role;
@@ -399,31 +416,18 @@ class SendPackagePage extends StatelessWidget {
     );
   }
 
-  // == [START] Widget ที่ปรับปรุง ==
   Widget _buildStepOneForm(
       BuildContext context, SendPackageController controller) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text("ข้อมูลผู้ส่ง",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 10),
-        _buildUserInfoMap(controller),
-        const SizedBox(height: 15),
-        _buildTextField(controller.pickupAddressController,
-            'รายละเอียดที่อยู่ต้นทาง (เช่น ตึก, ห้อง)', Icons.store),
-        const SizedBox(height: 25),
-
-        // --- ส่วนข้อมูลผู้รับที่ปรับปรุง ---
+// <-- แก้ไขแล้ว (ใช้ Controller)
         const Text("ข้อมูลผู้รับ",
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
-
-        // 1. ฟังก์ชันเดิม: ปุ่มสำหรับเลือก/ค้นหาผู้รับ
-        _buildReceiverSelectionField(context, controller),
+        _buildReceiverSelectionField(
+            context, controller), // <-- แก้ไขแล้ว (เอารูปออก)
         const SizedBox(height: 15),
-
-        // 2. UI เพิ่มเติม: เส้นคั่นเพื่อบอกว่าสามารถกรอกข้อมูลเองได้
         const Row(
           children: [
             Expanded(child: Divider()),
@@ -439,9 +443,11 @@ class SendPackagePage extends StatelessWidget {
           child: Text("กรอกข้อมูลผู้รับด้วยตนเอง",
               style: TextStyle(fontSize: 16, color: Colors.black54)),
         ),
-        const SizedBox(height: 15),
 
-        // 3. ฟังก์ชันใหม่: ช่องกรอกข้อมูลที่แก้ไขได้ (เมื่อยังไม่เลือกผู้รับ)
+        // vvvv เพิ่ม Widget แสดงรูปโปรไฟล์ vvvv
+        _buildReceiverProfileDisplay(controller),
+        // ^^^^ สิ้นสุดการเพิ่ม ^^^^
+
         Obx(() => _buildTextField(controller.receiverNameController,
             'ชื่อผู้รับ', Icons.person_outline,
             isReadOnly: controller.selectedReceiver.value != null)),
@@ -455,11 +461,10 @@ class SendPackagePage extends StatelessWidget {
             'รายละเอียดที่อยู่ปลายทาง', Icons.location_city,
             maxLines: 3,
             isReadOnly: controller.selectedReceiver.value != null)),
-        // --- จบส่วนข้อมูลผู้รับ ---
-
         const SizedBox(height: 15),
         _buildMapPickerField(controller),
         const SizedBox(height: 25),
+        _buildUserInfoMap(controller),
         const Text("ข้อมูลสินค้า",
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
@@ -476,7 +481,6 @@ class SendPackagePage extends StatelessWidget {
     );
   }
 
-  // ปรับปรุง `_buildTextField` ให้เปลี่ยนสีพื้นหลังเมื่อ read-only
   Widget _buildTextField(
       TextEditingController controller, String hint, IconData icon,
       {int maxLines = 1,
@@ -490,9 +494,7 @@ class SendPackagePage extends StatelessWidget {
       decoration: InputDecoration(
         hintText: hint,
         filled: true,
-        fillColor: isReadOnly
-            ? Colors.grey.shade200
-            : Colors.white, // << ปรับปรุงตรงนี้
+        fillColor: isReadOnly ? Colors.grey.shade200 : Colors.white,
         prefixIcon: Icon(icon, color: _primaryColor),
         border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
@@ -505,58 +507,117 @@ class SendPackagePage extends StatelessWidget {
       ),
     );
   }
-  // == [END] Widget ที่ปรับปรุง ==
 
+  // vvvv Widget นี้ถูกแก้ไข เอารูปโปรไฟล์ออก vvvv
   Widget _buildReceiverSelectionField(
       BuildContext context, SendPackageController controller) {
-    return Obx(() => GestureDetector(
-          onTap: controller.selectedReceiver.value == null
-              ? () => _showUserSelectionDialog(context, controller)
-              : null,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                  color: controller.selectedReceiver.value != null
-                      ? Colors.green
-                      : Colors.grey.shade300),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.contact_phone,
-                    color: controller.selectedReceiver.value != null
-                        ? Colors.green
-                        : _primaryColor),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    controller.selectedReceiver.value != null
-                        ? 'ผู้รับ: ${controller.selectedReceiver.value!.fullname}'
-                        : 'แตะเพื่อเลือก/ค้นหาผู้รับจากรายชื่อ',
-                    style: TextStyle(
-                      color: controller.selectedReceiver.value != null
-                          ? Colors.black
-                          : Colors.grey.shade600,
-                      fontWeight: controller.selectedReceiver.value != null
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                    ),
+    return Obx(() {
+      final selectedUser = controller.selectedReceiver.value;
+
+      String titleText;
+      Color borderColor;
+      FontWeight titleWeight;
+      Color titleColor;
+
+      if (selectedUser != null) {
+        // --- กรณีเลือกผู้ใช้แล้ว ---
+        borderColor = Colors.green;
+        titleText = 'ผู้รับ: ${selectedUser.fullname}';
+        titleWeight = FontWeight.bold;
+        titleColor = Colors.black;
+      } else {
+        // --- กรณียังไม่ได้เลือกผู้ใช้ ---
+        borderColor = Colors.grey.shade300;
+        titleText = 'แตะเพื่อเลือก/ค้นหาผู้รับจากรายชื่อ';
+        titleWeight = FontWeight.normal;
+        titleColor = Colors.grey.shade600;
+      }
+
+      return GestureDetector(
+        onTap: selectedUser == null
+            ? () => _showUserSelectionDialog(context, controller)
+            : null,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: borderColor),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                // <-- เปลี่ยนกลับเป็น Icon เสมอ
+                Icons.contact_phone,
+                color: selectedUser != null ? Colors.green : _primaryColor,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  titleText,
+                  style: TextStyle(
+                    color: titleColor,
+                    fontWeight: titleWeight,
                   ),
                 ),
-                if (controller.selectedReceiver.value != null)
-                  IconButton(
-                    icon: const Icon(Icons.clear, color: Colors.red),
-                    onPressed: controller.clearReceiverSelection,
-                  )
-                else
-                  const Icon(Icons.search, color: Colors.grey),
-              ],
-            ),
+              ),
+              if (selectedUser != null)
+                IconButton(
+                  icon: const Icon(Icons.clear, color: Colors.red),
+                  onPressed: controller.clearReceiverSelection,
+                )
+              else
+                const Icon(Icons.search, color: Colors.grey),
+            ],
           ),
-        ));
+        ),
+      );
+    });
   }
+  // ^^^^ สิ้นสุด Widget ที่แก้ไข ^^^^
+
+  // vvvv Widget ใหม่สำหรับแสดงรูปโปรไฟล์ vvvv
+  Widget _buildReceiverProfileDisplay(SendPackageController controller) {
+    return Obx(() {
+      final selectedUser = controller.selectedReceiver.value;
+      if (selectedUser == null) {
+        return const SizedBox(height: 15); // ถ้ายังไม่เลือก ก็เว้นที่ว่างปกติ
+      }
+
+      final String imageUrl = selectedUser.profile;
+      Widget profileAvatar;
+
+      if (imageUrl.isNotEmpty) {
+        profileAvatar = CircleAvatar(
+          radius: 30, // ขนาดรูป
+          backgroundImage: NetworkImage(imageUrl),
+          onBackgroundImageError: (e, s) {
+            // กรณีโหลดรูปไม่ได้
+            profileAvatar = const CircleAvatar(
+              radius: 30,
+              backgroundColor: Colors.grey,
+              child: Icon(Icons.person, color: Colors.white, size: 30),
+            );
+          },
+        );
+      } else {
+        // กรณีไม่มี URL รูปภาพ
+        profileAvatar = const CircleAvatar(
+          radius: 30,
+          backgroundColor: _primaryColor,
+          child: Icon(Icons.person, color: Colors.white, size: 30),
+        );
+      }
+
+      return Container(
+        padding: const EdgeInsets.only(top: 20, bottom: 15),
+        child: Center(
+          child: profileAvatar,
+        ),
+      );
+    });
+  }
+  // ^^^^ สิ้นสุด Widget ใหม่ ^^^^
 
   void _showUserSelectionDialog(
       BuildContext context, SendPackageController controller) {
@@ -574,7 +635,14 @@ class SendPackagePage extends StatelessWidget {
     );
   }
 
+  // vvvv นี่คือแผนที่ที่แก้ไขให้ควบคุมด้วย Controller vvvv
   Widget _buildUserInfoMap(SendPackageController controller) {
+    // ตำแหน่งเริ่มต้น (ต้องมี)
+    final initialCenter = controller.currentUserLocation.value != null
+        ? LatLng(controller.currentUserLocation.value!.latitude,
+            controller.currentUserLocation.value!.longitude)
+        : const LatLng(16.2426, 103.2579); // A fallback location
+
     return Container(
       height: 200,
       decoration: BoxDecoration(
@@ -585,36 +653,89 @@ class SendPackagePage extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(15),
-        child: Obx(() {
-          final location = controller.currentUserLocation.value;
-          if (location == null) {
-            return const Center(child: Text("กำลังค้นหาตำแหน่งของคุณ..."));
-          }
-          final center = LatLng(location.latitude, location.longitude);
-          return FlutterMap(
-            options: MapOptions(
-              initialCenter: center,
-              initialZoom: 17.0,
-              interactionOptions:
-                  const InteractionOptions(flags: InteractiveFlag.none),
+        child: Stack(
+          children: [
+            // 1. สร้าง FlutterMap แค่ครั้งเดียว
+            FlutterMap(
+              mapController:
+                  controller.mapDisplayController, // <-- 1. ผูก Controller
+              options: MapOptions(
+                initialCenter: initialCenter, // <-- 2. ตั้งค่าเริ่มต้น
+                initialZoom: 17.0,
+                // (เอา interactionOptions ออกเพื่อให้เลื่อนได้)
+              ),
+              children: [
+                TileLayer(
+                    urlTemplate:
+                        'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=cb153d15cb4e41f59e25cfda6468f1a0'),
+
+                // 3. ใช้ Obx หุ้มเฉพาะ MarkerLayer
+                Obx(() {
+                  final receiverLocation =
+                      controller.selectedDestinationLocation.value;
+                  final senderLocation = controller.currentUserLocation.value;
+
+                  LatLng center;
+                  Widget markerChild;
+
+                  if (receiverLocation != null) {
+                    center = receiverLocation;
+                    markerChild = const Icon(Icons.location_pin,
+                        color: _primaryColor, size: 40);
+                  } else if (senderLocation != null) {
+                    center = LatLng(
+                        senderLocation.latitude, senderLocation.longitude);
+                    markerChild = const Icon(Icons.my_location,
+                        color: Colors.blue, size: 30);
+                  } else {
+                    return const MarkerLayer(markers: []); // ยังไม่มีตำแหน่ง
+                  }
+
+                  return MarkerLayer(markers: [
+                    Marker(
+                      point: center,
+                      child: markerChild,
+                    )
+                  ]);
+                }),
+              ],
             ),
-            children: [
-              TileLayer(
-                  urlTemplate:
-                      'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=cb153d15cb4e41f59e25cfda6468f1a0'),
-              MarkerLayer(markers: [
-                Marker(
-                  point: center,
-                  child: const Icon(Icons.my_location,
-                      color: Colors.blue, size: 30),
-                )
-              ])
-            ],
-          );
-        }),
+            // 4. ใช้ Obx หุ้มเฉพาะป้ายข้อความ
+            Obx(() {
+              final textLabel =
+                  controller.selectedDestinationLocation.value != null
+                      ? "ตำแหน่งผู้รับ (ปลายทาง)"
+                      : "ตำแหน่งของคุณ (ต้นทาง)";
+              return Positioned(
+                top: 8,
+                left: 8,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                          color: Colors.black.withOpacity(0.15),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2))
+                    ],
+                  ),
+                  child: Text(
+                    textLabel,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, color: Colors.black87),
+                  ),
+                ),
+              );
+            }),
+          ],
+        ),
       ),
     );
   }
+  // ^^^^ สิ้นสุดแผนที่ที่แก้ไข ^^^^
 
   Widget _buildMapPickerField(SendPackageController controller) {
     return GestureDetector(
@@ -720,8 +841,7 @@ class SendPackagePage extends StatelessWidget {
                   TextStyle(fontWeight: FontWeight.bold, color: _primaryColor)),
           Obx(() => _buildConfirmRow(
               Icons.person, 'ชื่อ:', controller.userName.value)),
-          _buildConfirmRow(
-              Icons.store, 'จาก:', controller.pickupAddressController.text),
+          _buildConfirmRow(Icons.store, 'จาก:', 'ตำแหน่งปัจจุบันของคุณ'),
           const Divider(height: 20),
           const Text("ข้อมูลผู้รับ",
               style:
@@ -842,9 +962,6 @@ class SendPackagePage extends StatelessWidget {
   }
 }
 
-// ==================================================================
-// Helper Widgets (ไม่มีการเปลี่ยนแปลง)
-// ==================================================================
 class _MapPickerModal extends StatefulWidget {
   final LatLng initialLocation;
   const _MapPickerModal({required this.initialLocation});
@@ -995,7 +1112,28 @@ class _ReceiverSearchModalContentState
                     itemCount: _filteredUsers.length,
                     itemBuilder: (context, index) {
                       final UserModel user = _filteredUsers[index];
+
+                      final String imageUrl = user.profile;
+                      Widget leadingAvatar;
+                      if (imageUrl.isNotEmpty) {
+                        leadingAvatar = CircleAvatar(
+                          backgroundImage: NetworkImage(imageUrl),
+                          onBackgroundImageError: (exception, stackTrace) {
+                            leadingAvatar = const CircleAvatar(
+                              backgroundColor: Colors.grey,
+                              child: Icon(Icons.person, color: Colors.white),
+                            );
+                          },
+                        );
+                      } else {
+                        leadingAvatar = const CircleAvatar(
+                          backgroundColor: Colors.grey,
+                          child: Icon(Icons.person, color: Colors.white),
+                        );
+                      }
+
                       return ListTile(
+                        leading: leadingAvatar,
                         title: Text(user.fullname),
                         subtitle: Text(user.phone),
                         onTap: () {
@@ -1015,7 +1153,7 @@ class CustomClipperWidget extends CustomClipper<ui.Path> {
   @override
   ui.Path getClip(Size size) {
     double h = size.height;
-    double w = size.width;
+    double w = size.width; // <-- แก้ไขจาก WIdtch เป็น width
     ui.Path path = ui.Path();
     path.lineTo(0, h * 0.85);
     path.quadraticBezierTo(w * 0.15, h * 0.95, w * 0.45, h * 0.85);

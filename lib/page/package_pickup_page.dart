@@ -388,6 +388,13 @@ class _PackagePickupPageState extends State<PackagePickupPage> {
         ? LatLng(deliveryGps.latitude, deliveryGps.longitude)
         : null;
 
+    final pickupAddress =
+        orderData['pickupAddress'] as Map<String, dynamic>? ?? {};
+    final pickupGps = pickupAddress['gps'] as GeoPoint?;
+    final LatLng? pickupLatLng = pickupGps != null
+        ? LatLng(pickupGps.latitude, pickupGps.longitude)
+        : null;
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.4,
       margin: const EdgeInsets.all(15),
@@ -427,9 +434,22 @@ class _PackagePickupPageState extends State<PackagePickupPage> {
                     point: deliveryLatLng,
                     width: 80,
                     height: 80,
+                    child: Tooltip(
+                      message:
+                          '${deliveryAddress['receiverName'] ?? "Error!!!"} ',
+                      child: const Icon(Icons.pin_drop_outlined,
+                          color: Colors.red, size: 40),
+                    ),
+                  ),
+                if (pickupLatLng != null)
+                  Marker(
+                    point: pickupLatLng,
+                    width: 80,
+                    height: 80,
                     child: const Tooltip(
-                      message: 'จุดหมายปลายทาง',
-                      child: Icon(Icons.gps_fixed, color: Colors.red, size: 40),
+                      message: 'คนส่ง',
+                      child: Icon(Icons.gamepad_sharp,
+                          color: Colors.red, size: 40),
                     ),
                   ),
               ],

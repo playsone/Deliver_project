@@ -72,7 +72,6 @@ class _RegisterPageState extends State<RegisterPage> {
     return "${phone.trim()}@e.com";
   }
 
-  // 2. ปรับปรุงฟังก์ชัน register ทั้งหมด
   Future<void> register() async {
     if (_isLoading) return;
 
@@ -891,7 +890,6 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // 3. ปรับปรุง Widget ของปุ่ม Submit
   Widget _buildSubmitButton(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40),

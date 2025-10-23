@@ -1,5 +1,3 @@
-// file: lib/page/package_delivery_screen.dart
-
 import 'dart:async';
 import 'dart:developer';
 import 'dart:math' show cos, sqrt, asin, pi, atan2, sin;
@@ -408,7 +406,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
       targetStatus = 'delivered';
       buttonText = 'ถ่ายรูปยืนยันการส่งสำเร็จ';
       isFinal = true;
-      // จุดหมายคือจุดส่งของ
       targetGps = orderData['deliveryAddress']?['gps'] as GeoPoint?;
     } else {
       return const SizedBox.shrink();

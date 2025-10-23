@@ -1,5 +1,3 @@
-// file: models/order_model.dart
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/models/address_model.dart';
 import 'package:delivery_project/models/status_history_model.dart';
@@ -19,8 +17,7 @@ class OrderModel {
   final AddressModel deliveryAddress;
   final List<StatusHistoryModel> statusHistory;
 
-  // --- เพิ่ม Field นี้เข้าไป ---
-  final GeoPoint? currentLocation; // ตำแหน่งล่าสุดของไรเดอร์
+  final GeoPoint? currentLocation;
 
   OrderModel({
     required this.id,
@@ -35,7 +32,7 @@ class OrderModel {
     required this.pickupAddress,
     required this.deliveryAddress,
     required this.statusHistory,
-    this.currentLocation, // << เพิ่มใน constructor
+    this.currentLocation,
   });
 
   factory OrderModel.fromFirestore(DocumentSnapshot doc) {

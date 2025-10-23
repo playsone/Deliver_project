@@ -313,9 +313,11 @@ class _OrderStatusPageState extends State<OrderStatusPage> {
                     point: deliveryLatLng,
                     width: 80,
                     height: 80,
-                    child: const Tooltip(
-                      message: 'จุดหมายปลายทาง',
-                      child: Icon(Icons.gps_fixed, color: Colors.red, size: 40),
+                    child: Tooltip(
+                      message:
+                          '${deliveryAddress['receiverName'] ?? "Error!!!"} ',
+                      child: const Icon(Icons.gps_fixed,
+                          color: Colors.red, size: 40),
                     ),
                   ),
               ],

@@ -1,5 +1,3 @@
-// file: lib/models/package_model.dart
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/models/userinfo_model.dart';
 import 'package:delivery_project/page/package_pickup_page.dart';
