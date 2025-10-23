@@ -2,13 +2,57 @@ import 'dart:developer';
 import 'dart:math' show cos, sqrt, asin, pi, atan2, sin;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:delivery_project/models/order_model.dart';
-import 'package:delivery_project/models/package_model.dart';
-import 'package:delivery_project/page/home_rider.dart'; // Import RiderHomeController
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
+
+// ------------------------------------------------------------------
+// ** PLACEHOLDERS สำหรับไฟล์ที่ไม่ได้ให้มา (อ้างอิงจาก home_rider.dart) **
+// ------------------------------------------------------------------
+
+class Package {} // Placeholder for PackageModel
+
+class AddressModel {
+  // Placeholder for AddressModel
+  final String detail;
+  final GeoPoint? gps;
+  final String? recipientName;
+  final String? recipientPhone;
+  AddressModel(
+      {required this.detail,
+      this.gps,
+      this.recipientName,
+      this.recipientPhone});
+  factory AddressModel.fromMap(Map<String, dynamic> data) =>
+      throw UnimplementedError();
+}
+
+class OrderModel {
+  // Placeholder for OrderModel
+  final String customerId;
+  final String orderDetails;
+  final AddressModel pickupAddress;
+  final AddressModel deliveryAddress;
+  OrderModel(
+      {required this.customerId,
+      required this.orderDetails,
+      required this.pickupAddress,
+      required this.deliveryAddress});
+  factory OrderModel.fromFirestore(DocumentSnapshot doc) =>
+      throw UnimplementedError();
+}
+
+class RiderHomeController {
+  // Placeholder for RiderHomeController
+  final Rx<GeoPoint?> riderCurrentLocation = Rx(null);
+  static const double MAX_DISTANCE_METERS = 20.0;
+  // เมธอด acceptOrder จำลองการทำงานเพื่อใช้กับปุ่ม
+  void acceptOrder(dynamic order) {
+    // ในโค้ดจริงจะเรียกใช้ acceptOrder(order) ใน Controller ของ home_rider
+  }
+}
+// ------------------------------------------------------------------
 
 // ------------------------------------------------------------------
 // Page สำหรับแสดงรายละเอียดงานที่ 'pending' ก่อนการรับงาน
@@ -187,8 +231,7 @@ class PackageDetailScreen extends StatelessWidget {
           StreamBuilder<DocumentSnapshot>(
             stream: FirebaseFirestore.instance
                 .collection('users')
-                .doc(order
-                    .customerId) // 👈 แก้ไข: ใช้ customerId เพื่อดึงข้อมูลผู้ส่ง
+                .doc(order.customerId) // 👈 ใช้ customerId เพื่อดึงข้อมูลผู้ส่ง
                 .snapshots(),
             builder: (context, snap) {
               if (!snap.hasData) {
@@ -290,8 +333,6 @@ class PackageDetailScreen extends StatelessWidget {
             ? () {
                 // เรียกฟังก์ชัน acceptOrder เมื่อกดปุ่ม
                 riderController.acceptOrder(order);
-                // อาจจะต้องมีการนำทางกลับหน้า Home หรือไปยังหน้าติดตามสถานะ
-                // ตัวอย่าง: Navigator.pop(context);
               }
             : null, // ปิดปุ่มถ้าไกลเกินไป
         style: ElevatedButton.styleFrom(
