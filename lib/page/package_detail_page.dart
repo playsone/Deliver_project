@@ -1,4 +1,4 @@
-// file: lib/page/package_detail_Page.dart
+// file: lib/page/package_detail_screen.dart
 
 import 'dart:async';
 import 'dart:developer';
@@ -47,11 +47,11 @@ class PackageDetailController extends GetxController {
 // ------------------------------------------------------------------
 // Page
 // ------------------------------------------------------------------
-class PackageDetailPage extends StatelessWidget {
+class PackageDetailScreen extends StatelessWidget {
   final OrderModel order;
   final RiderHomeController riderController;
 
-  const PackageDetailPage({
+  const PackageDetailScreen({
     super.key,
     required this.order,
     required this.riderController,
@@ -61,7 +61,7 @@ class PackageDetailPage extends StatelessWidget {
   static const primaryColor = Color(0xFFC70808);
 
   double _calculateDistanceMeters(GeoPoint loc1, GeoPoint loc2) {
-    const double R = 6371000; // meters
+    const double R = 6371000;
     final double lat1 = loc1.latitude;
     final double lon1 = loc1.longitude;
     final double lat2 = loc2.latitude;
@@ -83,12 +83,7 @@ class PackageDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = Get.put(PackageDetailController(order: order));
-
-    final GeoPoint? deliveryGps = order.deliveryAddress.gps;
-    final LatLng deliveryLatLng = deliveryGps != null
-        ? LatLng(deliveryGps.latitude, deliveryGps.longitude)
-        : const LatLng(0, 0);
-
+    
     return Obx(() {
       final GeoPoint? riderLoc = riderController.riderCurrentLocation.value;
       final double distance =
@@ -110,14 +105,14 @@ class PackageDetailPage extends StatelessWidget {
           padding: const EdgeInsets.all(15.0),
           child: Column(
             children: [
-              _buildMapSection(deliveryLatLng),
-              const SizedBox(height: 20),
-              _buildPackageDetailsCard(order),
-              const SizedBox(height: 20),
-              _buildDeliveryInfoSection(order, controller),
-              const SizedBox(height: 20),
+              _buildMapSection(),
+              const SizedBox(height: 15), // แก้ไข: ลดระยะห่างแก้จอล้น
+              _buildPackageDetailsCard(),
+              const SizedBox(height: 15), // แก้ไข: ลดระยะห่างแก้จอล้น
+              _buildDeliveryInfoSection(controller),
+              const SizedBox(height: 15), // แก้ไข: ลดระยะห่างแก้จอล้น
               _buildAcceptButton(context, isNearEnough, distance),
-              const SizedBox(height: 40),
+              const SizedBox(height: 20),
             ],
           ),
         ),
@@ -125,7 +120,44 @@ class PackageDetailPage extends StatelessWidget {
     });
   }
 
-  Widget _buildMapSection(LatLng targetLatLng) {
+  Widget _buildMapSection() {
+    final GeoPoint? pickupGps = order.pickupAddress.gps;
+    final GeoPoint? deliveryGps = order.deliveryAddress.gps;
+
+    final LatLng pickupLatLng = pickupGps != null
+        ? LatLng(pickupGps.latitude, pickupGps.longitude)
+        : const LatLng(0, 0);
+        
+    final LatLng deliveryLatLng = deliveryGps != null
+        ? LatLng(deliveryGps.latitude, deliveryGps.longitude)
+        : const LatLng(0, 0);
+        
+    List<Marker> markers = [];
+    if (pickupGps != null) {
+      markers.add(Marker(
+        point: pickupLatLng,
+        width: 80, height: 80,
+        child: const Column(
+          children: [
+            Icon(Icons.storefront, color: Colors.blue, size: 40),
+            Text('จุดรับ', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ));
+    }
+    if (deliveryGps != null) {
+      markers.add(Marker(
+        point: deliveryLatLng,
+        width: 80, height: 80,
+        child: const Column(
+          children: [
+            Icon(Icons.location_on, color: primaryColor, size: 40),
+            Text('จุดส่ง', style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ));
+    }
+
     return Container(
       height: 250,
       decoration: BoxDecoration(
@@ -137,41 +169,35 @@ class PackageDetailPage extends StatelessWidget {
         child: FlutterMap(
           mapController: _mapController,
           options: MapOptions(
-              initialCenter: targetLatLng.latitude != 0
-                  ? targetLatLng
-                  : const LatLng(13.7563, 100.5018),
-              initialZoom: 15.0,
-              onMapReady: () {
-                if (targetLatLng.latitude != 0 && targetLatLng.longitude != 0) {
-                  _mapController.move(targetLatLng, 15.0);
-                }
-              }),
+            initialCenter: pickupLatLng.latitude != 0 ? pickupLatLng : const LatLng(13.7563, 100.5018),
+            initialZoom: 14.0,
+            interactionOptions: const InteractionOptions(
+              flags: InteractiveFlag.all,
+            ),
+            onMapReady: () {
+              if (markers.length > 1) {
+                var bounds = LatLngBounds.fromPoints(markers.map((m) => m.point).toList());
+                _mapController.fitBounds(bounds, options: const FitBoundsOptions(padding: EdgeInsets.all(50.0)));
+              } else if (markers.isNotEmpty) {
+                _mapController.move(markers.first.point, 14.0);
+              }
+            },
+          ),
           children: [
             TileLayer(
               urlTemplate:
                   'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=cb153d15cb4e41f59e25cfda6468f1a0',
               userAgentPackageName: 'com.example.app',
             ),
-            MarkerLayer(
-              markers: [
-                Marker(
-                  point: targetLatLng,
-                  width: 80,
-                  height: 80,
-                  child: const Icon(Icons.location_on,
-                      color: primaryColor, size: 40),
-                ),
-              ],
-            ),
+            MarkerLayer(markers: markers),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildPackageDetailsCard(OrderModel order) {
-    final bool hasImage =
-        order.orderPicture != null && order.orderPicture!.isNotEmpty;
+  Widget _buildPackageDetailsCard() {
+    final bool hasImage = order.orderPicture != null && order.orderPicture!.isNotEmpty;
 
     return Container(
       width: double.infinity,
@@ -225,16 +251,12 @@ class PackageDetailPage extends StatelessWidget {
             label: 'รายละเอียดสินค้า',
             value: order.orderDetails,
           ),
-          const SizedBox(height: 8),
         ],
       ),
     );
   }
 
-  Widget _buildDeliveryInfoSection(
-      OrderModel order, PackageDetailController controller) {
-    final delivery = order.deliveryAddress;
-
+  Widget _buildDeliveryInfoSection(PackageDetailController controller) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(15),
@@ -250,9 +272,9 @@ class PackageDetailPage extends StatelessWidget {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const Divider(height: 20),
           Obx(() {
-            final senderData = controller.order.customerId.isNotEmpty
-                ? controller.sender.value
-                : null;
+            final senderData = controller.sender.value;
+            // ⚠️ Reminder: ถ้าชื่อผู้ส่งไม่ขึ้น ให้เช็คว่าใน Firestore Collection 'users'
+            // มีฟิลด์ชื่อ 'fullname' (ตัวพิมพ์เล็ก) หรือไม่
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -280,19 +302,21 @@ class PackageDetailPage extends StatelessWidget {
           _infoRow(
             icon: Icons.location_on,
             label: 'ส่งที่ (ปลายทาง)',
-            value: delivery.detail,
+            value: order.deliveryAddress.detail,
           ),
           const SizedBox(height: 8),
+          // ⚠️ Reminder: ถ้าชื่อผู้รับไม่ขึ้น ให้เช็คว่าใน Firestore,
+          // ภายใน Map 'deliveryAddress' มีฟิลด์ชื่อ 'receiverName' หรือไม่
           _infoRow(
             icon: Icons.person_pin,
             label: 'ผู้รับ',
-            value: delivery.recipientName ?? 'N/A',
+            value: order.deliveryAddress.receiverName ?? 'N/A',
           ),
           const SizedBox(height: 8),
           _infoRow(
             icon: Icons.phone_android,
             label: 'เบอร์ติดต่อ (ผู้รับ)',
-            value: delivery.recipientPhone ?? 'N/A',
+            value: order.deliveryAddress.receiverPhone ?? 'N/A',
           ),
         ],
       ),
@@ -337,7 +361,7 @@ class PackageDetailPage extends StatelessWidget {
       isEnabled = false;
     } else if (isNearEnough) {
       buttonText = 'รับงานนี้';
-      buttonColor = const Color(0xFF38B000); // Green
+      buttonColor = const Color(0xFF38B000);
       isEnabled = true;
     } else {
       buttonText =
@@ -359,8 +383,8 @@ class PackageDetailPage extends StatelessWidget {
         ),
         onPressed: isEnabled
             ? () {
-                Get.back(); // Close Detail Screen
-                riderController.acceptOrder(order); // Call accept function
+                Get.back();
+                riderController.acceptOrder(order);
               }
             : null,
         style: ElevatedButton.styleFrom(
