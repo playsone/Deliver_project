@@ -83,7 +83,7 @@ class PackageDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = Get.put(PackageDetailController(order: order));
-    
+
     return Obx(() {
       final GeoPoint? riderLoc = riderController.riderCurrentLocation.value;
       final double distance =
@@ -127,20 +127,23 @@ class PackageDetailScreen extends StatelessWidget {
     final LatLng pickupLatLng = pickupGps != null
         ? LatLng(pickupGps.latitude, pickupGps.longitude)
         : const LatLng(0, 0);
-        
+
     final LatLng deliveryLatLng = deliveryGps != null
         ? LatLng(deliveryGps.latitude, deliveryGps.longitude)
         : const LatLng(0, 0);
-        
+
     List<Marker> markers = [];
     if (pickupGps != null) {
       markers.add(Marker(
         point: pickupLatLng,
-        width: 80, height: 80,
+        width: 80,
+        height: 80,
         child: const Column(
           children: [
             Icon(Icons.storefront, color: Colors.blue, size: 40),
-            Text('จุดรับ', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+            Text('จุดรับ',
+                style:
+                    TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
           ],
         ),
       ));
@@ -148,11 +151,14 @@ class PackageDetailScreen extends StatelessWidget {
     if (deliveryGps != null) {
       markers.add(Marker(
         point: deliveryLatLng,
-        width: 80, height: 80,
+        width: 80,
+        height: 80,
         child: const Column(
           children: [
             Icon(Icons.location_on, color: primaryColor, size: 40),
-            Text('จุดส่ง', style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)),
+            Text('จุดส่ง',
+                style: TextStyle(
+                    color: primaryColor, fontWeight: FontWeight.bold)),
           ],
         ),
       ));
@@ -169,15 +175,20 @@ class PackageDetailScreen extends StatelessWidget {
         child: FlutterMap(
           mapController: _mapController,
           options: MapOptions(
-            initialCenter: pickupLatLng.latitude != 0 ? pickupLatLng : const LatLng(13.7563, 100.5018),
+            initialCenter: pickupLatLng.latitude != 0
+                ? pickupLatLng
+                : const LatLng(13.7563, 100.5018),
             initialZoom: 14.0,
             interactionOptions: const InteractionOptions(
               flags: InteractiveFlag.all,
             ),
             onMapReady: () {
               if (markers.length > 1) {
-                var bounds = LatLngBounds.fromPoints(markers.map((m) => m.point).toList());
-                _mapController.fitBounds(bounds, options: const FitBoundsOptions(padding: EdgeInsets.all(50.0)));
+                var bounds = LatLngBounds.fromPoints(
+                    markers.map((m) => m.point).toList());
+                _mapController.fitBounds(bounds,
+                    options:
+                        const FitBoundsOptions(padding: EdgeInsets.all(50.0)));
               } else if (markers.isNotEmpty) {
                 _mapController.move(markers.first.point, 14.0);
               }
@@ -197,7 +208,8 @@ class PackageDetailScreen extends StatelessWidget {
   }
 
   Widget _buildPackageDetailsCard() {
-    final bool hasImage = order.orderPicture != null && order.orderPicture!.isNotEmpty;
+    final bool hasImage =
+        order.orderPicture != null && order.orderPicture!.isNotEmpty;
 
     return Container(
       width: double.infinity,
@@ -310,13 +322,13 @@ class PackageDetailScreen extends StatelessWidget {
           _infoRow(
             icon: Icons.person_pin,
             label: 'ผู้รับ',
-            value: order.deliveryAddress.receiverName ?? 'N/A',
+            value: order.deliveryAddress.recipientName ?? 'N/A',
           ),
           const SizedBox(height: 8),
           _infoRow(
             icon: Icons.phone_android,
             label: 'เบอร์ติดต่อ (ผู้รับ)',
-            value: order.deliveryAddress.receiverPhone ?? 'N/A',
+            value: order.deliveryAddress.recipientPhone ?? 'N/A',
           ),
         ],
       ),
