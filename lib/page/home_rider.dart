@@ -1,154 +1,22 @@
-import 'dart:async';
+// file: lib/page/home_rider.dart
+
+import 'dart:async'; // ต้อง Import dart:async
 import 'dart:developer';
-import 'dart:math' show cos, sqrt, asin, pi, atan2, sin;
-
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:delivery_project/models/user_model.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart'; 
-import 'package:geolocator/geolocator.dart'; 
 import 'package:get/get.dart';
-import 'package:latlong2/latlong.dart';
+import 'dart:math' show cos, sqrt, asin, pi, atan2, sin;
+import 'package:geolocator/geolocator.dart';
 import 'package:rxdart/rxdart.dart' as RxDart;
-
-
-// ------------------------------------------------------------------
-// ** MODEL IMPLEMENTATIONS (แก้จาก Placeholder) **
-// ------------------------------------------------------------------
-
-// Placeholder Pages (ยังคงใช้เพื่อให้โค้ดคอมไพล์ได้)
-class SpeedDerApp extends StatelessWidget { const SpeedDerApp({super.key}); @override Widget build(BuildContext context) => const Text('App Index'); }
-class EditProfilePage extends StatelessWidget { final String uid; final int role; const EditProfilePage({super.key, required this.uid, required this.role}); @override Widget build(BuildContext context) => const Text('Edit Profile'); }
-class PackageDeliveryPage extends StatelessWidget { final Package package; final String uid; final int role; const PackageDeliveryPage({super.key, required this.package, required this.uid, required this.role}); @override Widget build(BuildContext context) => const Text('Delivery Page'); }
-class PackageDetailScreen extends StatelessWidget { final dynamic order; final dynamic riderController; const PackageDetailScreen({super.key, required this.order, required this.riderController}); @override Widget build(BuildContext context) => const Text('Package Detail'); }
-class Package {
-  final String id;
-  final String title;
-  final String location;
-  final String destination;
-  final String? imageUrl;
-  Package({
-    required this.id,
-    required this.title,
-    required this.location,
-    required this.destination,
-    this.imageUrl,
-  });
-}
-class StatusHistoryModel { // จำลองเพื่อให้ OrderModel ใช้งานได้
-  factory StatusHistoryModel.fromMap(Map<String, dynamic> data) => throw UnimplementedError();
-}
-
-
-// 🔔 AddressModel: ใช้ implementation จริง
-class AddressModel {
-  final String detail;
-  final GeoPoint? gps;
-  final String? recipientName;
-  final String? recipientPhone;
-  AddressModel({required this.detail, this.gps, this.recipientName, this.recipientPhone});
-
-  factory AddressModel.fromMap(Map<String, dynamic> data) {
-    return AddressModel(
-      detail: data['detail'] ?? '',
-      gps: data['gps'] as GeoPoint?,
-      recipientName: data['receiverName'],
-      recipientPhone: data['receiverPhone'],
-    );
-  }
-}
-
-// 🔔 OrderModel: ใช้ implementation จริง
-class OrderModel {
-  final String id;
-  final String customerId;
-  final String orderDetails;
-  final String? orderPicture; 
-  final String currentStatus;
-  final AddressModel pickupAddress;
-  final AddressModel deliveryAddress;
-
-  OrderModel({
-    required this.id,
-    required this.customerId,
-    required this.orderDetails,
-    this.orderPicture,
-    required this.currentStatus,
-    required this.pickupAddress,
-    required this.deliveryAddress,
-  });
-
-  factory OrderModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>?;
-    if (data == null) throw Exception("Document data is null.");
-
-    return OrderModel(
-      id: doc.id,
-      customerId: data['customerId'] ?? '',
-      orderDetails: data['orderDetails'] ?? '',
-      orderPicture: data['orderImageUrl'] as String?, // ใช้ orderImageUrl
-      currentStatus: data['currentStatus'] ?? 'pending',
-      pickupAddress: AddressModel.fromMap(data['pickupAddress'] ?? {}),
-      deliveryAddress: AddressModel.fromMap(data['deliveryAddress'] ?? {}),
-    );
-  }
-}
-
-// 🔔 UserModel: ใช้ implementation จริง
-class UserModel {
-  final String uid;
-  final int role;
-  final String phone;
-  final String profile;
-  final String fullname;
-
-  final String? defaultAddress;
-  final GeoPoint? defaultGPS;
-  final String? secondAddress;
-  final GeoPoint? secondGPS;
-
-  final String? vehicleNo;
-  final String? vehiclePicture;
-  final GeoPoint? gps;
-
-  UserModel({
-    required this.uid,
-    required this.role,
-    required this.phone,
-    required this.profile,
-    required this.fullname,
-    this.defaultAddress,
-    this.defaultGPS,
-    this.secondAddress,
-    this.secondGPS,
-    this.vehicleNo,
-    this.vehiclePicture,
-    this.gps,
-  });
-
-  factory UserModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>?;
-    if (data == null) throw Exception("Document data is null.");
-
-    return UserModel(
-      uid: data['uid'] ?? '',
-      role: (data['role'] as num?)?.toInt() ?? 0,
-      phone: data['phone'] ?? '',
-      profile: data['profile'] ?? '',
-      fullname: data['fullname'] ?? '',
-      defaultAddress: data['defaultAddress'],
-      defaultGPS: data['defaultGPS'] as GeoPoint?,
-      secondAddress: data['secondAddress'],
-      secondGPS: data['secondGPS'] as GeoPoint?,
-      vehicleNo: data['vehicle_no'],
-      vehiclePicture: data['vehicle_picture'],
-      gps: data['gps'] as GeoPoint?,
-    );
-  }
-}
-
-// ------------------------------------------------------------------
-// Controller: RiderHomeController
-// ------------------------------------------------------------------
+import '../models/order_model.dart';
+import 'package:delivery_project/page/edit_profile.dart';
+import 'package:delivery_project/page/index.dart';
+import 'package:delivery_project/page/package_delivery_page.dart'
+    hide SpeedDerApp;
+import 'package:delivery_project/models/package_model.dart'
+    hide Package; // ✅ เพิ่ม Import package_model.dart
+import 'package:delivery_project/page/package_detail_screen.dart'; // ✅ Import หน้า Detail
 
 class RiderHomeController extends GetxController {
   final String uid;
@@ -159,23 +27,22 @@ class RiderHomeController extends GetxController {
   final db = FirebaseFirestore.instance;
 
   final Rx<GeoPoint?> riderCurrentLocation = Rx(null);
+  final RxBool locationSearchTimedOut = false.obs;
+
   static const double MAX_DISTANCE_METERS = 20.0;
+  static const int LOCATION_TIMEOUT_SECONDS = 10;
 
   @override
   void onInit() {
     super.onInit();
     _startLocationTracking();
     _checkAndNavigateToActiveOrder();
-    
-    // 🔔 แก้ไข: ใช้ UserModel.fromFirestore จริงที่ได้รับการ implement แล้ว
     rider.bindStream(
       db
           .collection('users')
           .doc(uid)
           .snapshots()
-          .map((doc) => doc.exists 
-              ? UserModel.fromFirestore(doc) 
-              : null), 
+          .map((doc) => doc.exists ? UserModel.fromFirestore(doc) : null),
     );
   }
 
@@ -187,6 +54,7 @@ class RiderHomeController extends GetxController {
     if (!serviceEnabled) {
       Get.snackbar(
           'แจ้งเตือน GPS', 'กรุณาเปิดบริการระบุตำแหน่ง (GPS) เพื่อรับงาน');
+      locationSearchTimedOut.value = true;
       return;
     }
     permission = await Geolocator.checkPermission();
@@ -196,6 +64,7 @@ class RiderHomeController extends GetxController {
           permission == LocationPermission.deniedForever) {
         Get.snackbar(
             'ข้อจำกัด', 'ไม่ได้รับอนุญาตให้เข้าถึงตำแหน่ง. กรุณาตั้งค่าในแอป.');
+        locationSearchTimedOut.value = true;
         return;
       }
     }
@@ -205,15 +74,35 @@ class RiderHomeController extends GetxController {
       distanceFilter: 10,
     );
 
-    Geolocator.getPositionStream(locationSettings: locationSettings).listen(
-        (Position position) {
+    try {
+      final Position initialPosition = await Geolocator.getCurrentPosition(
+              desiredAccuracy: LocationAccuracy.high)
+          .timeout(const Duration(seconds: LOCATION_TIMEOUT_SECONDS));
+
       riderCurrentLocation.value =
-          GeoPoint(position.latitude, position.longitude);
-      log('GPS Location Updated: ${position.latitude}, ${position.longitude}');
-    }, onError: (e) {
-      log('Error getting location: $e');
-      Get.snackbar('ข้อผิดพลาด', 'ไม่สามารถติดตามตำแหน่ง GPS ได้: $e');
-    });
+          GeoPoint(initialPosition.latitude, initialPosition.longitude);
+      log('GPS Initial Location Set: ${initialPosition.latitude}, ${initialPosition.longitude}');
+
+      Geolocator.getPositionStream(locationSettings: locationSettings).listen(
+          (Position position) {
+        riderCurrentLocation.value =
+            GeoPoint(position.latitude, position.longitude);
+        log('GPS Location Updated: ${position.latitude}, ${position.longitude}');
+      }, onError: (e) {
+        log('Error getting location stream: $e');
+        Get.snackbar('ข้อผิดพลาด', 'ไม่สามารถติดตามตำแหน่ง GPS ได้: $e');
+      });
+    } on TimeoutException {
+      log('Location search timed out after $LOCATION_TIMEOUT_SECONDS seconds.');
+      locationSearchTimedOut.value = true;
+      Get.snackbar('แจ้งเตือน',
+          'ไม่สามารถระบุตำแหน่ง GPS ได้ภายใน 10 วินาที. โปรดลองใหม่อีกครั้ง.',
+          backgroundColor: Colors.yellow.shade100, colorText: Colors.black87);
+    } catch (e) {
+      log('Error getting initial location: $e');
+      locationSearchTimedOut.value = true;
+      Get.snackbar('ข้อผิดพลาด', 'ไม่สามารถระบุตำแหน่ง GPS ได้: $e');
+    }
   }
 
   double _calculateDistanceMeters(GeoPoint riderLoc, GeoPoint pickupLoc) {
@@ -253,7 +142,6 @@ class RiderHomeController extends GetxController {
 
         log('Rider has an active order: ${orderModel.id}. Navigating...');
 
-        // 🔔 สร้าง Package object จาก OrderModel
         final package = Package(
           id: orderModel.id,
           title: orderModel.orderDetails,
@@ -261,7 +149,6 @@ class RiderHomeController extends GetxController {
           destination: orderModel.deliveryAddress.detail,
           imageUrl: orderModel.orderPicture,
         );
-        
         Get.offAll(() => PackageDeliveryPage(
               package: package,
               uid: uid,
@@ -275,7 +162,6 @@ class RiderHomeController extends GetxController {
     }
   }
 
-  // ใช้ RxDart.switchMap เพื่อเปลี่ยน Stream เมื่อ riderCurrentLocation เปลี่ยน
   Stream<List<OrderModel>> getPendingOrdersStream() {
     return riderCurrentLocation.stream.switchMap((riderLoc) {
       if (riderLoc == null) {
@@ -290,7 +176,6 @@ class RiderHomeController extends GetxController {
           .map((snapshot) {
         final allPendingOrders =
             snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
-            
         final filteredOrders = allPendingOrders.where((order) {
           final GeoPoint? pickupGps = order.pickupAddress.gps;
           if (pickupGps == null) {
@@ -299,9 +184,13 @@ class RiderHomeController extends GetxController {
           }
 
           final distance = _calculateDistanceMeters(riderLoc, pickupGps);
-          
-          return distance <= MAX_DISTANCE_METERS;
-          
+          if (distance <= MAX_DISTANCE_METERS) {
+            log('Order ${order.id} is ${distance.toStringAsFixed(2)}m away - ACCEPTED');
+            return true;
+          } else {
+            log('Order ${order.id} is ${distance.toStringAsFixed(2)}m away - REJECTED (Max: $MAX_DISTANCE_METERS m)');
+            return false;
+          }
         }).toList();
 
         return filteredOrders;
@@ -309,33 +198,24 @@ class RiderHomeController extends GetxController {
     });
   }
 
-  // **ฟังก์ชันรับงาน พร้อมระบบป้องกันการรับงานพร้อมกันด้วย Transaction**
   Future<void> acceptOrder(OrderModel order) async {
-    // ใช้สีหลักในการโหลด
-    Get.dialog(const Center(child: CircularProgressIndicator(color: Color(0xFFC70808))),
+    Get.dialog(const Center(child: CircularProgressIndicator()),
         barrierDismissible: false);
-        
     try {
       final orderRef = db.collection('orders').doc(order.id);
-      final currentLocation = riderCurrentLocation.value;
 
-      // 🔔 ใช้ Transaction เพื่อให้แน่ใจว่าการอ่านและการเขียนเป็น Atomic (ป้องกัน Concurrency)
       await db.runTransaction((transaction) async {
         final freshSnapshot = await transaction.get(orderRef);
         final freshOrder = OrderModel.fromFirestore(freshSnapshot);
 
-        // 1. ตรวจสอบสถานะ: ถ้าไม่ใช่ 'pending' แสดงว่ามีคนรับไปแล้ว
         if (freshOrder.currentStatus != 'pending') {
           throw Exception(
               'Order is no longer pending. Status: ${freshOrder.currentStatus}');
         }
 
-        // 2. ถ้าสถานะยังเป็น 'pending' ให้อัปเดตข้อมูล
         transaction.update(orderRef, {
           'riderId': uid,
           'currentStatus': 'accepted',
-          // 🔔 เพิ่มตำแหน่งปัจจุบันของไรเดอร์เมื่อรับงาน
-          'currentLocation': currentLocation, 
           'statusHistory': FieldValue.arrayUnion([
             {'status': 'accepted', 'timestamp': Timestamp.now()}
           ]),
@@ -344,11 +224,6 @@ class RiderHomeController extends GetxController {
 
       Get.back(); // ปิด loading dialog
 
-      Get.snackbar('รับงานสำเร็จ', 'งาน #${order.id.substring(0, 8)} ถูกรับเรียบร้อยแล้ว!', 
-        backgroundColor: Colors.green, colorText: Colors.white);
-
-      // นำทางไปยังหน้าส่งของ
-      // 🔔 สร้าง Package object จาก OrderModel
       final package = Package(
         id: order.id,
         title: order.orderDetails,
@@ -356,8 +231,7 @@ class RiderHomeController extends GetxController {
         destination: order.deliveryAddress.detail,
         imageUrl: order.orderPicture,
       );
-      
-      Get.offAll(() => PackageDeliveryPage( 
+      Get.offAll(() => PackageDeliveryPage(
             package: package,
             uid: uid,
             role: role,
@@ -366,9 +240,8 @@ class RiderHomeController extends GetxController {
       Get.back(); // ปิด loading dialog
       log('Error accepting order: $e');
 
-      // 🔔 แสดงข้อความดักบัคการรับงานซ้ำซ้อน
       if (e.toString().contains('Order is no longer pending')) {
-        Get.snackbar('ไม่สำเร็จ', 'งานนี้ถูกรับไปแล้วโดยไรเดอร์ท่านอื่น กรุณาเลือกงานใหม่',
+        Get.snackbar('ไม่สำเร็จ', 'งานนี้ถูกรับไปแล้วโดยไรเดอร์ท่านอื่น',
             backgroundColor: Colors.red.shade100, colorText: Colors.red);
       } else {
         Get.snackbar('เกิดข้อผิดพลาด', 'ไม่สามารถรับงานนี้ได้: $e',
@@ -378,9 +251,10 @@ class RiderHomeController extends GetxController {
   }
 }
 
-// ------------------------------------------------------------------
-// View: RiderHomeScreen
-// ------------------------------------------------------------------
+// -------------------------------------------------------------------
+// ส่วนของ UI (RiderHomeScreen)
+// -------------------------------------------------------------------
+
 class RiderHomeScreen extends StatelessWidget {
   final String uid;
   final int role;
@@ -389,7 +263,6 @@ class RiderHomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = Get.put(RiderHomeController(uid: uid, role: role));
-    const primaryColor = Color(0xFFC70808);
 
     return Scaffold(
       backgroundColor: const Color(0xFFFDE9E9),
@@ -404,15 +277,14 @@ class RiderHomeScreen extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: _buildBottomNavigationBar(context, primaryColor),
+      bottomNavigationBar: _buildBottomNavigationBar(context),
     );
   }
 
   Widget _buildHeader(BuildContext context, RiderHomeController controller) {
     return Obx(() {
       final riderData = controller.rider.value;
-      // 🔔 ใช้ field 'fullname' จาก UserModel จริง
-      String riderName = riderData?.fullname ?? 'ไรเดอร์'; 
+      String riderName = riderData?.fullname ?? 'ไรเดอร์';
       String profileImageUrl = riderData?.profile ??
           'https://cdn-icons-png.flaticon.com/512/1144/1144760.png';
 
@@ -463,7 +335,7 @@ class RiderHomeScreen extends StatelessWidget {
           BoxShadow(color: Colors.black12, offset: Offset(0, 2), blurRadius: 4),
         ],
       ),
-      child: const Text('รายการงานที่อยู่ในรัศมี',
+      child: const Text('รายการงานที่รอการจัดส่ง',
           textAlign: TextAlign.center,
           style: TextStyle(
               color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
@@ -473,30 +345,20 @@ class RiderHomeScreen extends StatelessWidget {
   Widget _buildPackageList(RiderHomeController controller) {
     return Obx(() {
       final hasLocation = controller.riderCurrentLocation.value != null;
-      const primaryColor = Color(0xFFC70808);
 
       if (!hasLocation) {
         return Center(
-            child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const SizedBox(
-                width: 30, 
-                height: 30, 
-                child: CircularProgressIndicator(strokeWidth: 3, color: primaryColor)), 
-              const SizedBox(height: 15),
-              Text(
-                'กำลังระบุตำแหน่ง GPS',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 18, color: Colors.grey[800], fontWeight: FontWeight.bold)),
-              const SizedBox(height: 5),
-              Text('(โปรดรอสักครู่และตรวจสอบว่า GPS ทำงานอยู่)',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14, color: Colors.grey[600])),
-            ],
-          ),
+            child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 10),
+            Text(controller.locationSearchTimedOut.value
+                ? '❌ ไม่สามารถระบุตำแหน่ง GPS ได้'
+                : 'กำลังค้นหาตำแหน่งของคุณเพื่อแสดงงานใกล้เคียง...'),
+            const SizedBox(height: 5),
+            const Text('(ตำแหน่งจำเป็นสำหรับงานที่อยู่ในรัศมี 20 เมตร)'),
+          ],
         ));
       }
 
@@ -504,29 +366,21 @@ class RiderHomeScreen extends StatelessWidget {
         stream: controller.getPendingOrdersStream(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 10),
-                  Text('กำลังโหลดรายการงาน...', style: TextStyle(color: Colors.grey)),
-                ],
-              ),
-            );
+            return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
             return Center(
-                child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล: ${snapshot.error}'));
+                child:
+                    Text('เกิดข้อผิดพลาดในการโหลดข้อมูล: ${snapshot.error}'));
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return Center(
+            return const Center(
                 child: Padding(
-              padding: const EdgeInsets.all(20.0),
+              padding: EdgeInsets.all(20.0),
               child: Text(
-                  '✅ ตำแหน่งยืนยันแล้ว:\nไม่มีงานที่อยู่ในรัศมี ${RiderHomeController.MAX_DISTANCE_METERS} เมตรให้รับในขณะนี้',
+                  'ไม่มีงานที่อยู่ในรัศมี 20 เมตรให้รับในขณะนี้\n(กรุณารอหรือขยับตำแหน่ง)',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16, color: Colors.grey[700], fontWeight: FontWeight.bold)),
+                  style: TextStyle(fontSize: 16, color: Colors.grey)),
             ));
           }
 
@@ -545,89 +399,129 @@ class RiderHomeScreen extends StatelessWidget {
     });
   }
 
+  // **ส่วนที่แก้ไข: Widget _buildPackageCard**
   Widget _buildPackageCard(
       BuildContext context, OrderModel order, RiderHomeController controller) {
-    
-    const acceptColor = Color(0xFF38B000); // สีเขียวสำหรับปุ่มรับงาน
+    return Obx(() {
+      final riderLoc = controller.riderCurrentLocation.value;
+      final pickupGps = order.pickupAddress.gps;
 
-    return InkWell(
-      // 🔔 เมื่อแตะที่ Card ทั้งใบ จะนำไปยังหน้า PackageDetailScreen
-      onTap: () {
-        Get.to(() => PackageDetailScreen(order: order, riderController: controller));
-      },
-      child: Card(
-        margin: const EdgeInsets.only(bottom: 15),
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        child: Padding(
-          padding: const EdgeInsets.all(15.0),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  borderRadius: BorderRadius.circular(8),
-                  // 🔔 ใช้ order.orderPicture
-                  image: order.orderPicture != null && order.orderPicture!.isNotEmpty
-                      ? DecorationImage(
-                          image: NetworkImage(order.orderPicture!),
-                          fit: BoxFit.cover)
+      // คำนวณระยะทาง
+      final double distance = (riderLoc != null && pickupGps != null)
+          ? controller._calculateDistanceMeters(riderLoc, pickupGps)
+          : 9999.0;
+
+      final bool isNear = distance <= RiderHomeController.MAX_DISTANCE_METERS;
+      final String distanceText = '${distance.toStringAsFixed(0)} ม.';
+
+      return InkWell(
+        // เมื่อแตะที่ส่วนหลักของ Card (ยกเว้นปุ่ม) จะไปหน้า PackageDetailScreen
+        onTap: () {
+          Get.to(() => PackageDetailScreen(
+                order: order,
+                riderController: controller,
+              ));
+        },
+        child: Card(
+          margin: const EdgeInsets.only(bottom: 15),
+          elevation: 2,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          child: Padding(
+            padding: const EdgeInsets.all(15.0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    borderRadius: BorderRadius.circular(8),
+                    image: order.orderPicture != null
+                        ? DecorationImage(
+                            image: NetworkImage(order.orderPicture!),
+                            fit: BoxFit.cover)
+                        : null,
+                  ),
+                  child: order.orderPicture == null
+                      ? const Icon(Icons.inventory_2_outlined,
+                          size: 40, color: Colors.black54)
                       : null,
                 ),
-                child: order.orderPicture == null || order.orderPicture!.isEmpty
-                    ? const Icon(Icons.inventory_2_outlined,
-                        size: 40, color: Colors.black54)
-                    : null,
-              ),
-              const SizedBox(width: 15),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(order.orderDetails,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: Color(0xFFC70808)),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 5),
-                    // 🔔 ใช้ AddressModel fields
-                    _buildPackageDetailRow(
-                        Icons.store, 'ต้นทาง: ${order.pickupAddress.detail}'),
-                    _buildPackageDetailRow(Icons.location_on,
-                        'ปลายทาง: ${order.deliveryAddress.detail}'),
-                  ],
+                const SizedBox(width: 15),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(order.orderDetails,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: Color(0xFFC70808)),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 5),
+                      _buildPackageDetailRow(
+                          Icons.store, 'ต้นทาง: ${order.pickupAddress.detail}'),
+                      _buildPackageDetailRow(Icons.location_on,
+                          'ปลายทาง: ${order.deliveryAddress.detail}'),
+                    ],
+                  ),
                 ),
-              ),
-              // ** ปุ่มรับงาน **
-              TextButton(
-                onPressed: () => controller.acceptOrder(order),
-                style: TextButton.styleFrom(
-                  backgroundColor: acceptColor,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                ),
-                child: const Row(
+                // ส่วนปุ่ม/ระยะทาง ที่อยู่ด้านขวา
+                Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('รับงาน',
-                        style: TextStyle(color: Colors.white, fontSize: 14)),
-                    SizedBox(width: 4),
-                    Icon(Icons.arrow_forward_ios, size: 14, color: Colors.white),
+                    Text(
+                      distanceText,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: isNear ? Colors.green[700] : Colors.red,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: isNear
+                          ? () => controller
+                              .acceptOrder(order) // 1. ใกล้: รับงานทันที
+                          : () {
+                              // 2. ไกล: ไปดูรายละเอียด
+                              Get.to(() => PackageDetailScreen(
+                                    order: order,
+                                    riderController: controller,
+                                  ));
+                            },
+                      style: TextButton.styleFrom(
+                        backgroundColor: isNear
+                            ? const Color(0xFF38B000) // เขียวถ้าใกล้
+                            : Colors.blueGrey, // เทาถ้าไกล
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(isNear ? 'รับงาน' : 'ดูรายละเอียด',
+                              style: const TextStyle(
+                                  color: Colors.white, fontSize: 13)),
+                          const SizedBox(width: 4),
+                          Icon(isNear ? Icons.check : Icons.search,
+                              size: 14, color: Colors.white),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   Widget _buildPackageDetailRow(IconData icon, String text) {
@@ -647,11 +541,11 @@ class RiderHomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildBottomNavigationBar(BuildContext context, Color primaryColor) {
+  Widget _buildBottomNavigationBar(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(
-        color: primaryColor,
-        boxShadow: const [
+      decoration: const BoxDecoration(
+        color: Color(0xFFC70808),
+        boxShadow: [
           BoxShadow(color: Colors.black12, offset: Offset(0, -2), blurRadius: 5)
         ],
       ),

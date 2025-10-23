@@ -1,64 +1,55 @@
+// file: lib/page/package_detail_screen.dart
+
+import 'dart:async';
 import 'dart:developer';
 import 'dart:math' show cos, sqrt, asin, pi, atan2, sin;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:delivery_project/models/order_model.dart';
+import 'package:delivery_project/models/user_model.dart';
+import 'package:delivery_project/page/home_rider.dart'; // Import RiderHomeController
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
 
 // ------------------------------------------------------------------
-// ** PLACEHOLDERS สำหรับไฟล์ที่ไม่ได้ให้มา (อ้างอิงจาก home_rider.dart) **
+// Controller สำหรับหน้าแสดงรายละเอียดงาน (Detail)
 // ------------------------------------------------------------------
+class PackageDetailController extends GetxController {
+  final OrderModel order;
+  final String senderId;
+  final db = FirebaseFirestore.instance;
 
-class Package {} // Placeholder for PackageModel
+  PackageDetailController({required this.order})
+      : senderId = order.customerId ?? ''; // ต้องมั่นใจว่า order มี senderId
 
-class AddressModel {
-  // Placeholder for AddressModel
-  final String detail;
-  final GeoPoint? gps;
-  final String? recipientName;
-  final String? recipientPhone;
-  AddressModel(
-      {required this.detail,
-      this.gps,
-      this.recipientName,
-      this.recipientPhone});
-  factory AddressModel.fromMap(Map<String, dynamic> data) =>
-      throw UnimplementedError();
-}
+  final Rx<UserModel?> sender = Rx(null);
 
-class OrderModel {
-  // Placeholder for OrderModel
-  final String customerId;
-  final String orderDetails;
-  final AddressModel pickupAddress;
-  final AddressModel deliveryAddress;
-  OrderModel(
-      {required this.customerId,
-      required this.orderDetails,
-      required this.pickupAddress,
-      required this.deliveryAddress});
-  factory OrderModel.fromFirestore(DocumentSnapshot doc) =>
-      throw UnimplementedError();
-}
+  @override
+  void onInit() {
+    super.onInit();
+    if (senderId.isNotEmpty) {
+      _loadSenderData();
+    }
+  }
 
-class RiderHomeController {
-  // Placeholder for RiderHomeController
-  final Rx<GeoPoint?> riderCurrentLocation = Rx(null);
-  static const double MAX_DISTANCE_METERS = 20.0;
-  // เมธอด acceptOrder จำลองการทำงานเพื่อใช้กับปุ่ม
-  void acceptOrder(dynamic order) {
-    // ในโค้ดจริงจะเรียกใช้ acceptOrder(order) ใน Controller ของ home_rider
+  void _loadSenderData() {
+    // ฟัง Stream ข้อมูลผู้ส่ง
+    sender.bindStream(
+      db
+          .collection('users')
+          .doc(senderId)
+          .snapshots()
+          .map((doc) => doc.exists ? UserModel.fromFirestore(doc) : null),
+    );
   }
 }
-// ------------------------------------------------------------------
 
 // ------------------------------------------------------------------
 // Page สำหรับแสดงรายละเอียดงานที่ 'pending' ก่อนการรับงาน
 // ------------------------------------------------------------------
 class PackageDetailScreen extends StatelessWidget {
-  // รับ OrderModel เข้ามาโดยตรงเพื่อให้มีข้อมูลผู้รับ/ผู้ส่งครบถ้วน
   final OrderModel order;
   final RiderHomeController riderController;
 
@@ -68,7 +59,6 @@ class PackageDetailScreen extends StatelessWidget {
     required this.riderController,
   });
 
-  // สร้าง MapController เพื่อควบคุมแผนที่
   static final MapController _mapController = MapController();
   static const primaryColor = Color(0xFFC70808);
 
@@ -95,49 +85,47 @@ class PackageDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final controller = Get.put(PackageDetailController(order: order));
+
     final GeoPoint? deliveryGps = order.deliveryAddress.gps;
     final LatLng deliveryLatLng = deliveryGps != null
         ? LatLng(deliveryGps.latitude, deliveryGps.longitude)
-        : const LatLng(0, 0); // ตำแหน่งผู้รับ
+        : const LatLng(0, 0);
 
-    // คำนวณระยะทางจากไรเดอร์ถึงจุดรับสินค้า
-    final GeoPoint? riderLoc = riderController.riderCurrentLocation.value;
-    final double distance =
-        (riderLoc != null && order.pickupAddress.gps != null)
-            ? _calculateDistanceMeters(riderLoc, order.pickupAddress.gps!)
-            : 9999.0;
+    return Obx(() {
+      final GeoPoint? riderLoc = riderController.riderCurrentLocation.value;
+      final double distance =
+          (riderLoc != null && order.pickupAddress.gps != null)
+              ? _calculateDistanceMeters(riderLoc, order.pickupAddress.gps!)
+              : 9999.0;
+      final bool isNearEnough =
+          distance <= RiderHomeController.MAX_DISTANCE_METERS;
 
-    return Scaffold(
-      backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        title:
-            const Text('รายละเอียดงาน', style: TextStyle(color: Colors.white)),
-        backgroundColor: primaryColor,
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(15.0),
-        child: Column(
-          children: [
-            // 1. ส่วนแผนที่ (แสดงตำแหน่งผู้รับ)
-            _buildMapSection(deliveryLatLng),
-            const SizedBox(height: 20),
-
-            // 2. ข้อมูลสินค้า
-            _buildPackageDetailsCard(order),
-            const SizedBox(height: 20),
-
-            // 3. ข้อมูลผู้รับและผู้ส่ง
-            _buildDeliveryInfoSection(order),
-            const SizedBox(height: 20),
-
-            // 4. ปุ่มรับงาน (ดึงจาก Controller ของหน้า Home)
-            _buildAcceptButton(context, distance),
-            const SizedBox(height: 20),
-          ],
+      return Scaffold(
+        backgroundColor: Colors.grey[100],
+        appBar: AppBar(
+          title: const Text('รายละเอียดงาน',
+              style: TextStyle(color: Colors.white)),
+          backgroundColor: primaryColor,
+          iconTheme: const IconThemeData(color: Colors.white),
         ),
-      ),
-    );
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(15.0),
+          child: Column(
+            children: [
+              _buildMapSection(deliveryLatLng),
+              const SizedBox(height: 20),
+              _buildPackageDetailsCard(order),
+              const SizedBox(height: 20),
+              _buildDeliveryInfoSection(order, controller),
+              const SizedBox(height: 20),
+              _buildAcceptButton(context, isNearEnough, distance),
+              const SizedBox(height: 40),
+            ],
+          ),
+        ),
+      );
+    });
   }
 
   Widget _buildMapSection(LatLng targetLatLng) {
@@ -152,10 +140,11 @@ class PackageDetailScreen extends StatelessWidget {
         child: FlutterMap(
           mapController: _mapController,
           options: MapOptions(
-              initialCenter: targetLatLng,
+              initialCenter: targetLatLng.latitude != 0
+                  ? targetLatLng
+                  : const LatLng(13.7563, 100.5018),
               initialZoom: 15.0,
               onMapReady: () {
-                // Zoom ไปยังจุดเป้าหมาย (ผู้รับ)
                 if (targetLatLng.latitude != 0 && targetLatLng.longitude != 0) {
                   _mapController.move(targetLatLng, 15.0);
                 }
@@ -195,12 +184,15 @@ class PackageDetailScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('ข้อมูลสินค้า',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Text(order.orderDetails,
+              style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: primaryColor)),
           const Divider(height: 20),
           _infoRow(
             icon: Icons.inventory_2_outlined,
-            label: 'รายละเอียดสินค้า',
+            label: 'ประเภทสินค้า',
             value: order.orderDetails,
           ),
           const SizedBox(height: 8),
@@ -209,7 +201,8 @@ class PackageDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDeliveryInfoSection(OrderModel order) {
+  Widget _buildDeliveryInfoSection(
+      OrderModel order, PackageDetailController controller) {
     final delivery = order.deliveryAddress;
 
     return Container(
@@ -226,49 +219,35 @@ class PackageDetailScreen extends StatelessWidget {
           const Text('ข้อมูลผู้รับและผู้ส่ง',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const Divider(height: 20),
-
-          // ข้อมูลผู้ส่ง (ต้องดึงจาก Firestore โดยใช้ customerId)
-          StreamBuilder<DocumentSnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('users')
-                .doc(order.customerId) // 👈 ใช้ customerId เพื่อดึงข้อมูลผู้ส่ง
-                .snapshots(),
-            builder: (context, snap) {
-              if (!snap.hasData) {
-                return const Center(child: Text('กำลังโหลดผู้ส่ง...'));
-              }
-              final userData = snap.data!.data() as Map<String, dynamic>? ?? {};
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _infoRow(
-                    icon: Icons.storefront,
-                    label: 'รับจาก',
-                    value: order.pickupAddress.detail,
-                  ),
-                  const SizedBox(height: 8),
-                  _infoRow(
-                    icon: Icons.person,
-                    label: 'ผู้ส่ง',
-                    value: userData['fullname'] ?? 'ไม่มีข้อมูล',
-                  ),
-                  const SizedBox(height: 8),
-                  _infoRow(
-                    icon: Icons.phone,
-                    label: 'เบอร์ติดต่อ (ผู้ส่ง)',
-                    value: userData['phone'] ?? 'ไม่มีข้อมูล',
-                  ),
-                ],
-              );
-            },
-          ),
-
+          Obx(() {
+            final senderData = controller.sender.value;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _infoRow(
+                  icon: Icons.storefront,
+                  label: 'รับจาก (จุดต้นทาง)',
+                  value: order.pickupAddress.detail,
+                ),
+                const SizedBox(height: 8),
+                _infoRow(
+                  icon: Icons.person,
+                  label: 'ผู้ส่ง',
+                  value: senderData?.fullname ?? 'กำลังโหลด...',
+                ),
+                const SizedBox(height: 8),
+                _infoRow(
+                  icon: Icons.phone,
+                  label: 'เบอร์ติดต่อ (ผู้ส่ง)',
+                  value: senderData?.phone ?? 'กำลังโหลด...',
+                ),
+              ],
+            );
+          }),
           const Divider(height: 20),
-
-          // ข้อมูลผู้รับ
           _infoRow(
             icon: Icons.location_on,
-            label: 'ส่งที่',
+            label: 'ส่งที่ (ปลายทาง)',
             value: delivery.detail,
           ),
           const SizedBox(height: 8),
@@ -288,7 +267,6 @@ class PackageDetailScreen extends StatelessWidget {
     );
   }
 
-//
   Widget _infoRow({
     required IconData icon,
     required String label,
@@ -315,33 +293,49 @@ class PackageDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildAcceptButton(BuildContext context, double distance) {
-    // ตรวจสอบว่าไรเดอร์อยู่ใกล้จุดรับงานพอที่จะกดรับงานได้หรือไม่
-    final bool canAccept = distance <= RiderHomeController.MAX_DISTANCE_METERS;
+  Widget _buildAcceptButton(
+      BuildContext context, bool isNearEnough, double distance) {
+    String buttonText;
+    Color buttonColor;
+    bool isEnabled;
+
+    if (riderController.riderCurrentLocation.value == null) {
+      buttonText = 'กำลังค้นหาตำแหน่ง Rider...';
+      buttonColor = Colors.grey;
+      isEnabled = false;
+    } else if (isNearEnough) {
+      buttonText = 'รับงานนี้';
+      buttonColor = const Color(0xFF38B000); // สีเขียว
+      isEnabled = true;
+    } else {
+      buttonText =
+          'ต้องอยู่ใกล้จุดรับงาน (ห่าง ${distance.toStringAsFixed(0)} ม.)';
+      buttonColor = Colors.orange;
+      isEnabled = false;
+    }
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: ElevatedButton.icon(
-        icon: const Icon(Icons.check_circle_outline, color: Colors.white),
+        icon: isNearEnough
+            ? const Icon(Icons.check_circle_outline, color: Colors.white)
+            : const Icon(Icons.warning_amber, color: Colors.white),
         label: Text(
-          canAccept
-              ? 'รับงานนี้'
-              : 'ระยะทางเกิน (ห่าง ${distance.toStringAsFixed(2)} ม.)',
+          buttonText,
           style: const TextStyle(fontSize: 18, color: Colors.white),
         ),
-        onPressed: canAccept
+        onPressed: isEnabled
             ? () {
-                // เรียกฟังก์ชัน acceptOrder เมื่อกดปุ่ม
-                riderController.acceptOrder(order);
+                Get.back(); // ปิดหน้า Detail
+                riderController.acceptOrder(order); // เรียกฟังก์ชันรับงาน
               }
-            : null, // ปิดปุ่มถ้าไกลเกินไป
+            : null,
         style: ElevatedButton.styleFrom(
-          backgroundColor: primaryColor,
+          backgroundColor: buttonColor,
           padding: const EdgeInsets.symmetric(vertical: 15),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          // เปลี่ยนสีเมื่อปิดปุ่ม
           disabledBackgroundColor: Colors.grey,
         ),
       ),
