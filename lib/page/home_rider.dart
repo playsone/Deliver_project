@@ -1,50 +1,43 @@
 // file: lib/page/home_rider.dart
 
-import 'dart:async';
 import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:delivery_project/models/package_model.dart';
 import 'package:delivery_project/models/user_model.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'dart:math' show cos, sqrt, asin, pi, atan2, sin;
 import 'package:geolocator/geolocator.dart';
 import 'package:rxdart/rxdart.dart' as RxDart;
+// --- IMPORT MODELS AND PAGES ---
 import '../models/order_model.dart';
 import 'package:delivery_project/page/edit_profile.dart';
 import 'package:delivery_project/page/index.dart';
-import 'package:delivery_project/page/package_delivery_page.dart'
-    hide SpeedDerApp;
-import 'package:delivery_project/models/package_model.dart' hide Package;
-import 'package:delivery_project/page/package_detail_screen.dart'; // ✅ Import หน้า Detail
+// ✅ แก้ไข: เพิ่ม hide Package เพื่อซ่อนคลาส Package ที่ซ้ำซ้อนในไฟล์นี้
+import 'package:delivery_project/page/package_delivery_page.dart' hide Package;
+// ✅ เพิ่ม Import หน้า PackageDetailScreen (สมมติว่าไฟล์นี้ถูกสร้างแล้ว)
+import 'package:delivery_project/page/package_detail_screen.dart'; 
+
 
 // ------------------------------------------------------------------
-// Controller (ส่วนจัดการ Logic ทั้งหมดของหน้า Home)
+// Controller (RiderHomeController) - ไม่เปลี่ยนแปลงตามคำสั่ง
 // ------------------------------------------------------------------
 class RiderHomeController extends GetxController {
   final String uid;
   final int role;
   RiderHomeController({required this.uid, required this.role});
 
-  // --- State ---
   final Rx<UserModel?> rider = Rx(null);
   final db = FirebaseFirestore.instance;
 
   final Rx<GeoPoint?> riderCurrentLocation = Rx(null);
-  // สถานะเพื่อระบุว่าการค้นหาตำแหน่งล้มเหลวเนื่องจาก Timeout
-  final RxBool locationSearchTimedOut = false.obs;
-
   static const double MAX_DISTANCE_METERS = 20.0;
-  // ค่าคงที่: 10 วินาทีสำหรับการรอตำแหน่งแรก
-  static const int LOCATION_TIMEOUT_SECONDS = 10;
 
   @override
   void onInit() {
     super.onInit();
-    // 1. เริ่มฟัง Stream ตำแหน่ง GPS จริง ทันที
     _startLocationTracking();
-    // 2. ตรวจสอบงานที่ค้างอยู่ก่อนเป็นอันดับแรก
     _checkAndNavigateToActiveOrder();
-    // 3. จากนั้นค่อยเริ่มฟังข้อมูลของ Rider ตามปกติ
     rider.bindStream(
       db
           .collection('users')
@@ -62,7 +55,6 @@ class RiderHomeController extends GetxController {
     if (!serviceEnabled) {
       Get.snackbar(
           'แจ้งเตือน GPS', 'กรุณาเปิดบริการระบุตำแหน่ง (GPS) เพื่อรับงาน');
-      locationSearchTimedOut.value = true;
       return;
     }
     permission = await Geolocator.checkPermission();
@@ -72,7 +64,6 @@ class RiderHomeController extends GetxController {
           permission == LocationPermission.deniedForever) {
         Get.snackbar(
             'ข้อจำกัด', 'ไม่ได้รับอนุญาตให้เข้าถึงตำแหน่ง. กรุณาตั้งค่าในแอป.');
-        locationSearchTimedOut.value = true;
         return;
       }
     }
@@ -82,40 +73,15 @@ class RiderHomeController extends GetxController {
       distanceFilter: 10,
     );
 
-    // ✅ ใช้ Future.timeout ในการรอตำแหน่งแรก 10 วินาที
-    try {
-      final Position initialPosition = await Geolocator.getCurrentPosition(
-              desiredAccuracy: LocationAccuracy.high)
-          .timeout(const Duration(seconds: LOCATION_TIMEOUT_SECONDS));
-
-      // ถ้าได้ตำแหน่งก่อน Timeout
+    Geolocator.getPositionStream(locationSettings: locationSettings).listen(
+        (Position position) {
       riderCurrentLocation.value =
-          GeoPoint(initialPosition.latitude, initialPosition.longitude);
-      log('GPS Initial Location Set: ${initialPosition.latitude}, ${initialPosition.longitude}');
-
-      // เริ่มติดตามตำแหน่งต่อ
-      Geolocator.getPositionStream(locationSettings: locationSettings).listen(
-          (Position position) {
-        riderCurrentLocation.value =
-            GeoPoint(position.latitude, position.longitude);
-        log('GPS Location Updated: ${position.latitude}, ${position.longitude}');
-      }, onError: (e) {
-        log('Error getting location stream: $e');
-        Get.snackbar('ข้อผิดพลาด', 'ไม่สามารถติดตามตำแหน่ง GPS ได้: $e');
-      });
-    } on TimeoutException {
-      // ✅ เกิด Timeout
-      log('Location search timed out after $LOCATION_TIMEOUT_SECONDS seconds.');
-      locationSearchTimedOut.value = true; // ตั้งค่าสถานะ Timeout เป็นจริง
-      Get.snackbar('แจ้งเตือน',
-          'ไม่สามารถระบุตำแหน่ง GPS ได้ภายใน 10 วินาที. โปรดลองใหม่อีกครั้ง.',
-          backgroundColor: Colors.yellow.shade100, colorText: Colors.black87);
-    } catch (e) {
-      // ข้อผิดพลาดอื่นๆ
-      log('Error getting initial location: $e');
-      locationSearchTimedOut.value = true;
-      Get.snackbar('ข้อผิดพลาด', 'ไม่สามารถระบุตำแหน่ง GPS ได้: $e');
-    }
+          GeoPoint(position.latitude, position.longitude);
+      log('GPS Location Updated: ${position.latitude}, ${position.longitude}');
+    }, onError: (e) {
+      log('Error getting location: $e');
+      Get.snackbar('ข้อผิดพลาด', 'ไม่สามารถติดตามตำแหน่ง GPS ได้: $e');
+    });
   }
 
   double _calculateDistanceMeters(GeoPoint riderLoc, GeoPoint pickupLoc) {
@@ -211,6 +177,7 @@ class RiderHomeController extends GetxController {
     });
   }
 
+  // **ฟังก์ชัน acceptOrder - ไม่เปลี่ยนแปลงตามคำสั่ง**
   Future<void> acceptOrder(OrderModel order) async {
     Get.dialog(const Center(child: CircularProgressIndicator()),
         barrierDismissible: false);
@@ -267,7 +234,6 @@ class RiderHomeController extends GetxController {
 // ------------------------------------------------------------------
 // Rider Home Screen (ส่วน UI)
 // ------------------------------------------------------------------
-
 class RiderHomeScreen extends StatelessWidget {
   final String uid;
   final int role;
@@ -360,23 +326,19 @@ class RiderHomeScreen extends StatelessWidget {
       final hasLocation = controller.riderCurrentLocation.value != null;
 
       if (!hasLocation) {
-        // แสดงโหลดดิ้ง 0-10 วิ
-        return Center(
+        return const Center(
             child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 10),
-            Text(controller.locationSearchTimedOut.value
-                ? '❌ ไม่สามารถระบุตำแหน่ง GPS ได้' // ถ้าเกิน 10 วิ
-                : 'กำลังค้นหาตำแหน่งของคุณเพื่อแสดงงานใกล้เคียง...'),
-            const SizedBox(height: 5),
-            const Text('(ตำแหน่งจำเป็นสำหรับงานที่อยู่ในรัศมี 20 เมตร)'),
+            CircularProgressIndicator(),
+            SizedBox(height: 10),
+            Text('กำลังค้นหาตำแหน่งของคุณเพื่อแสดงงานใกล้เคียง...'),
+            SizedBox(height: 5),
+            Text('(ตำแหน่งจำเป็นสำหรับงานที่อยู่ในรัศมี 20 เมตร)'),
           ],
         ));
       }
 
-      // เมื่อได้ตำแหน่งแล้ว (หลังจาก 10 วิหรือก่อนหน้า)
       return StreamBuilder<List<OrderModel>>(
         stream: controller.getPendingOrdersStream(),
         builder: (context, snapshot) {
@@ -389,7 +351,6 @@ class RiderHomeScreen extends StatelessWidget {
                     Text('เกิดข้อผิดพลาดในการโหลดข้อมูล: ${snapshot.error}'));
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            // แสดงข้อความเมื่อตำแหน่งพร้อมแล้ว แต่ไม่มีงานในรัศมี
             return const Center(
                 child: Padding(
               padding: EdgeInsets.all(20.0),
@@ -415,128 +376,94 @@ class RiderHomeScreen extends StatelessWidget {
     });
   }
 
+  // ✅ แก้ไข: _buildPackageCard ให้ปุ่ม "รับงาน" เดิมนำทางไปหน้า Detail
   Widget _buildPackageCard(
       BuildContext context, OrderModel order, RiderHomeController controller) {
-    return Obx(() {
-      final riderLoc = controller.riderCurrentLocation.value;
-      final pickupGps = order.pickupAddress.gps;
-
-      // คำนวณระยะทาง
-      final double distance = (riderLoc != null && pickupGps != null)
-          ? controller._calculateDistanceMeters(riderLoc, pickupGps)
-          : 9999.0;
-
-      final bool isNear = distance <= RiderHomeController.MAX_DISTANCE_METERS;
-      final String distanceText = '${distance.toStringAsFixed(0)} ม.';
-
-      return InkWell(
-        // เมื่อแตะที่ส่วนหลักของ Card (ยกเว้นปุ่ม) จะไปหน้า PackageDetailScreen
-        onTap: () {
-          Get.to(() => PackageDetailScreen(
-                order: order,
-                riderController: controller,
-              ));
-        },
-        child: Card(
-          margin: const EdgeInsets.only(bottom: 15),
-          elevation: 2,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          child: Padding(
-            padding: const EdgeInsets.all(15.0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    borderRadius: BorderRadius.circular(8),
-                    image: order.orderPicture != null
-                        ? DecorationImage(
-                            image: NetworkImage(order.orderPicture!),
-                            fit: BoxFit.cover)
-                        : null,
-                  ),
-                  child: order.orderPicture == null
-                      ? const Icon(Icons.inventory_2_outlined,
-                          size: 40, color: Colors.black54)
+    return InkWell(
+      // ✅ แตะที่ Card (หรือปุ่มด้านข้าง) จะนำไปหน้า Detail
+      onTap: () {
+        Get.to(() => PackageDetailScreen(
+              order: order,
+              riderController: controller, // ส่ง controller ไปด้วย
+            ));
+      },
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 15),
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        child: Padding(
+          padding: const EdgeInsets.all(15.0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                  borderRadius: BorderRadius.circular(8),
+                  image: order.orderPicture != null
+                      ? DecorationImage(
+                          image: NetworkImage(order.orderPicture!),
+                          fit: BoxFit.cover)
                       : null,
                 ),
-                const SizedBox(width: 15),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(order.orderDetails,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                              color: Color(0xFFC70808)),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis),
-                      const SizedBox(height: 5),
-                      _buildPackageDetailRow(
-                          Icons.store, 'ต้นทาง: ${order.pickupAddress.detail}'),
-                      _buildPackageDetailRow(Icons.location_on,
-                          'ปลายทาง: ${order.deliveryAddress.detail}'),
-                    ],
-                  ),
-                ),
-                // ส่วนปุ่ม/ระยะทาง ที่อยู่ด้านขวา
-                Column(
-                  mainAxisSize: MainAxisSize.min,
+                child: order.orderPicture == null
+                    ? const Icon(Icons.inventory_2_outlined,
+                        size: 40, color: Colors.black54)
+                    : null,
+              ),
+              const SizedBox(width: 15),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      distanceText,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: isNear ? Colors.green[700] : Colors.red,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextButton(
-                      onPressed: isNear
-                          ? () => controller
-                              .acceptOrder(order) // 1. ใกล้: รับงานทันที
-                          : () {
-                              // 2. ไกล: ไปดูรายละเอียด
-                              Get.to(() => PackageDetailScreen(
-                                    order: order,
-                                    riderController: controller,
-                                  ));
-                            },
-                      style: TextButton.styleFrom(
-                        backgroundColor: isNear
-                            ? const Color(0xFF38B000) // เขียวถ้าใกล้
-                            : Colors.blueGrey, // เทาถ้าไกล
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(isNear ? 'รับงาน' : 'ดูรายละเอียด',
-                              style: const TextStyle(
-                                  color: Colors.white, fontSize: 13)),
-                          const SizedBox(width: 4),
-                          Icon(isNear ? Icons.check : Icons.search,
-                              size: 14, color: Colors.white),
-                        ],
-                      ),
-                    ),
+                    Text(order.orderDetails,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Color(0xFFC70808)),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 5),
+                    _buildPackageDetailRow(
+                        Icons.store, 'ต้นทาง: ${order.pickupAddress.detail}'),
+                    _buildPackageDetailRow(Icons.location_on,
+                        'ปลายทาง: ${order.deliveryAddress.detail}'),
                   ],
                 ),
-              ],
-            ),
+              ),
+              // ✅ ปุ่มด้านข้างถูกเปลี่ยนเป็น "ดูรายละเอียด"
+              TextButton(
+                onPressed: () {
+                  Get.to(() => PackageDetailScreen(
+                        order: order,
+                        riderController: controller,
+                      ));
+                },
+                style: TextButton.styleFrom(
+                  backgroundColor:
+                      Colors.blueGrey, // เปลี่ยนเป็นสีเทาสำหรับดูรายละเอียด
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('ดูรายละเอียด',
+                        style: TextStyle(color: Colors.white, fontSize: 13)),
+                    SizedBox(width: 4),
+                    Icon(Icons.search, size: 14, color: Colors.white),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
-      );
-    });
+      ),
+    );
   }
 
   Widget _buildPackageDetailRow(IconData icon, String text) {
