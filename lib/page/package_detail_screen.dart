@@ -170,7 +170,8 @@ class PackageDetailScreen extends StatelessWidget {
   }
 
   Widget _buildPackageDetailsCard(OrderModel order) {
-    final bool hasImage = order.orderPicture != null && order.orderPicture!.isNotEmpty;
+    final bool hasImage =
+        order.orderPicture != null && order.orderPicture!.isNotEmpty;
 
     return Container(
       width: double.infinity,
@@ -249,7 +250,9 @@ class PackageDetailScreen extends StatelessWidget {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const Divider(height: 20),
           Obx(() {
-            final senderData = controller.sender.value;
+            final senderData = controller.order.customerId.isNotEmpty
+                ? controller.sender.value
+                : null;
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -283,13 +286,13 @@ class PackageDetailScreen extends StatelessWidget {
           _infoRow(
             icon: Icons.person_pin,
             label: 'ผู้รับ',
-            value: delivery.receiverName ?? 'N/A',
+            value: delivery.recipientName ?? 'N/A',
           ),
           const SizedBox(height: 8),
           _infoRow(
             icon: Icons.phone_android,
             label: 'เบอร์ติดต่อ (ผู้รับ)',
-            value: delivery.receiverPhone ?? 'N/A',
+            value: delivery.recipientPhone ?? 'N/A',
           ),
         ],
       ),
