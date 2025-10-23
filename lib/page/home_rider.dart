@@ -1,27 +1,17 @@
-// file: lib/page/home_rider.dart
-
 import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:delivery_project/models/package_model.dart';
-import 'package:delivery_project/models/user_model.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'dart:math' show cos, sqrt, asin, pi, atan2, sin;
 import 'package:geolocator/geolocator.dart';
 import 'package:rxdart/rxdart.dart' as RxDart;
-// --- IMPORT MODELS AND PAGES ---
-import '../models/order_model.dart';
+import 'package:delivery_project/models/order_model.dart';
+import 'package:delivery_project/models/user_model.dart';
+import 'package:delivery_project/models/package_model.dart';
+import 'package:delivery_project/page/package_delivery_page.dart';
 import 'package:delivery_project/page/edit_profile.dart';
-import 'package:delivery_project/page/index.dart';
-// ✅ แก้ไข: เพิ่ม hide Package เพื่อซ่อนคลาส Package ที่ซ้ำซ้อนในไฟล์นี้
-import 'package:delivery_project/page/package_delivery_page.dart' hide Package;
-// ✅ เพิ่ม Import หน้า PackageDetailScreen (สมมติว่าไฟล์นี้ถูกสร้างแล้ว)
-import 'package:delivery_project/page/package_detail_screen.dart'; 
+import 'package:delivery_project/page/index.dart' hide SpeedDerApp;
 
-
-// ------------------------------------------------------------------
-// Controller (RiderHomeController) - ไม่เปลี่ยนแปลงตามคำสั่ง
-// ------------------------------------------------------------------
 class RiderHomeController extends GetxController {
   final String uid;
   final int role;
@@ -86,23 +76,44 @@ class RiderHomeController extends GetxController {
 
   double _calculateDistanceMeters(GeoPoint riderLoc, GeoPoint pickupLoc) {
     const double R = 6371000;
-
     final double lat1 = riderLoc.latitude;
     final double lon1 = riderLoc.longitude;
     final double lat2 = pickupLoc.latitude;
     final double lon2 = pickupLoc.longitude;
-
     final double dLat = (lat2 - lat1) * (pi / 180.0);
     final double dLon = (lon2 - lon1) * (pi / 180.0);
-
     final double a = sin(dLat / 2) * sin(dLat / 2) +
         cos(lat1 * (pi / 180.0)) *
             cos(lat2 * (pi / 180.0)) *
             sin(dLon / 2) *
             sin(dLon / 2);
     final double c = 2 * atan2(sqrt(a), sqrt(1 - a));
-
     return R * c;
+  }
+
+  Stream<List<OrderModel>> getPendingOrdersStream() {
+    return riderCurrentLocation.stream.switchMap((riderLoc) {
+      if (riderLoc == null) {
+        return Stream.value([]);
+      }
+      return db
+          .collection('orders')
+          .where('currentStatus', isEqualTo: 'pending')
+          .snapshots()
+          .map((snapshot) {
+        final allPendingOrders =
+            snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
+        final filteredOrders = allPendingOrders.where((order) {
+          final GeoPoint? pickupGps = order.pickupAddress.gps;
+          if (pickupGps == null) {
+            return false;
+          }
+          final distance = _calculateDistanceMeters(riderLoc, pickupGps);
+          return distance <= MAX_DISTANCE_METERS;
+        }).toList();
+        return filteredOrders;
+      });
+    });
   }
 
   Future<void> _checkAndNavigateToActiveOrder() async {
@@ -118,18 +129,12 @@ class RiderHomeController extends GetxController {
       if (querySnapshot.docs.isNotEmpty) {
         final activeOrderDoc = querySnapshot.docs.first;
         final orderModel = OrderModel.fromFirestore(activeOrderDoc);
-
         log('Rider has an active order: ${orderModel.id}. Navigating...');
 
-        final package = Package(
-          id: orderModel.id,
-          title: orderModel.orderDetails,
-          location: orderModel.pickupAddress.detail,
-          destination: orderModel.deliveryAddress.detail,
-          imageUrl: orderModel.orderPicture,
-        );
+        final packageModel = PackageModel.OrderModel(orderModel);
+
         Get.offAll(() => PackageDeliveryPage(
-              package: package,
+              package: packageModel,
               uid: uid,
               role: role,
             ));
@@ -141,99 +146,33 @@ class RiderHomeController extends GetxController {
     }
   }
 
-  Stream<List<OrderModel>> getPendingOrdersStream() {
-    return riderCurrentLocation.stream.switchMap((riderLoc) {
-      if (riderLoc == null) {
-        log('Rider location is not available, returning empty list.');
-        return Stream.value([]);
-      }
-
-      return db
-          .collection('orders')
-          .where('currentStatus', isEqualTo: 'pending')
-          .snapshots()
-          .map((snapshot) {
-        final allPendingOrders =
-            snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
-        final filteredOrders = allPendingOrders.where((order) {
-          final GeoPoint? pickupGps = order.pickupAddress.gps;
-          if (pickupGps == null) {
-            log('Order ${order.id} skipped: Pickup GPS is missing.');
-            return false;
-          }
-
-          final distance = _calculateDistanceMeters(riderLoc, pickupGps);
-          if (distance <= MAX_DISTANCE_METERS) {
-            log('Order ${order.id} is ${distance.toStringAsFixed(2)}m away - ACCEPTED');
-            return true;
-          } else {
-            log('Order ${order.id} is ${distance.toStringAsFixed(2)}m away - REJECTED (Max: $MAX_DISTANCE_METERS m)');
-            return false;
-          }
-        }).toList();
-
-        return filteredOrders;
-      });
-    });
-  }
-
-  // **ฟังก์ชัน acceptOrder - ไม่เปลี่ยนแปลงตามคำสั่ง**
   Future<void> acceptOrder(OrderModel order) async {
     Get.dialog(const Center(child: CircularProgressIndicator()),
         barrierDismissible: false);
     try {
       final orderRef = db.collection('orders').doc(order.id);
-
-      await db.runTransaction((transaction) async {
-        final freshSnapshot = await transaction.get(orderRef);
-        final freshOrder = OrderModel.fromFirestore(freshSnapshot);
-
-        if (freshOrder.currentStatus != 'pending') {
-          throw Exception(
-              'Order is no longer pending. Status: ${freshOrder.currentStatus}');
-        }
-
-        transaction.update(orderRef, {
-          'riderId': uid,
-          'currentStatus': 'accepted',
-          'statusHistory': FieldValue.arrayUnion([
-            {'status': 'accepted', 'timestamp': Timestamp.now()}
-          ]),
-        });
+      await orderRef.update({
+        'riderId': uid,
+        'currentStatus': 'accepted',
+        'statusHistory': FieldValue.arrayUnion([
+          {'status': 'accepted', 'timestamp': Timestamp.now()}
+        ]),
       });
 
-      Get.back(); // ปิด loading dialog
-
-      final package = Package(
-        id: order.id,
-        title: order.orderDetails,
-        location: order.pickupAddress.detail,
-        destination: order.deliveryAddress.detail,
-        imageUrl: order.orderPicture,
-      );
-      Get.offAll(() => PackageDeliveryPage(
-            package: package,
+      final packageModel = PackageModel.fromOrderModel(order);
+      Get.back();
+      Get.to(() => PackageDeliveryPage(
+            package: packageModel,
             uid: uid,
             role: role,
           ));
     } catch (e) {
-      Get.back(); // ปิด loading dialog
-      log('Error accepting order: $e');
-
-      if (e.toString().contains('Order is no longer pending')) {
-        Get.snackbar('ไม่สำเร็จ', 'งานนี้ถูกรับไปแล้วโดยไรเดอร์ท่านอื่น',
-            backgroundColor: Colors.red.shade100, colorText: Colors.red);
-      } else {
-        Get.snackbar('เกิดข้อผิดพลาด', 'ไม่สามารถรับงานนี้ได้: $e',
-            backgroundColor: Colors.red.shade100, colorText: Colors.red);
-      }
+      Get.back();
+      Get.snackbar('เกิดข้อผิดพลาด', 'ไม่สามารถรับงานนี้ได้: $e');
     }
   }
 }
 
-// ------------------------------------------------------------------
-// Rider Home Screen (ส่วน UI)
-// ------------------------------------------------------------------
 class RiderHomeScreen extends StatelessWidget {
   final String uid;
   final int role;
@@ -322,47 +261,45 @@ class RiderHomeScreen extends StatelessWidget {
   }
 
   Widget _buildPackageList(RiderHomeController controller) {
-    return Obx(() {
-      final hasLocation = controller.riderCurrentLocation.value != null;
-
-      if (!hasLocation) {
-        return const Center(
-            child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 10),
-            Text('กำลังค้นหาตำแหน่งของคุณเพื่อแสดงงานใกล้เคียง...'),
-            SizedBox(height: 5),
-            Text('(ตำแหน่งจำเป็นสำหรับงานที่อยู่ในรัศมี 20 เมตร)'),
-          ],
-        ));
-      }
-
-      return StreamBuilder<List<OrderModel>>(
-        stream: controller.getPendingOrdersStream(),
-        builder: (context, snapshot) {
+    return StreamBuilder<List<OrderModel>>(
+      stream: controller.getPendingOrdersStream(),
+      builder: (context, snapshot) {
+        return Obx(() {
+          if (controller.riderCurrentLocation.value == null) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: Color(0xFFC70808)),
+                  SizedBox(height: 16),
+                  Text('กำลังรอสัญญาณ GPS...',
+                      style: TextStyle(fontSize: 16, color: Colors.grey)),
+                ],
+              ),
+            );
+          }
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(
+                child: Text('กำลังค้นหางานในพื้นที่...',
+                    style: TextStyle(fontSize: 18, color: Colors.black54)));
           }
           if (snapshot.hasError) {
-            return Center(
-                child:
-                    Text('เกิดข้อผิดพลาดในการโหลดข้อมูล: ${snapshot.error}'));
+            log("StreamBuilder Error: ${snapshot.error}");
+            return Center(child: Text('เกิดข้อผิดพลาด: ${snapshot.error}'));
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return const Center(
-                child: Padding(
-              padding: EdgeInsets.all(20.0),
-              child: Text(
-                  'ไม่มีงานที่อยู่ในรัศมี 20 เมตรให้รับในขณะนี้\n(กรุณารอหรือขยับตำแหน่ง)',
+              child: Padding(
+                padding: EdgeInsets.all(20.0),
+                child: Text(
+                  'ยังไม่มีงานในรัศมี 20 เมตร',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16, color: Colors.grey)),
-            ));
+                  style: TextStyle(fontSize: 18, color: Colors.black54),
+                ),
+              ),
+            );
           }
-
           final orders = snapshot.data!;
-
           return ListView.builder(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             itemCount: orders.length,
@@ -371,96 +308,79 @@ class RiderHomeScreen extends StatelessWidget {
               return _buildPackageCard(context, order, controller);
             },
           );
-        },
-      );
-    });
+        });
+      },
+    );
   }
 
-  // ✅ แก้ไข: _buildPackageCard ให้ปุ่ม "รับงาน" เดิมนำทางไปหน้า Detail
   Widget _buildPackageCard(
       BuildContext context, OrderModel order, RiderHomeController controller) {
-    return InkWell(
-      // ✅ แตะที่ Card (หรือปุ่มด้านข้าง) จะนำไปหน้า Detail
-      onTap: () {
-        Get.to(() => PackageDetailScreen(
-              order: order,
-              riderController: controller, // ส่ง controller ไปด้วย
-            ));
-      },
-      child: Card(
-        margin: const EdgeInsets.only(bottom: 15),
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        child: Padding(
-          padding: const EdgeInsets.all(15.0),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  borderRadius: BorderRadius.circular(8),
-                  image: order.orderPicture != null
-                      ? DecorationImage(
-                          image: NetworkImage(order.orderPicture!),
-                          fit: BoxFit.cover)
-                      : null,
-                ),
-                child: order.orderPicture == null
-                    ? const Icon(Icons.inventory_2_outlined,
-                        size: 40, color: Colors.black54)
+    return Card(
+      margin: const EdgeInsets.only(bottom: 15),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Padding(
+        padding: const EdgeInsets.all(15.0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(8),
+                image: order.orderPicture != null
+                    ? DecorationImage(
+                        image: NetworkImage(order.orderPicture!),
+                        fit: BoxFit.cover)
                     : null,
               ),
-              const SizedBox(width: 15),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(order.orderDetails,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: Color(0xFFC70808)),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 5),
-                    _buildPackageDetailRow(
-                        Icons.store, 'ต้นทาง: ${order.pickupAddress.detail}'),
-                    _buildPackageDetailRow(Icons.location_on,
-                        'ปลายทาง: ${order.deliveryAddress.detail}'),
-                  ],
-                ),
+              child: order.orderPicture == null
+                  ? const Icon(Icons.inventory_2_outlined,
+                      size: 40, color: Colors.black54)
+                  : null,
+            ),
+            const SizedBox(width: 15),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(order.orderDetails,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Color(0xFFC70808)),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 5),
+                  _buildPackageDetailRow(
+                      Icons.store, 'ต้นทาง: ${order.pickupAddress.detail}'),
+                  _buildPackageDetailRow(Icons.location_on,
+                      'ปลายทาง: ${order.deliveryAddress.detail}'),
+                ],
               ),
-              // ✅ ปุ่มด้านข้างถูกเปลี่ยนเป็น "ดูรายละเอียด"
-              TextButton(
-                onPressed: () {
-                  Get.to(() => PackageDetailScreen(
-                        order: order,
-                        riderController: controller,
-                      ));
-                },
-                style: TextButton.styleFrom(
-                  backgroundColor:
-                      Colors.blueGrey, // เปลี่ยนเป็นสีเทาสำหรับดูรายละเอียด
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('ดูรายละเอียด',
-                        style: TextStyle(color: Colors.white, fontSize: 13)),
-                    SizedBox(width: 4),
-                    Icon(Icons.search, size: 14, color: Colors.white),
-                  ],
-                ),
+            ),
+            TextButton(
+              onPressed: () => controller.acceptOrder(order),
+              style: TextButton.styleFrom(
+                backgroundColor: const Color(0xFF38B000),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
               ),
-            ],
-          ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('รับงาน',
+                      style: TextStyle(color: Colors.white, fontSize: 14)),
+                  SizedBox(width: 4),
+                  Icon(Icons.arrow_forward_ios, size: 14, color: Colors.white),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
