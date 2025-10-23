@@ -1,6 +1,6 @@
 // file: lib/page/home_rider.dart
 
-import 'dart:async'; // ต้อง Import dart:async
+import 'dart:async';
 import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/models/user_model.dart';
@@ -14,29 +14,37 @@ import 'package:delivery_project/page/edit_profile.dart';
 import 'package:delivery_project/page/index.dart';
 import 'package:delivery_project/page/package_delivery_page.dart'
     hide SpeedDerApp;
-import 'package:delivery_project/models/package_model.dart'
-    hide Package; // ✅ เพิ่ม Import package_model.dart
+import 'package:delivery_project/models/package_model.dart' hide Package;
 import 'package:delivery_project/page/package_detail_screen.dart'; // ✅ Import หน้า Detail
 
+// ------------------------------------------------------------------
+// Controller (ส่วนจัดการ Logic ทั้งหมดของหน้า Home)
+// ------------------------------------------------------------------
 class RiderHomeController extends GetxController {
   final String uid;
   final int role;
   RiderHomeController({required this.uid, required this.role});
 
+  // --- State ---
   final Rx<UserModel?> rider = Rx(null);
   final db = FirebaseFirestore.instance;
 
   final Rx<GeoPoint?> riderCurrentLocation = Rx(null);
+  // สถานะเพื่อระบุว่าการค้นหาตำแหน่งล้มเหลวเนื่องจาก Timeout
   final RxBool locationSearchTimedOut = false.obs;
 
   static const double MAX_DISTANCE_METERS = 20.0;
+  // ค่าคงที่: 10 วินาทีสำหรับการรอตำแหน่งแรก
   static const int LOCATION_TIMEOUT_SECONDS = 10;
 
   @override
   void onInit() {
     super.onInit();
+    // 1. เริ่มฟัง Stream ตำแหน่ง GPS จริง ทันที
     _startLocationTracking();
+    // 2. ตรวจสอบงานที่ค้างอยู่ก่อนเป็นอันดับแรก
     _checkAndNavigateToActiveOrder();
+    // 3. จากนั้นค่อยเริ่มฟังข้อมูลของ Rider ตามปกติ
     rider.bindStream(
       db
           .collection('users')
@@ -74,15 +82,18 @@ class RiderHomeController extends GetxController {
       distanceFilter: 10,
     );
 
+    // ✅ ใช้ Future.timeout ในการรอตำแหน่งแรก 10 วินาที
     try {
       final Position initialPosition = await Geolocator.getCurrentPosition(
               desiredAccuracy: LocationAccuracy.high)
           .timeout(const Duration(seconds: LOCATION_TIMEOUT_SECONDS));
 
+      // ถ้าได้ตำแหน่งก่อน Timeout
       riderCurrentLocation.value =
           GeoPoint(initialPosition.latitude, initialPosition.longitude);
       log('GPS Initial Location Set: ${initialPosition.latitude}, ${initialPosition.longitude}');
 
+      // เริ่มติดตามตำแหน่งต่อ
       Geolocator.getPositionStream(locationSettings: locationSettings).listen(
           (Position position) {
         riderCurrentLocation.value =
@@ -93,12 +104,14 @@ class RiderHomeController extends GetxController {
         Get.snackbar('ข้อผิดพลาด', 'ไม่สามารถติดตามตำแหน่ง GPS ได้: $e');
       });
     } on TimeoutException {
+      // ✅ เกิด Timeout
       log('Location search timed out after $LOCATION_TIMEOUT_SECONDS seconds.');
-      locationSearchTimedOut.value = true;
+      locationSearchTimedOut.value = true; // ตั้งค่าสถานะ Timeout เป็นจริง
       Get.snackbar('แจ้งเตือน',
           'ไม่สามารถระบุตำแหน่ง GPS ได้ภายใน 10 วินาที. โปรดลองใหม่อีกครั้ง.',
           backgroundColor: Colors.yellow.shade100, colorText: Colors.black87);
     } catch (e) {
+      // ข้อผิดพลาดอื่นๆ
       log('Error getting initial location: $e');
       locationSearchTimedOut.value = true;
       Get.snackbar('ข้อผิดพลาด', 'ไม่สามารถระบุตำแหน่ง GPS ได้: $e');
@@ -251,9 +264,9 @@ class RiderHomeController extends GetxController {
   }
 }
 
-// -------------------------------------------------------------------
-// ส่วนของ UI (RiderHomeScreen)
-// -------------------------------------------------------------------
+// ------------------------------------------------------------------
+// Rider Home Screen (ส่วน UI)
+// ------------------------------------------------------------------
 
 class RiderHomeScreen extends StatelessWidget {
   final String uid;
@@ -347,6 +360,7 @@ class RiderHomeScreen extends StatelessWidget {
       final hasLocation = controller.riderCurrentLocation.value != null;
 
       if (!hasLocation) {
+        // แสดงโหลดดิ้ง 0-10 วิ
         return Center(
             child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -354,7 +368,7 @@ class RiderHomeScreen extends StatelessWidget {
             const CircularProgressIndicator(),
             const SizedBox(height: 10),
             Text(controller.locationSearchTimedOut.value
-                ? '❌ ไม่สามารถระบุตำแหน่ง GPS ได้'
+                ? '❌ ไม่สามารถระบุตำแหน่ง GPS ได้' // ถ้าเกิน 10 วิ
                 : 'กำลังค้นหาตำแหน่งของคุณเพื่อแสดงงานใกล้เคียง...'),
             const SizedBox(height: 5),
             const Text('(ตำแหน่งจำเป็นสำหรับงานที่อยู่ในรัศมี 20 เมตร)'),
@@ -362,6 +376,7 @@ class RiderHomeScreen extends StatelessWidget {
         ));
       }
 
+      // เมื่อได้ตำแหน่งแล้ว (หลังจาก 10 วิหรือก่อนหน้า)
       return StreamBuilder<List<OrderModel>>(
         stream: controller.getPendingOrdersStream(),
         builder: (context, snapshot) {
@@ -374,6 +389,7 @@ class RiderHomeScreen extends StatelessWidget {
                     Text('เกิดข้อผิดพลาดในการโหลดข้อมูล: ${snapshot.error}'));
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            // แสดงข้อความเมื่อตำแหน่งพร้อมแล้ว แต่ไม่มีงานในรัศมี
             return const Center(
                 child: Padding(
               padding: EdgeInsets.all(20.0),
@@ -399,7 +415,6 @@ class RiderHomeScreen extends StatelessWidget {
     });
   }
 
-  // **ส่วนที่แก้ไข: Widget _buildPackageCard**
   Widget _buildPackageCard(
       BuildContext context, OrderModel order, RiderHomeController controller) {
     return Obx(() {
