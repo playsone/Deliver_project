@@ -49,7 +49,8 @@ class OrderModel {
       customerId: data['customerId'] ?? '',
       riderId: data['riderId'],
       orderDetails: data['orderDetails'] ?? 'ไม่มีรายละเอียด',
-      orderPicture: data['orderPicture'],
+      // ✅ รองรับทั้งชื่อเก่าและชื่อใหม่
+      orderPicture: data['orderPicture'] ?? data['orderImageUrl'],
       currentStatus: data['currentStatus'] ?? 'unknown',
       createdAt: data['createdAt'] ?? Timestamp.now(),
       pickupDatetime: data['pickup_datetime'],

@@ -589,12 +589,12 @@ class SendPackagePage extends StatelessWidget {
 
       if (imageUrl.isNotEmpty) {
         profileAvatar = CircleAvatar(
-          radius: 30, // ขนาดรูป
+          radius: 70, // ขนาดรูป
           backgroundImage: NetworkImage(imageUrl),
           onBackgroundImageError: (e, s) {
             // กรณีโหลดรูปไม่ได้
             profileAvatar = const CircleAvatar(
-              radius: 30,
+              radius: 70,
               backgroundColor: Colors.grey,
               child: Icon(Icons.person, color: Colors.white, size: 30),
             );
