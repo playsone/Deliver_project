@@ -10,7 +10,7 @@ import 'package:delivery_project/models/user_model.dart';
 import 'package:delivery_project/models/package_model.dart';
 import 'package:delivery_project/page/package_delivery_page.dart';
 import 'package:delivery_project/page/edit_profile.dart';
-import 'package:delivery_project/page/index.dart' hide SpeedDerApp;
+import 'package:delivery_project/page/index.dart';
 
 class RiderHomeController extends GetxController {
   final String uid;
@@ -63,8 +63,8 @@ class RiderHomeController extends GetxController {
       distanceFilter: 10,
     );
 
-    Geolocator.getPositionStream(locationSettings: locationSettings).listen(
-        (Position position) {
+    Geolocator.getPositionStream(locationSettings: locationSettings)
+        .listen((Position position) {
       riderCurrentLocation.value =
           GeoPoint(position.latitude, position.longitude);
       log('GPS Location Updated: ${position.latitude}, ${position.longitude}');
@@ -101,8 +101,9 @@ class RiderHomeController extends GetxController {
           .where('currentStatus', isEqualTo: 'pending')
           .snapshots()
           .map((snapshot) {
-        final allPendingOrders =
-            snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
+        final allPendingOrders = snapshot.docs
+            .map((doc) => OrderModel.fromFirestore(doc))
+            .toList();
         final filteredOrders = allPendingOrders.where((order) {
           final GeoPoint? pickupGps = order.pickupAddress.gps;
           if (pickupGps == null) {
@@ -130,8 +131,8 @@ class RiderHomeController extends GetxController {
         final activeOrderDoc = querySnapshot.docs.first;
         final orderModel = OrderModel.fromFirestore(activeOrderDoc);
         log('Rider has an active order: ${orderModel.id}. Navigating...');
-
-        final packageModel = PackageModel.OrderModel(orderModel);
+        
+        final packageModel = PackageModel.fromOrderModel(orderModel);
 
         Get.offAll(() => PackageDeliveryPage(
               package: packageModel,
@@ -425,7 +426,7 @@ class RiderHomeScreen extends StatelessWidget {
         currentIndex: 0,
         onTap: (index) {
           if (index == 1) {
-            Get.offAll(() => const SpeedDerApp());
+            Get.offAll(() => const IndexPage());
           }
         },
       ),
@@ -456,10 +457,12 @@ class RiderHomeScreen extends StatelessWidget {
               ),
               _buildOptionButton(
                   context, 'แก้ไขข้อมูลส่วนตัว', Icons.person_outline, () {
+                Navigator.pop(context);
                 Get.to(() => EditProfilePage(uid: uid, role: role));
               }),
               _buildOptionButton(context, 'ออกจากระบบ', Icons.logout, () {
-                Get.offAll(() => const SpeedDerApp());
+                Navigator.pop(context);
+                Get.offAll(() => const IndexPage());
               }),
               const SizedBox(height: 20),
             ],

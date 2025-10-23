@@ -1,8 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:delivery_project/models/userinfo_model.dart';
-import 'package:delivery_project/page/package_pickup_page.dart';
-import 'package:delivery_project/models/order_model.dart';
 import 'package:get/get.dart';
+import 'package:delivery_project/models/order_model.dart';
+import 'package:delivery_project/models/userinfo_model.dart';
 
 class Package {
   final String id;
@@ -72,6 +71,26 @@ class PackageModel {
       customerId: data['customerId'] ?? '',
       riderId: data['riderId'],
       orderDetails: data['orderDetails'] ?? 'ไม่ระบุรายละเอียดสินค้า',
+      deliveredImageUrl: deliveredImgUrl,
+    );
+  }
+
+  factory PackageModel.fromOrderModel(OrderModel order) {
+    String? deliveredImgUrl;
+    if (order.currentStatus == 'delivered') {
+      final deliveredEntry = order.statusHistory.firstWhereOrNull(
+          (h) => h.status == 'delivered' && h.imgOfStatus?.isNotEmpty == true);
+      deliveredImgUrl = deliveredEntry?.imgOfStatus;
+    }
+
+    return PackageModel(
+      id: order.id,
+      source: 'จาก: ${order.pickupAddress.detail}',
+      destination: 'ไปที่: ${order.deliveryAddress.detail}',
+      currentStatus: order.currentStatus,
+      customerId: order.customerId,
+      riderId: order.riderId,
+      orderDetails: order.orderDetails,
       deliveredImageUrl: deliveredImgUrl,
     );
   }
