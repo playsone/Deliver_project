@@ -7,22 +7,21 @@ import 'dart:math' show cos, sqrt, asin, pi, atan2, sin;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/models/order_model.dart';
 import 'package:delivery_project/models/user_model.dart';
-import 'package:delivery_project/page/home_rider.dart'; // Import RiderHomeController
+import 'package:delivery_project/page/home_rider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
 
 // ------------------------------------------------------------------
-// Controller สำหรับหน้าแสดงรายละเอียดงาน (Detail)
+// Controller
 // ------------------------------------------------------------------
 class PackageDetailController extends GetxController {
   final OrderModel order;
   final String senderId;
   final db = FirebaseFirestore.instance;
 
-  PackageDetailController({required this.order})
-      : senderId = order.customerId ?? ''; // ต้องมั่นใจว่า order มี senderId
+  PackageDetailController({required this.order}) : senderId = order.customerId;
 
   final Rx<UserModel?> sender = Rx(null);
 
@@ -35,7 +34,6 @@ class PackageDetailController extends GetxController {
   }
 
   void _loadSenderData() {
-    // ฟัง Stream ข้อมูลผู้ส่ง
     sender.bindStream(
       db
           .collection('users')
@@ -47,7 +45,7 @@ class PackageDetailController extends GetxController {
 }
 
 // ------------------------------------------------------------------
-// Page สำหรับแสดงรายละเอียดงานที่ 'pending' ก่อนการรับงาน
+// Page
 // ------------------------------------------------------------------
 class PackageDetailScreen extends StatelessWidget {
   final OrderModel order;
@@ -62,7 +60,6 @@ class PackageDetailScreen extends StatelessWidget {
   static final MapController _mapController = MapController();
   static const primaryColor = Color(0xFFC70808);
 
-  // ฟังก์ชันสำหรับคำนวณระยะทาง (Haversine Formula) - คัดลอกจาก RiderHomeController
   double _calculateDistanceMeters(GeoPoint loc1, GeoPoint loc2) {
     const double R = 6371000; // meters
     final double lat1 = loc1.latitude;
@@ -173,6 +170,8 @@ class PackageDetailScreen extends StatelessWidget {
   }
 
   Widget _buildPackageDetailsCard(OrderModel order) {
+    final bool hasImage = order.orderPicture != null && order.orderPicture!.isNotEmpty;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(15),
@@ -184,6 +183,36 @@ class PackageDetailScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (hasImage)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 15.0),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8.0),
+                child: Image.network(
+                  order.orderPicture!,
+                  height: 200,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Container(
+                      height: 200,
+                      color: Colors.grey[200],
+                      child: const Center(child: CircularProgressIndicator()),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      height: 200,
+                      color: Colors.grey[200],
+                      child: const Center(
+                          child: Icon(Icons.image_not_supported,
+                              color: Colors.grey, size: 50)),
+                    );
+                  },
+                ),
+              ),
+            ),
           Text(order.orderDetails,
               style: const TextStyle(
                   fontSize: 18,
@@ -192,7 +221,7 @@ class PackageDetailScreen extends StatelessWidget {
           const Divider(height: 20),
           _infoRow(
             icon: Icons.inventory_2_outlined,
-            label: 'ประเภทสินค้า',
+            label: 'รายละเอียดสินค้า',
             value: order.orderDetails,
           ),
           const SizedBox(height: 8),
@@ -216,7 +245,7 @@ class PackageDetailScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('ข้อมูลผู้รับและผู้ส่ง',
+          const Text('ข้อมูลการจัดส่ง',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const Divider(height: 20),
           Obx(() {
@@ -254,13 +283,13 @@ class PackageDetailScreen extends StatelessWidget {
           _infoRow(
             icon: Icons.person_pin,
             label: 'ผู้รับ',
-            value: delivery.recipientName ?? 'N/A',
+            value: delivery.receiverName ?? 'N/A',
           ),
           const SizedBox(height: 8),
           _infoRow(
             icon: Icons.phone_android,
             label: 'เบอร์ติดต่อ (ผู้รับ)',
-            value: delivery.recipientPhone ?? 'N/A',
+            value: delivery.receiverPhone ?? 'N/A',
           ),
         ],
       ),
@@ -305,7 +334,7 @@ class PackageDetailScreen extends StatelessWidget {
       isEnabled = false;
     } else if (isNearEnough) {
       buttonText = 'รับงานนี้';
-      buttonColor = const Color(0xFF38B000); // สีเขียว
+      buttonColor = const Color(0xFF38B000); // Green
       isEnabled = true;
     } else {
       buttonText =
@@ -327,8 +356,8 @@ class PackageDetailScreen extends StatelessWidget {
         ),
         onPressed: isEnabled
             ? () {
-                Get.back(); // ปิดหน้า Detail
-                riderController.acceptOrder(order); // เรียกฟังก์ชันรับงาน
+                Get.back(); // Close Detail Screen
+                riderController.acceptOrder(order); // Call accept function
               }
             : null,
         style: ElevatedButton.styleFrom(
