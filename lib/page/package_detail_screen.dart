@@ -288,6 +288,7 @@ class PackageDetailScreen extends StatelessWidget {
     );
   }
 
+//
   Widget _infoRow({
     required IconData icon,
     required String label,

@@ -13,6 +13,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:location/location.dart';
 
+//
 // ------------------------------------------------------------------
 // ** PLACEHOLDERS สำหรับไฟล์ที่ไม่ได้ให้มา **
 // ------------------------------------------------------------------
