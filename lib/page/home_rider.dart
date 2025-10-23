@@ -3,23 +3,23 @@ import 'dart:developer';
 import 'dart:math' show cos, sqrt, asin, pi, atan2, sin;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-// 🔔 IMPORT MODELS: Assumption is these models are correctly defined in their respective files.
-// import 'package:delivery_project/models/user_model.dart';
-// import 'package:delivery_project/models/order_model.dart';
-// import 'package:delivery_project/models/address_model.dart';
-
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:flutter_map/flutter_map.dart'; 
+import 'package:geolocator/geolocator.dart'; 
 import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:rxdart/rxdart.dart' as RxDart;
 
+
 // ------------------------------------------------------------------
-// ** PLACEHOLDERS สำหรับไฟล์ที่ไม่ได้ให้มา (เพื่อการคอมไพล์) **
+// ** MODEL IMPLEMENTATIONS (แก้จาก Placeholder) **
 // ------------------------------------------------------------------
 
-// Placeholder: ใช้เพื่อสร้าง Package object สำหรับหน้า PackageDeliveryPage
+// Placeholder Pages (ยังคงใช้เพื่อให้โค้ดคอมไพล์ได้)
+class SpeedDerApp extends StatelessWidget { const SpeedDerApp({super.key}); @override Widget build(BuildContext context) => const Text('App Index'); }
+class EditProfilePage extends StatelessWidget { final String uid; final int role; const EditProfilePage({super.key, required this.uid, required this.role}); @override Widget build(BuildContext context) => const Text('Edit Profile'); }
+class PackageDeliveryPage extends StatelessWidget { final Package package; final String uid; final int role; const PackageDeliveryPage({super.key, required this.package, required this.uid, required this.role}); @override Widget build(BuildContext context) => const Text('Delivery Page'); }
+class PackageDetailScreen extends StatelessWidget { final dynamic order; final dynamic riderController; const PackageDetailScreen({super.key, required this.order, required this.riderController}); @override Widget build(BuildContext context) => const Text('Package Detail'); }
 class Package {
   final String id;
   final String title;
@@ -34,22 +34,35 @@ class Package {
     this.imageUrl,
   });
 }
+class StatusHistoryModel { // จำลองเพื่อให้ OrderModel ใช้งานได้
+  factory StatusHistoryModel.fromMap(Map<String, dynamic> data) => throw UnimplementedError();
+}
 
-// Placeholder: AddressModel (อ้างอิงจากโครงสร้างที่ผู้ใช้ให้มา)
+
+// 🔔 AddressModel: ใช้ implementation จริง
 class AddressModel {
   final String detail;
   final GeoPoint? gps;
-  AddressModel({required this.detail, this.gps});
-  factory AddressModel.fromMap(Map<String, dynamic> data) =>
-      throw UnimplementedError();
+  final String? recipientName;
+  final String? recipientPhone;
+  AddressModel({required this.detail, this.gps, this.recipientName, this.recipientPhone});
+
+  factory AddressModel.fromMap(Map<String, dynamic> data) {
+    return AddressModel(
+      detail: data['detail'] ?? '',
+      gps: data['gps'] as GeoPoint?,
+      recipientName: data['receiverName'],
+      recipientPhone: data['receiverPhone'],
+    );
+  }
 }
 
-// Placeholder: OrderModel (อ้างอิงจากโครงสร้างที่ผู้ใช้ให้มา)
+// 🔔 OrderModel: ใช้ implementation จริง
 class OrderModel {
   final String id;
   final String customerId;
   final String orderDetails;
-  final String? orderPicture;
+  final String? orderPicture; 
   final String currentStatus;
   final AddressModel pickupAddress;
   final AddressModel deliveryAddress;
@@ -64,54 +77,73 @@ class OrderModel {
     required this.deliveryAddress,
   });
 
-  factory OrderModel.fromFirestore(DocumentSnapshot doc) =>
-      throw UnimplementedError();
+  factory OrderModel.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>?;
+    if (data == null) throw Exception("Document data is null.");
+
+    return OrderModel(
+      id: doc.id,
+      customerId: data['customerId'] ?? '',
+      orderDetails: data['orderDetails'] ?? '',
+      orderPicture: data['orderImageUrl'] as String?, // ใช้ orderImageUrl
+      currentStatus: data['currentStatus'] ?? 'pending',
+      pickupAddress: AddressModel.fromMap(data['pickupAddress'] ?? {}),
+      deliveryAddress: AddressModel.fromMap(data['deliveryAddress'] ?? {}),
+    );
+  }
 }
 
-// Placeholder: UserModel (อ้างอิงจากโครงสร้างที่ผู้ใช้ให้มา)
+// 🔔 UserModel: ใช้ implementation จริง
 class UserModel {
-  final String fullname;
+  final String uid;
+  final int role;
+  final String phone;
   final String profile;
-  UserModel({required this.fullname, required this.profile});
-  factory UserModel.fromFirestore(DocumentSnapshot doc) =>
-      throw UnimplementedError();
-}
+  final String fullname;
 
-// Placeholder Pages
-class SpeedDerApp extends StatelessWidget {
-  const SpeedDerApp({super.key});
-  @override
-  Widget build(BuildContext context) => const Text('App Index');
-}
+  final String? defaultAddress;
+  final GeoPoint? defaultGPS;
+  final String? secondAddress;
+  final GeoPoint? secondGPS;
 
-class EditProfilePage extends StatelessWidget {
-  final String uid;
-  final int role;
-  const EditProfilePage({super.key, required this.uid, required this.role});
-  @override
-  Widget build(BuildContext context) => const Text('Edit Profile');
-}
+  final String? vehicleNo;
+  final String? vehiclePicture;
+  final GeoPoint? gps;
 
-class PackageDeliveryPage extends StatelessWidget {
-  final Package package;
-  final String uid;
-  final int role;
-  const PackageDeliveryPage(
-      {super.key,
-      required this.package,
-      required this.uid,
-      required this.role});
-  @override
-  Widget build(BuildContext context) => const Text('Delivery Page');
-}
+  UserModel({
+    required this.uid,
+    required this.role,
+    required this.phone,
+    required this.profile,
+    required this.fullname,
+    this.defaultAddress,
+    this.defaultGPS,
+    this.secondAddress,
+    this.secondGPS,
+    this.vehicleNo,
+    this.vehiclePicture,
+    this.gps,
+  });
 
-class PackageDetailScreen extends StatelessWidget {
-  final dynamic order;
-  final dynamic riderController;
-  const PackageDetailScreen(
-      {super.key, required this.order, required this.riderController});
-  @override
-  Widget build(BuildContext context) => const Text('Package Detail');
+  factory UserModel.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>?;
+    if (data == null) throw Exception("Document data is null.");
+
+    return UserModel(
+      uid: data['uid'] ?? '',
+      role: (data['role'] as num?)?.toInt() ?? 0,
+      phone: data['phone'] ?? '',
+      profile: data['profile'] ?? '',
+      fullname: data['fullname'] ?? '',
+      defaultAddress: data['defaultAddress'],
+      defaultGPS: data['defaultGPS'] as GeoPoint?,
+      secondAddress: data['secondAddress'],
+      secondGPS: data['secondGPS'] as GeoPoint?,
+      vehicleNo: data['vehicle_no'],
+      vehiclePicture: data['vehicle_picture'],
+      gps: data['gps'] as GeoPoint?,
+    );
+  }
 }
 
 // ------------------------------------------------------------------
@@ -134,14 +166,16 @@ class RiderHomeController extends GetxController {
     super.onInit();
     _startLocationTracking();
     _checkAndNavigateToActiveOrder();
-
-    // 🔔 ใช้ UserModel.fromFirestore จริง
+    
+    // 🔔 แก้ไข: ใช้ UserModel.fromFirestore จริงที่ได้รับการ implement แล้ว
     rider.bindStream(
       db
           .collection('users')
           .doc(uid)
           .snapshots()
-          .map((doc) => doc.exists ? UserModel.fromFirestore(doc) : null),
+          .map((doc) => doc.exists 
+              ? UserModel.fromFirestore(doc) 
+              : null), 
     );
   }
 
@@ -227,7 +261,7 @@ class RiderHomeController extends GetxController {
           destination: orderModel.deliveryAddress.detail,
           imageUrl: orderModel.orderPicture,
         );
-
+        
         Get.offAll(() => PackageDeliveryPage(
               package: package,
               uid: uid,
@@ -256,7 +290,7 @@ class RiderHomeController extends GetxController {
           .map((snapshot) {
         final allPendingOrders =
             snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
-
+            
         final filteredOrders = allPendingOrders.where((order) {
           final GeoPoint? pickupGps = order.pickupAddress.gps;
           if (pickupGps == null) {
@@ -265,8 +299,9 @@ class RiderHomeController extends GetxController {
           }
 
           final distance = _calculateDistanceMeters(riderLoc, pickupGps);
-
+          
           return distance <= MAX_DISTANCE_METERS;
+          
         }).toList();
 
         return filteredOrders;
@@ -277,11 +312,9 @@ class RiderHomeController extends GetxController {
   // **ฟังก์ชันรับงาน พร้อมระบบป้องกันการรับงานพร้อมกันด้วย Transaction**
   Future<void> acceptOrder(OrderModel order) async {
     // ใช้สีหลักในการโหลด
-    Get.dialog(
-        const Center(
-            child: CircularProgressIndicator(color: Color(0xFFC70808))),
+    Get.dialog(const Center(child: CircularProgressIndicator(color: Color(0xFFC70808))),
         barrierDismissible: false);
-
+        
     try {
       final orderRef = db.collection('orders').doc(order.id);
       final currentLocation = riderCurrentLocation.value;
@@ -289,7 +322,6 @@ class RiderHomeController extends GetxController {
       // 🔔 ใช้ Transaction เพื่อให้แน่ใจว่าการอ่านและการเขียนเป็น Atomic (ป้องกัน Concurrency)
       await db.runTransaction((transaction) async {
         final freshSnapshot = await transaction.get(orderRef);
-        // 🔔 ใช้ OrderModel.fromFirestore จริง
         final freshOrder = OrderModel.fromFirestore(freshSnapshot);
 
         // 1. ตรวจสอบสถานะ: ถ้าไม่ใช่ 'pending' แสดงว่ามีคนรับไปแล้ว
@@ -303,7 +335,7 @@ class RiderHomeController extends GetxController {
           'riderId': uid,
           'currentStatus': 'accepted',
           // 🔔 เพิ่มตำแหน่งปัจจุบันของไรเดอร์เมื่อรับงาน
-          'currentLocation': currentLocation,
+          'currentLocation': currentLocation, 
           'statusHistory': FieldValue.arrayUnion([
             {'status': 'accepted', 'timestamp': Timestamp.now()}
           ]),
@@ -312,9 +344,8 @@ class RiderHomeController extends GetxController {
 
       Get.back(); // ปิด loading dialog
 
-      Get.snackbar('รับงานสำเร็จ',
-          'งาน #${order.id.substring(0, 8)} ถูกรับเรียบร้อยแล้ว!',
-          backgroundColor: Colors.green, colorText: Colors.white);
+      Get.snackbar('รับงานสำเร็จ', 'งาน #${order.id.substring(0, 8)} ถูกรับเรียบร้อยแล้ว!', 
+        backgroundColor: Colors.green, colorText: Colors.white);
 
       // นำทางไปยังหน้าส่งของ
       // 🔔 สร้าง Package object จาก OrderModel
@@ -325,8 +356,8 @@ class RiderHomeController extends GetxController {
         destination: order.deliveryAddress.detail,
         imageUrl: order.orderPicture,
       );
-
-      Get.offAll(() => PackageDeliveryPage(
+      
+      Get.offAll(() => PackageDeliveryPage( 
             package: package,
             uid: uid,
             role: role,
@@ -337,8 +368,7 @@ class RiderHomeController extends GetxController {
 
       // 🔔 แสดงข้อความดักบัคการรับงานซ้ำซ้อน
       if (e.toString().contains('Order is no longer pending')) {
-        Get.snackbar('ไม่สำเร็จ',
-            'งานนี้ถูกรับไปแล้วโดยไรเดอร์ท่านอื่น กรุณาเลือกงานใหม่',
+        Get.snackbar('ไม่สำเร็จ', 'งานนี้ถูกรับไปแล้วโดยไรเดอร์ท่านอื่น กรุณาเลือกงานใหม่',
             backgroundColor: Colors.red.shade100, colorText: Colors.red);
       } else {
         Get.snackbar('เกิดข้อผิดพลาด', 'ไม่สามารถรับงานนี้ได้: $e',
@@ -382,7 +412,7 @@ class RiderHomeScreen extends StatelessWidget {
     return Obx(() {
       final riderData = controller.rider.value;
       // 🔔 ใช้ field 'fullname' จาก UserModel จริง
-      String riderName = riderData?.fullname ?? 'ไรเดอร์';
+      String riderName = riderData?.fullname ?? 'ไรเดอร์'; 
       String profileImageUrl = riderData?.profile ??
           'https://cdn-icons-png.flaticon.com/512/1144/1144760.png';
 
@@ -453,17 +483,14 @@ class RiderHomeScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const SizedBox(
-                  width: 30,
-                  height: 30,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 3, color: primaryColor)),
+                width: 30, 
+                height: 30, 
+                child: CircularProgressIndicator(strokeWidth: 3, color: primaryColor)), 
               const SizedBox(height: 15),
-              Text('กำลังระบุตำแหน่ง GPS',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.grey[800],
-                      fontWeight: FontWeight.bold)),
+              Text(
+                'กำลังระบุตำแหน่ง GPS',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 18, color: Colors.grey[800], fontWeight: FontWeight.bold)),
               const SizedBox(height: 5),
               Text('(โปรดรอสักครู่และตรวจสอบว่า GPS ทำงานอยู่)',
                   textAlign: TextAlign.center,
@@ -483,16 +510,14 @@ class RiderHomeScreen extends StatelessWidget {
                 children: [
                   CircularProgressIndicator(),
                   SizedBox(height: 10),
-                  Text('กำลังโหลดรายการงาน...',
-                      style: TextStyle(color: Colors.grey)),
+                  Text('กำลังโหลดรายการงาน...', style: TextStyle(color: Colors.grey)),
                 ],
               ),
             );
           }
           if (snapshot.hasError) {
             return Center(
-                child:
-                    Text('เกิดข้อผิดพลาดในการโหลดข้อมูล: ${snapshot.error}'));
+                child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล: ${snapshot.error}'));
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return Center(
@@ -501,10 +526,7 @@ class RiderHomeScreen extends StatelessWidget {
               child: Text(
                   '✅ ตำแหน่งยืนยันแล้ว:\nไม่มีงานที่อยู่ในรัศมี ${RiderHomeController.MAX_DISTANCE_METERS} เมตรให้รับในขณะนี้',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey[700],
-                      fontWeight: FontWeight.bold)),
+                  style: TextStyle(fontSize: 16, color: Colors.grey[700], fontWeight: FontWeight.bold)),
             ));
           }
 
@@ -525,13 +547,13 @@ class RiderHomeScreen extends StatelessWidget {
 
   Widget _buildPackageCard(
       BuildContext context, OrderModel order, RiderHomeController controller) {
+    
     const acceptColor = Color(0xFF38B000); // สีเขียวสำหรับปุ่มรับงาน
 
     return InkWell(
       // 🔔 เมื่อแตะที่ Card ทั้งใบ จะนำไปยังหน้า PackageDetailScreen
       onTap: () {
-        Get.to(() =>
-            PackageDetailScreen(order: order, riderController: controller));
+        Get.to(() => PackageDetailScreen(order: order, riderController: controller));
       },
       child: Card(
         margin: const EdgeInsets.only(bottom: 15),
@@ -549,8 +571,7 @@ class RiderHomeScreen extends StatelessWidget {
                   color: Colors.grey[200],
                   borderRadius: BorderRadius.circular(8),
                   // 🔔 ใช้ order.orderPicture
-                  image: order.orderPicture != null &&
-                          order.orderPicture!.isNotEmpty
+                  image: order.orderPicture != null && order.orderPicture!.isNotEmpty
                       ? DecorationImage(
                           image: NetworkImage(order.orderPicture!),
                           fit: BoxFit.cover)
@@ -598,8 +619,7 @@ class RiderHomeScreen extends StatelessWidget {
                     Text('รับงาน',
                         style: TextStyle(color: Colors.white, fontSize: 14)),
                     SizedBox(width: 4),
-                    Icon(Icons.arrow_forward_ios,
-                        size: 14, color: Colors.white),
+                    Icon(Icons.arrow_forward_ios, size: 14, color: Colors.white),
                   ],
                 ),
               ),
@@ -712,4 +732,3 @@ class RiderHomeScreen extends StatelessWidget {
     );
   }
 }
-//
