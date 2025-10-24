@@ -20,6 +20,16 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:io';
 import 'package:cloudinary_public/cloudinary_public.dart';
 
+// ---------- [⭐️ โค้ดที่แก้ไข 1/3: สร้าง Class สำหรับเก็บผลลัพธ์ ⭐️] ----------
+// Class นี้จะใช้เก็บทั้งพิกัดและชื่อที่อยู่ เพื่อส่งค่ากลับจากหน้าแผนที่
+class MapPickerResult {
+  final LatLng location;
+  final String address;
+
+  MapPickerResult({required this.location, required this.address});
+}
+// --------------------------------------------------------------------------
+
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
 
@@ -37,7 +47,7 @@ class _RegisterPageState extends State<RegisterPage> {
   String _profileImageUrl = '';
   String _vehicleImageUrl = '';
 
-  bool _isLoading = false; // <-- 1. เพิ่ม State สำหรับ Loading
+  bool _isLoading = false;
 
   final _formKey = GlobalKey<FormState>();
   final _fullNameController = TextEditingController();
@@ -440,6 +450,7 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
+  // ---------- [⭐️ โค้ดที่แก้ไข 3/3: แก้ไขฟังก์ชันเปิดแผนที่ ⭐️] ----------
   Future<void> _openMapPicker(
     TextEditingController targetGpsController,
     TextEditingController sourceAddressController,
@@ -460,8 +471,9 @@ class _RegisterPageState extends State<RegisterPage> {
     }
 
     final String initialAddress = sourceAddressController.text;
-
-    final LatLng? result = await showModalBottomSheet<LatLng>(
+    
+    // เปลี่ยน Type ที่คาดว่าจะได้รับกลับมาเป็น MapPickerResult
+    final MapPickerResult? result = await showModalBottomSheet<MapPickerResult>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -475,13 +487,16 @@ class _RegisterPageState extends State<RegisterPage> {
       },
     );
 
+    // เมื่อได้รับค่ากลับมา ให้อัปเดต Controller ทั้งสองตัว
     if (result != null) {
       setState(() {
         targetGpsController.text =
-            "${result.latitude.toStringAsFixed(6)}, ${result.longitude.toStringAsFixed(6)}";
+            "${result.location.latitude.toStringAsFixed(6)}, ${result.location.longitude.toStringAsFixed(6)}";
+        sourceAddressController.text = result.address;
       });
     }
   }
+  // --------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -689,7 +704,7 @@ class _RegisterPageState extends State<RegisterPage> {
           _buildTextField('ชื่อ-สกุล', controller: _fullNameController,
               validator: (val) {
             if (val!.isEmpty && _isRider == false) {
-              return "กรุณากรอกชื่อขสกุล";
+              return "กรุณากรอกชื่อ-สกุล";
             }
             return null;
           }),
@@ -785,7 +800,7 @@ class _RegisterPageState extends State<RegisterPage> {
           _buildTextField('ชื่อ-สกุล', controller: _fullNameController,
               validator: (val) {
             if (val!.isEmpty && _isRider == true) {
-              return "กรุณากรอกชื่อขสกุล";
+              return "กรุณากรอกชื่อ-สกุล";
             }
             return null;
           }),
@@ -1114,7 +1129,7 @@ class _MapPickerModalState extends State<MapPickerModal> {
                 onPressed: _geocodeAddress,
               ),
             ),
-            onSubmitted: (_) => _geocodeAddress(),
+            onSubmitted: (_) => _geocodeAddress,
           ),
           const SizedBox(height: 15),
           Expanded(
@@ -1155,13 +1170,20 @@ class _MapPickerModalState extends State<MapPickerModal> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
+              // ---------- [⭐️ โค้ดที่แก้ไข 2/3: ส่งค่ากลับเป็น Class ใหม่ ⭐️] ----------
               onPressed: () {
                 if (_selectedPos != null) {
-                  Navigator.pop(context, _selectedPos);
+                  // สร้าง Object จาก Class ใหม่เพื่อส่งค่ากลับ
+                  final result = MapPickerResult(
+                    location: _selectedPos!,
+                    address: _searchController.text,
+                  );
+                  Navigator.pop(context, result);
                 } else {
                   Navigator.pop(context);
                 }
               },
+              // -------------------------------------------------------------
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 padding: const EdgeInsets.symmetric(vertical: 15),
