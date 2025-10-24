@@ -45,9 +45,12 @@ class RiderHomeController extends GetxController {
     super.onClose();
   }
 
+  // ---------- [⭐️ โค้ดที่แก้ไขและปรับปรุง ⭐️] ----------
   void _startLocationTracking() async {
     bool serviceEnabled;
     LocationPermission permission;
+
+    // 1. ตรวจสอบ Service และ Permission ก่อน
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       Get.snackbar(
@@ -64,6 +67,21 @@ class RiderHomeController extends GetxController {
         return;
       }
     }
+
+    // 2. [ปรับปรุง] ลองดึง "ตำแหน่งล่าสุดที่เครื่องเคยรู้" (fast) มาแสดงก่อนทันที
+    // เพื่อให้หน้าจอ loading หายไปเร็วที่สุดตอนเปิดแอป
+    try {
+      Position? lastKnownPosition = await Geolocator.getLastKnownPosition();
+      if (lastKnownPosition != null) {
+        riderCurrentLocation.value =
+            GeoPoint(lastKnownPosition.latitude, lastKnownPosition.longitude);
+        log('✅ UI updated with last known location.');
+      }
+    } catch (e) {
+      log('Could not get last known location: $e');
+    }
+
+    // 3. จากนั้น เริ่มติดตามตำแหน่งแบบ Real-time (accurate) เพื่ออัปเดตในเบื้องหลัง
     const LocationSettings locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
       distanceFilter: 5,
@@ -112,15 +130,12 @@ class RiderHomeController extends GetxController {
     }
   }
 
-  // ---------- [⭐️ จุดที่ 1: แก้ไขตรงนี้] ----------
-  // ลบการกรองระยะทาง 20 เมตรออก, ฟังก์ชันนี้จะดึงงาน pending ทั้งหมดทันที
   Stream<List<OrderModel>> getPendingOrdersStream() {
     return db
         .collection('orders')
         .where('currentStatus', isEqualTo: 'pending')
         .snapshots()
         .map((snapshot) {
-      // แปลงข้อมูลแล้วส่งกลับไปเลย ไม่ต้องกรอง
       return snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
     }).timeout(
       const Duration(seconds: 30),
@@ -196,7 +211,6 @@ class RiderHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ใส่ permanent: true เพื่อแก้ปัญหาการรอโหลดตำแหน่งตอนกลับมาจากหน้าส่งของ
     final controller = Get.put(RiderHomeController(uid: uid, role: role), permanent: true);
 
     return Scaffold(
@@ -310,23 +324,20 @@ class RiderHomeScreen extends StatelessWidget {
       }
 
       return StreamBuilder<List<OrderModel>>(
-        // ---------- [⭐️ จุดที่ 2: แก้ไขตรงนี้] ----------
-        // เรียกใช้ฟังก์ชันโดยไม่ต้องส่งพารามิเตอร์ riderLoc
         stream: controller.getPendingOrdersStream(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(
+            return const Center(
               child: Padding(
-                padding: const EdgeInsets.all(20.0),
+                padding: EdgeInsets.all(20.0),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const CircularProgressIndicator(
+                    CircularProgressIndicator(
                       valueColor: AlwaysStoppedAnimation<Color>(Colors.purple),
                     ),
-                    const SizedBox(height: 15),
-                    // แก้ไขข้อความให้สอดคล้องกัน
-                    const Text(
+                    SizedBox(height: 15),
+                    Text(
                       'กำลังค้นหางาน...',
                       textAlign: TextAlign.center,
                       style: TextStyle(
@@ -366,9 +377,7 @@ class RiderHomeScreen extends StatelessWidget {
                     ElevatedButton.icon(
                       icon: const Icon(Icons.refresh),
                       label: const Text('ลองใหม่'),
-                      onPressed: () {
-                        // ไม่จำเป็นต้องใช้ Get.forceAppUpdate() อีกแล้ว
-                      },
+                      onPressed: () {},
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFC70808),
                         foregroundColor: Colors.white,
@@ -384,7 +393,6 @@ class RiderHomeScreen extends StatelessWidget {
             return const Center(
               child: Padding(
                 padding: EdgeInsets.all(20.0),
-                // แก้ไขข้อความให้สอดคล้องกัน
                 child: Text(
                   'ยังไม่มีงานเข้ามาในขณะนี้',
                   textAlign: TextAlign.center,
