@@ -1,12 +1,14 @@
+// file: lib/page/home_rider.dart
+
 import 'dart:async';
 import 'dart:developer';
-import 'dart:math' show cos, sqrt, asin, pi, atan2, sin;
+import 'dart:math' show cos, sqrt, asin, pi, atan2, sin; // 'math' ไม่ได้ถูกใช้แล้ว แต่เก็บไว้เผื่ออนาคต
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/models/order_model.dart';
 import 'package:delivery_project/models/package_model.dart';
 import 'package:delivery_project/models/user_model.dart';
 import 'package:delivery_project/page/index.dart';
-import 'package:delivery_project/page/package_detail_page.dart';
+import 'package:delivery_project/page/package_detail_page.dart'; // ตรวจสอบว่าไฟล์นี้มี class 'PackageDetailScreen'
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:geolocator/geolocator.dart';
@@ -79,22 +81,10 @@ class RiderHomeController extends GetxController {
     });
   }
 
-  double _calculateDistanceMeters(GeoPoint loc1, GeoPoint loc2) {
-    const double R = 6371000;
-    final double lat1 = loc1.latitude;
-    final double lon1 = loc1.longitude;
-    final double lat2 = loc2.latitude;
-    final double lon2 = loc2.longitude;
-    final double dLat = (lat2 - lat1) * (pi / 180.0);
-    final double dLon = (lon2 - lon1) * (pi / 180.0);
-    final double a = sin(dLat / 2) * sin(dLat / 2) +
-        cos(lat1 * (pi / 180.0)) *
-            cos(lat2 * (pi / 180.0)) *
-            sin(dLon / 2) *
-            sin(dLon / 2);
-    final double c = 2 * atan2(sqrt(a), sqrt(1 - a));
-    return R * c;
-  }
+  // ---------- [⭐️ โค้ดที่แก้ไข ⭐️] ----------
+  // ลบฟังก์ชัน _calculateDistanceMeters ทั้งหมดออกไปจาก Controller
+  // เนื่องจากไม่ได้ใช้ในการกรองรายการงานอีกต่อไป
+  // ------------------------------------------
 
   Future<void> _checkAndNavigateToActiveOrder() async {
     try {
@@ -211,7 +201,8 @@ class RiderHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final controller = Get.put(RiderHomeController(uid: uid, role: role));
+    // ใช้ Get.put แบบ permanent: true เพื่อให้ Controller คงอยู่และไม่หาตำแหน่งใหม่ทุกครั้งที่กลับมาหน้านี้
+    final controller = Get.put(RiderHomeController(uid: uid, role: role), permanent: true);
 
     return Scaffold(
       backgroundColor: const Color(0xFFFDE9E9),
@@ -518,7 +509,7 @@ class RiderHomeScreen extends StatelessWidget {
         ],
         currentIndex: 0,
         onTap: (index) {
-          if (index == 2) {
+          if (index == 1) {
             Get.offAll(() => const SpeedDerApp());
           }
         },
