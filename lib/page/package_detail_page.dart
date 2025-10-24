@@ -14,38 +14,7 @@ import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
 
 // ------------------------------------------------------------------
-// Controller
-// ------------------------------------------------------------------
-class PackageDetailController extends GetxController {
-  final OrderModel order;
-  final String senderId;
-  final db = FirebaseFirestore.instance;
-
-  PackageDetailController({required this.order}) : senderId = order.customerId;
-
-  final Rx<UserModel?> sender = Rx(null);
-
-  @override
-  void onInit() {
-    super.onInit();
-    if (senderId.isNotEmpty) {
-      _loadSenderData();
-    }
-  }
-
-  void _loadSenderData() {
-    sender.bindStream(
-      db
-          .collection('users')
-          .doc(senderId)
-          .snapshots()
-          .map((doc) => doc.exists ? UserModel.fromFirestore(doc) : null),
-    );
-  }
-}
-
-// ------------------------------------------------------------------
-// Page
+// Page (เราจะเอา Controller ออก และจัดการ Data ในนี้เลย)
 // ------------------------------------------------------------------
 class PackageDetailScreen extends StatelessWidget {
   final OrderModel order;
@@ -82,8 +51,6 @@ class PackageDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final controller = Get.put(PackageDetailController(order: order));
-    
     return Obx(() {
       final GeoPoint? riderLoc = riderController.riderCurrentLocation.value;
       final double distance =
@@ -106,11 +73,11 @@ class PackageDetailScreen extends StatelessWidget {
           child: Column(
             children: [
               _buildMapSection(),
-              const SizedBox(height: 15), // แก้ไข: ลดระยะห่างแก้จอล้น
+              const SizedBox(height: 15),
               _buildPackageDetailsCard(),
-              const SizedBox(height: 15), // แก้ไข: ลดระยะห่างแก้จอล้น
-              _buildDeliveryInfoSection(controller),
-              const SizedBox(height: 15), // แก้ไข: ลดระยะห่างแก้จอล้น
+              const SizedBox(height: 15),
+              _buildDeliveryInfoSection(), // เอา Controller ออก
+              const SizedBox(height: 15),
               _buildAcceptButton(context, isNearEnough, distance),
               const SizedBox(height: 20),
             ],
@@ -127,20 +94,23 @@ class PackageDetailScreen extends StatelessWidget {
     final LatLng pickupLatLng = pickupGps != null
         ? LatLng(pickupGps.latitude, pickupGps.longitude)
         : const LatLng(0, 0);
-        
+
     final LatLng deliveryLatLng = deliveryGps != null
         ? LatLng(deliveryGps.latitude, deliveryGps.longitude)
         : const LatLng(0, 0);
-        
+
     List<Marker> markers = [];
     if (pickupGps != null) {
       markers.add(Marker(
         point: pickupLatLng,
-        width: 80, height: 80,
+        width: 80,
+        height: 80,
         child: const Column(
           children: [
             Icon(Icons.storefront, color: Colors.blue, size: 40),
-            Text('จุดรับ', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+            Text('จุดรับ',
+                style:
+                    TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
           ],
         ),
       ));
@@ -148,11 +118,14 @@ class PackageDetailScreen extends StatelessWidget {
     if (deliveryGps != null) {
       markers.add(Marker(
         point: deliveryLatLng,
-        width: 80, height: 80,
+        width: 80,
+        height: 80,
         child: const Column(
           children: [
             Icon(Icons.location_on, color: primaryColor, size: 40),
-            Text('จุดส่ง', style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)),
+            Text('จุดส่ง',
+                style: TextStyle(
+                    color: primaryColor, fontWeight: FontWeight.bold)),
           ],
         ),
       ));
@@ -169,15 +142,19 @@ class PackageDetailScreen extends StatelessWidget {
         child: FlutterMap(
           mapController: _mapController,
           options: MapOptions(
-            initialCenter: pickupLatLng.latitude != 0 ? pickupLatLng : const LatLng(13.7563, 100.5018),
+            initialCenter: pickupLatLng.latitude != 0
+                ? pickupLatLng
+                : const LatLng(13.7563, 100.5018),
             initialZoom: 14.0,
             interactionOptions: const InteractionOptions(
               flags: InteractiveFlag.all,
             ),
             onMapReady: () {
               if (markers.length > 1) {
-                var bounds = LatLngBounds.fromPoints(markers.map((m) => m.point).toList());
-                _mapController.fitBounds(bounds, options: const FitBoundsOptions(padding: EdgeInsets.all(50.0)));
+                var bounds = LatLngBounds.fromPoints(
+                    markers.map((m) => m.point).toList());
+                _mapController.fitBounds(bounds,
+                    options: const FitBoundsOptions(padding: EdgeInsets.all(50.0)));
               } else if (markers.isNotEmpty) {
                 _mapController.move(markers.first.point, 14.0);
               }
@@ -256,7 +233,12 @@ class PackageDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDeliveryInfoSection(PackageDetailController controller) {
+  // ✨✨✨ ส่วนที่แก้ไขใหม่ทั้งหมด ตามตัวอย่างของคุณ ✨✨✨
+  Widget _buildDeliveryInfoSection() {
+    final pickup = order.pickupAddress;
+    final delivery = order.deliveryAddress;
+    final customerId = order.customerId;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(15),
@@ -271,52 +253,68 @@ class PackageDetailScreen extends StatelessWidget {
           const Text('ข้อมูลการจัดส่ง',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const Divider(height: 20),
-          Obx(() {
-            final senderData = controller.sender.value;
-            // ⚠️ Reminder: ถ้าชื่อผู้ส่งไม่ขึ้น ให้เช็คว่าใน Firestore Collection 'users'
-            // มีฟิลด์ชื่อ 'fullname' (ตัวพิมพ์เล็ก) หรือไม่
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _infoRow(
-                  icon: Icons.storefront,
-                  label: 'รับจาก (จุดต้นทาง)',
-                  value: order.pickupAddress.detail,
-                ),
-                const SizedBox(height: 8),
-                _infoRow(
-                  icon: Icons.person,
-                  label: 'ผู้ส่ง',
-                  value: senderData?.fullname ?? 'กำลังโหลด...',
-                ),
-                const SizedBox(height: 8),
-                _infoRow(
-                  icon: Icons.phone,
-                  label: 'เบอร์ติดต่อ (ผู้ส่ง)',
-                  value: senderData?.phone ?? 'กำลังโหลด...',
-                ),
-              ],
-            );
-          }),
-          const Divider(height: 20),
           _infoRow(
-            icon: Icons.location_on,
-            label: 'ส่งที่ (ปลายทาง)',
-            value: order.deliveryAddress.detail,
+            icon: Icons.storefront,
+            label: 'รับจาก',
+            value: pickup.detail,
           ),
           const SizedBox(height: 8),
-          // ⚠️ Reminder: ถ้าชื่อผู้รับไม่ขึ้น ให้เช็คว่าใน Firestore,
-          // ภายใน Map 'deliveryAddress' มีฟิลด์ชื่อ 'receiverName' หรือไม่
+          
+          // --- ใช้ StreamBuilder ดึงข้อมูลผู้ส่ง เหมือนตัวอย่าง ---
+          if (customerId.isNotEmpty)
+            StreamBuilder<DocumentSnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(customerId)
+                  .snapshots(),
+              builder: (context, snap) {
+                if (!snap.hasData) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Center(child: LinearProgressIndicator()),
+                  );
+                }
+                final userData =
+                    snap.data!.data() as Map<String, dynamic>? ?? {};
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _infoRow(
+                      icon: Icons.person,
+                      label: 'ผู้ส่ง',
+                      value: userData['fullname'] ?? 'ไม่มีข้อมูล',
+                    ),
+                    const SizedBox(height: 8),
+                    _infoRow(
+                      icon: Icons.phone,
+                      label: 'เบอร์ติดต่อ (ผู้ส่ง)',
+                      value: userData['phone'] ?? 'ไม่มีข้อมูล',
+                    ),
+                  ],
+                );
+              },
+            )
+          else
+            _infoRow(icon: Icons.person, label: 'ผู้ส่ง', value: 'ไม่มีข้อมูล'),
+          
+          const Divider(height: 20),
+
+          _infoRow(
+            icon: Icons.location_on,
+            label: 'ส่งที่',
+            value: delivery.detail,
+          ),
+          const SizedBox(height: 8),
           _infoRow(
             icon: Icons.person_pin,
             label: 'ผู้รับ',
-            value: order.deliveryAddress.receiverName ?? 'N/A',
+            value: delivery.receiverName ?? 'N/A',
           ),
           const SizedBox(height: 8),
           _infoRow(
             icon: Icons.phone_android,
             label: 'เบอร์ติดต่อ (ผู้รับ)',
-            value: order.deliveryAddress.receiverPhone ?? 'N/A',
+            value: delivery.receiverPhone ?? 'N/A',
           ),
         ],
       ),
