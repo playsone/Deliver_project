@@ -8,12 +8,12 @@ import 'package:delivery_project/models/order_model.dart';
 import 'package:delivery_project/models/package_model.dart';
 import 'package:delivery_project/models/user_model.dart';
 import 'package:delivery_project/page/index.dart';
+import 'package:delivery_project/page/package_detail_page.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:delivery_project/page/edit_profile.dart';
 import 'package:delivery_project/page/package_delivery_page.dart';
-import 'package:delivery_project/page/order_detail_page.dart';
 
 class RiderHomeController extends GetxController {
   final String uid;
@@ -166,15 +166,17 @@ class RiderHomeController extends GetxController {
     );
   }
 
-  // (ฟังก์ชัน navigateToOrderDetails ไม่เปลี่ยนแปลง)
+  // ✅ FIX 2: แก้ไขฟังก์ชันนี้ให้ไปที่ PackageDetailScreen
   void navigateToOrderDetails(OrderModel order) {
     if (riderCurrentLocation.value == null) {
       Get.snackbar('ข้อผิดพลาด', 'ยังไม่สามารถระบุตำแหน่งของคุณได้');
       return;
     }
-    Get.to(() => OrderDetailPage(
+    // เปลี่ยนจาก OrderDetailPage เป็น PackageDetailScreen
+    // และส่ง 'this' (ตัว Controller) เข้าไปแทน 'riderLocation'
+    Get.to(() => PackageDetailScreen(
           order: order,
-          riderLocation: riderCurrentLocation.value!,
+          riderController: this,
         ));
   }
 
@@ -225,6 +227,10 @@ class RiderHomeController extends GetxController {
     }
   }
 }
+
+// -----------------------------------------------------------------
+// (ส่วน UI ของ RiderHomeScreen ไม่ต้องแก้ไข เพราะเรียกใช้ฟังก์ชันที่แก้แล้ว)
+// -----------------------------------------------------------------
 
 class RiderHomeScreen extends StatelessWidget {
   final String uid;

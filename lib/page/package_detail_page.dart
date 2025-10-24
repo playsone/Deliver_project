@@ -91,6 +91,9 @@ class PackageDetailScreen extends StatelessWidget {
     final GeoPoint? pickupGps = order.pickupAddress.gps;
     final GeoPoint? deliveryGps = order.deliveryAddress.gps;
 
+    // ✅ 1. ดึงตำแหน่ง Rider ปัจจุบันจาก Controller
+    final GeoPoint? riderLoc = riderController.riderCurrentLocation.value;
+
     final LatLng pickupLatLng = pickupGps != null
         ? LatLng(pickupGps.latitude, pickupGps.longitude)
         : const LatLng(0, 0);
@@ -100,7 +103,9 @@ class PackageDetailScreen extends StatelessWidget {
         : const LatLng(0, 0);
 
     List<Marker> markers = [];
-    if (pickupGps != null) {
+
+    // --- Marker จุดรับ (เหมือนเดิม) ---
+    if (pickupGps != null && pickupGps.latitude != 0) {
       markers.add(Marker(
         point: pickupLatLng,
         width: 80,
@@ -115,7 +120,8 @@ class PackageDetailScreen extends StatelessWidget {
         ),
       ));
     }
-    if (deliveryGps != null) {
+
+    if (deliveryGps != null && deliveryGps.latitude != 0) {
       markers.add(Marker(
         point: deliveryLatLng,
         width: 80,
@@ -126,6 +132,22 @@ class PackageDetailScreen extends StatelessWidget {
             Text('จุดส่ง',
                 style: TextStyle(
                     color: primaryColor, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ));
+    }
+
+    if (riderLoc != null) {
+      markers.add(Marker(
+        point: LatLng(riderLoc.latitude, riderLoc.longitude),
+        width: 80,
+        height: 80,
+        child: const Column(
+          children: [
+            Icon(Icons.motorcycle_rounded, color: Colors.green, size: 40),
+            Text('คุณ',
+                style: TextStyle(
+                    color: Colors.green, fontWeight: FontWeight.bold)),
           ],
         ),
       ));
@@ -150,11 +172,13 @@ class PackageDetailScreen extends StatelessWidget {
               flags: InteractiveFlag.all,
             ),
             onMapReady: () {
+              // ✅ 3. ลอจิก fitBounds จะทำงานครอบคลุม 3 จุด (หรือ 2 จุด) อัตโนมัติ
               if (markers.length > 1) {
                 var bounds = LatLngBounds.fromPoints(
                     markers.map((m) => m.point).toList());
                 _mapController.fitBounds(bounds,
-                    options: const FitBoundsOptions(padding: EdgeInsets.all(50.0)));
+                    options:
+                        const FitBoundsOptions(padding: EdgeInsets.all(80.0)));
               } else if (markers.isNotEmpty) {
                 _mapController.move(markers.first.point, 14.0);
               }
@@ -174,7 +198,8 @@ class PackageDetailScreen extends StatelessWidget {
   }
 
   Widget _buildPackageDetailsCard() {
-    final bool hasImage = order.orderPicture != null && order.orderPicture!.isNotEmpty;
+    final bool hasImage =
+        order.orderPicture != null && order.orderPicture!.isNotEmpty;
 
     return Container(
       width: double.infinity,
@@ -223,17 +248,11 @@ class PackageDetailScreen extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                   color: primaryColor)),
           const Divider(height: 20),
-          _infoRow(
-            icon: Icons.inventory_2_outlined,
-            label: 'รายละเอียดสินค้า',
-            value: order.orderDetails,
-          ),
         ],
       ),
     );
   }
 
-  // ✨✨✨ ส่วนที่แก้ไขใหม่ทั้งหมด ตามตัวอย่างของคุณ ✨✨✨
   Widget _buildDeliveryInfoSection() {
     final pickup = order.pickupAddress;
     final delivery = order.deliveryAddress;
@@ -259,8 +278,6 @@ class PackageDetailScreen extends StatelessWidget {
             value: pickup.detail,
           ),
           const SizedBox(height: 8),
-          
-          // --- ใช้ StreamBuilder ดึงข้อมูลผู้ส่ง เหมือนตัวอย่าง ---
           if (customerId.isNotEmpty)
             StreamBuilder<DocumentSnapshot>(
               stream: FirebaseFirestore.instance
@@ -296,9 +313,7 @@ class PackageDetailScreen extends StatelessWidget {
             )
           else
             _infoRow(icon: Icons.person, label: 'ผู้ส่ง', value: 'ไม่มีข้อมูล'),
-          
           const Divider(height: 20),
-
           _infoRow(
             icon: Icons.location_on,
             label: 'ส่งที่',
@@ -308,13 +323,13 @@ class PackageDetailScreen extends StatelessWidget {
           _infoRow(
             icon: Icons.person_pin,
             label: 'ผู้รับ',
-            value: delivery.receiverName ?? 'N/A',
+            value: delivery.recipientName ?? 'N/A',
           ),
           const SizedBox(height: 8),
           _infoRow(
             icon: Icons.phone_android,
             label: 'เบอร์ติดต่อ (ผู้รับ)',
-            value: delivery.receiverPhone ?? 'N/A',
+            value: delivery.recipientPhone ?? 'N/A',
           ),
         ],
       ),
