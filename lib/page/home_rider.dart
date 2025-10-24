@@ -2,20 +2,11 @@
 
 import 'dart:async';
 import 'dart:developer';
-import 'dart:math'
-    show
-        cos,
-        sqrt,
-        asin,
-        pi,
-        atan2,
-        sin; // 'math' ไม่ได้ถูกใช้แล้ว แต่เก็บไว้เผื่ออนาคต
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/models/order_model.dart';
 import 'package:delivery_project/models/package_model.dart';
 import 'package:delivery_project/models/user_model.dart';
 import 'package:delivery_project/page/index.dart';
-import 'package:delivery_project/page/package_detail_page.dart'; // ตรวจสอบว่าไฟล์นี้มี class 'PackageDetailScreen'
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:geolocator/geolocator.dart';
@@ -37,7 +28,6 @@ class RiderHomeController extends GetxController {
   void onInit() {
     super.onInit();
     _checkAndNavigateToActiveOrder();
-
     _startLocationTracking();
 
     rider.bindStream(
@@ -89,11 +79,6 @@ class RiderHomeController extends GetxController {
     });
   }
 
-  // ---------- [⭐️ โค้ดที่แก้ไข ⭐️] ----------
-  // ลบฟังก์ชัน _calculateDistanceMeters ทั้งหมดออกไปจาก Controller
-  // เนื่องจากไม่ได้ใช้ในการกรองรายการงานอีกต่อไป
-  // ------------------------------------------
-
   Future<void> _checkAndNavigateToActiveOrder() async {
     try {
       final querySnapshot = await db
@@ -127,12 +112,15 @@ class RiderHomeController extends GetxController {
     }
   }
 
+  // ---------- [⭐️ จุดที่ 1: แก้ไขตรงนี้] ----------
+  // ลบการกรองระยะทาง 20 เมตรออก, ฟังก์ชันนี้จะดึงงาน pending ทั้งหมดทันที
   Stream<List<OrderModel>> getPendingOrdersStream() {
     return db
         .collection('orders')
         .where('currentStatus', isEqualTo: 'pending')
         .snapshots()
         .map((snapshot) {
+      // แปลงข้อมูลแล้วส่งกลับไปเลย ไม่ต้องกรอง
       return snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
     }).timeout(
       const Duration(seconds: 30),
@@ -148,8 +136,7 @@ class RiderHomeController extends GetxController {
       Get.snackbar('ข้อผิดพลาด', 'ยังไม่สามารถระบุตำแหน่งของคุณได้');
       return;
     }
-
-    Get.to(() => PackageDetailScreen(
+    Get.to(() => OrderDetailPage(
           order: order,
           riderLocation: riderCurrentLocation.value!,
         ));
@@ -174,7 +161,7 @@ class RiderHomeController extends GetxController {
           ]),
         });
       });
-      Get.back();
+      Get.back(); // ปิด Loading
       final package = Package(
         id: order.id,
         title: order.orderDetails,
@@ -209,9 +196,8 @@ class RiderHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ใช้ Get.put แบบ permanent: true เพื่อให้ Controller คงอยู่และไม่หาตำแหน่งใหม่ทุกครั้งที่กลับมาหน้านี้
-    final controller =
-        Get.put(RiderHomeController(uid: uid, role: role), permanent: true);
+    // ใส่ permanent: true เพื่อแก้ปัญหาการรอโหลดตำแหน่งตอนกลับมาจากหน้าส่งของ
+    final controller = Get.put(RiderHomeController(uid: uid, role: role), permanent: true);
 
     return Scaffold(
       backgroundColor: const Color(0xFFFDE9E9),
@@ -324,20 +310,23 @@ class RiderHomeScreen extends StatelessWidget {
       }
 
       return StreamBuilder<List<OrderModel>>(
+        // ---------- [⭐️ จุดที่ 2: แก้ไขตรงนี้] ----------
+        // เรียกใช้ฟังก์ชันโดยไม่ต้องส่งพารามิเตอร์ riderLoc
         stream: controller.getPendingOrdersStream(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
+            return Center(
               child: Padding(
-                padding: EdgeInsets.all(20.0),
+                padding: const EdgeInsets.all(20.0),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    CircularProgressIndicator(
+                    const CircularProgressIndicator(
                       valueColor: AlwaysStoppedAnimation<Color>(Colors.purple),
                     ),
-                    SizedBox(height: 15),
-                    Text(
+                    const SizedBox(height: 15),
+                    // แก้ไขข้อความให้สอดคล้องกัน
+                    const Text(
                       'กำลังค้นหางาน...',
                       textAlign: TextAlign.center,
                       style: TextStyle(
@@ -378,7 +367,7 @@ class RiderHomeScreen extends StatelessWidget {
                       icon: const Icon(Icons.refresh),
                       label: const Text('ลองใหม่'),
                       onPressed: () {
-                        Get.forceAppUpdate();
+                        // ไม่จำเป็นต้องใช้ Get.forceAppUpdate() อีกแล้ว
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFC70808),
@@ -395,6 +384,7 @@ class RiderHomeScreen extends StatelessWidget {
             return const Center(
               child: Padding(
                 padding: EdgeInsets.all(20.0),
+                // แก้ไขข้อความให้สอดคล้องกัน
                 child: Text(
                   'ยังไม่มีงานเข้ามาในขณะนี้',
                   textAlign: TextAlign.center,
@@ -514,11 +504,13 @@ class RiderHomeScreen extends StatelessWidget {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'หน้าแรก'),
           BottomNavigationBarItem(
+              icon: Icon(Icons.history), label: 'ประวัติการส่ง'),
+          BottomNavigationBarItem(
               icon: Icon(Icons.logout), label: 'ออกจากระบบ'),
         ],
         currentIndex: 0,
         onTap: (index) {
-          if (index == 1) {
+          if (index == 2) {
             Get.offAll(() => const SpeedDerApp());
           }
         },
@@ -551,6 +543,10 @@ class RiderHomeScreen extends StatelessWidget {
               _buildOptionButton(
                   context, 'แก้ไขข้อมูลส่วนตัว', Icons.person_outline, () {
                 Get.to(() => EditProfilePage(uid: uid, role: role));
+              }),
+              _buildOptionButton(context, 'เปลี่ยนรหัสผ่าน', Icons.lock_outline,
+                  () {
+                Navigator.pop(context);
               }),
               _buildOptionButton(context, 'ออกจากระบบ', Icons.logout, () {
                 Get.offAll(() => const SpeedDerApp());
