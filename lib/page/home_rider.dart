@@ -15,42 +15,24 @@ import 'package:delivery_project/page/edit_profile.dart';
 import 'package:delivery_project/page/package_delivery_page.dart';
 import 'package:delivery_project/page/order_detail_page.dart';
 
-// ------------------------------------------------------------------
-// Controller (ส่วนจัดการ Logic)
-// [แก้ไข] เอา State ที่ซับซ้อนออก
-// ------------------------------------------------------------------
 class RiderHomeController extends GetxController {
   final String uid;
   final int role;
   RiderHomeController({required this.uid, required this.role});
 
-  // --- State ---
   final Rx<UserModel?> rider = Rx(null);
   final db = FirebaseFirestore.instance;
 
-  // --- State สำหรับ Location ---
   final Rx<GeoPoint?> riderCurrentLocation = Rx(null);
   static const double MAX_DISTANCE_METERS = 20.0;
   StreamSubscription<Position>? _positionStreamSubscription;
-
-  // --- [ลบออก] State ที่ซับซ้อน ---
-  // final RxBool isLoading = true.obs;
-  // final RxBool didTimeout = false.obs;
-  // final Rx<List<OrderModel>> pendingOrders = Rx(<OrderModel>[]);
-  // Timer? _initialLoadTimer;
-  // StreamSubscription? _ordersSubscription;
-  // ---------------------------------
-
   @override
   void onInit() {
     super.onInit();
-    // 1. ตรวจสอบงานที่ค้างอยู่ก่อน
     _checkAndNavigateToActiveOrder();
 
-    // 2. เริ่มติดตามตำแหน่ง GPS
     _startLocationTracking();
 
-    // 3. ฟังข้อมูล Rider
     rider.bindStream(
       db
           .collection('users')
@@ -58,22 +40,14 @@ class RiderHomeController extends GetxController {
           .snapshots()
           .map((doc) => doc.exists ? UserModel.fromFirestore(doc) : null),
     );
-
-    // 4. [ลบออก] ไม่ต้องโหลดข้อมูลและจับเวลาที่นี่
-    // _loadInitialData();
   }
-
-  // [ลบออก] ฟังก์ชัน _loadInitialData, _subscribeToOrders, reloadData
-  // เพราะ StreamBuilder จะจัดการเอง
 
   @override
   void onClose() {
-    // [สำคัญ] หยุดการติดตาม GPS
     _positionStreamSubscription?.cancel();
     super.onClose();
   }
 
-  // (ฟังก์ชัน _startLocationTracking ไม่เปลี่ยนแปลง)
   void _startLocationTracking() async {
     bool serviceEnabled;
     LocationPermission permission;
@@ -102,7 +76,6 @@ class RiderHomeController extends GetxController {
             (Position position) {
       riderCurrentLocation.value =
           GeoPoint(position.latitude, position.longitude);
-      // [แก้ไข] เราไม่ log ที่นี่แล้ว เพราะจะ log ใน StreamBuilder
     }, onError: (e) {
       log('Error getting location stream: $e');
       Get.snackbar('ข้อผิดพลาด', 'ไม่สามารถติดตามตำแหน่ง GPS ได้: $e');
@@ -127,7 +100,6 @@ class RiderHomeController extends GetxController {
     return R * c;
   }
 
-  // (ฟังก์ชัน _checkAndNavigateToActiveOrder ไม่เปลี่ยนแปลง)
   Future<void> _checkAndNavigateToActiveOrder() async {
     try {
       final querySnapshot = await db
@@ -161,24 +133,18 @@ class RiderHomeController extends GetxController {
     }
   }
 
-  // --- [แก้ไข] Stream ให้รับ riderLoc เข้ามา ---
-  // และเพิ่ม .timeout()
-  // ---------------------------------------
   Stream<List<OrderModel>> getPendingOrdersStream(GeoPoint riderLoc) {
-    // [สำคัญ] เราใช้ riderLoc ที่ส่งเข้ามาเลย ไม่ต้องใช้ .switchMap
     return db
         .collection('orders')
         .where('currentStatus', isEqualTo: 'pending')
-        .snapshots() // ดึงข้อมูล Realtime
+        .snapshots()
         .map((snapshot) {
-      // Logic การกรองข้อมูล
       final allPendingOrders =
           snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
 
       final filteredOrders = allPendingOrders.where((order) {
         final GeoPoint pickupGps = order.pickupAddress.gps;
         if (pickupGps.latitude == 0 && pickupGps.longitude == 0) {
-          // log('Order ${order.id} skipped: GPS (0,0).');
           return false;
         }
         final distance = _calculateDistanceMeters(riderLoc, pickupGps);
@@ -191,14 +157,11 @@ class RiderHomeController extends GetxController {
       }).toList();
 
       return filteredOrders;
-    })
-        // [สำคัญ] เพิ่มการดักจับ Timeout 5 วินาที
-        // ถ้า Firestore ไม่ส่งข้อมูลแรก (เช่น query ช้า) ภายใน 5 วิ, มันจะโยน Error
-        .timeout(
-      const Duration(seconds: 60),
+    }).timeout(
+      const Duration(seconds: 30),
       onTimeout: (sink) {
         sink.addError(
-            TimeoutException('ไม่สามารถโหลดข้อมูลได้ใน 5 วินาที (Timeout)'));
+            TimeoutException('ไม่สามารถโหลดข้อมูลได้ใน 30 วินาที (Timeout)'));
       },
     );
   }
@@ -263,10 +226,6 @@ class RiderHomeController extends GetxController {
   }
 }
 
-// ------------------------------------------------------------------
-// Rider Home Screen (ส่วน UI)
-// [แก้ไข] _buildPackageList ให้ใช้ StreamBuilder
-// ------------------------------------------------------------------
 class RiderHomeScreen extends StatelessWidget {
   final String uid;
   final int role;
@@ -284,7 +243,7 @@ class RiderHomeScreen extends StatelessWidget {
             _buildHeader(context, controller),
             _buildContentHeader(),
             Expanded(
-              child: _buildPackageList(controller), // [แก้ไข]
+              child: _buildPackageList(controller),
             ),
           ],
         ),
@@ -293,7 +252,6 @@ class RiderHomeScreen extends StatelessWidget {
     );
   }
 
-  // (Header ไม่เปลี่ยนแปลง)
   Widget _buildHeader(BuildContext context, RiderHomeController controller) {
     return Obx(() {
       final riderData = controller.rider.value;
@@ -335,7 +293,6 @@ class RiderHomeScreen extends StatelessWidget {
     });
   }
 
-  // (ContentHeader ไม่เปลี่ยนแปลง)
   Widget _buildContentHeader() {
     return Container(
       width: double.infinity,
@@ -355,12 +312,10 @@ class RiderHomeScreen extends StatelessWidget {
     );
   }
 
-  // --- [แก้ไข] Widget รายการงาน (ใช้ Obx + StreamBuilder) ---
   Widget _buildPackageList(RiderHomeController controller) {
     return Obx(() {
       final riderLoc = controller.riderCurrentLocation.value;
 
-      // --- State 1: No GPS Location ---
       if (riderLoc == null) {
         return Center(
           child: Padding(
@@ -390,22 +345,16 @@ class RiderHomeScreen extends StatelessWidget {
         );
       }
 
-      // --- State 2: Has GPS, Load Stream ---
-      // เมื่อมี GPS แล้ว ให้ StreamBuilder ทำงาน
       return StreamBuilder<List<OrderModel>>(
-        // [สำคัญ] ส่งตำแหน่ง GPS ที่แน่นอนไปให้ Stream
         stream: controller.getPendingOrdersStream(riderLoc),
         builder: (context, snapshot) {
-          // --- State 2a: Stream is Loading ---
           if (snapshot.connectionState == ConnectionState.waiting) {
-            // นี่คือหน้าใน Screenshot ของคุณ
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(20.0),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // [แก้ไข] ทำให้เหมือนในรูป
                     const CircularProgressIndicator(
                       valueColor: AlwaysStoppedAnimation<Color>(Colors.purple),
                     ),
@@ -424,7 +373,6 @@ class RiderHomeScreen extends StatelessWidget {
             );
           }
 
-          // --- State 2b: Stream has Error (เช่น Timeout) ---
           if (snapshot.hasError) {
             log('Error in StreamBuilder: ${snapshot.error}');
             return Center(
@@ -443,7 +391,7 @@ class RiderHomeScreen extends StatelessWidget {
                           TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                     ),
                     Text(
-                      '${snapshot.error}', // แสดง Error (เช่น Timeout)
+                      '${snapshot.error}',
                       textAlign: TextAlign.center,
                       style: const TextStyle(fontSize: 14, color: Colors.grey),
                     ),
@@ -452,12 +400,6 @@ class RiderHomeScreen extends StatelessWidget {
                       icon: const Icon(Icons.refresh),
                       label: const Text('ลองใหม่'),
                       onPressed: () {
-                        // [แก้ไข] UI ไม่สามารถเรียก reloadData() ได้
-                        // เราต้องบอกให้ GetX "Rebuild" Widget นี้
-                        // วิธีที่ง่ายคือบังคับให้ GPS update (ซึ่งจะ trigger Obx)
-                        // แต่ที่จริงแล้ว StreamBuilder จะลองใหม่เองถ้า State เปลี่ยน
-                        // การใช้วิธี .refresh() ของ GetX จะดีที่สุด
-                        // แต่เพื่อความง่าย:
                         Get.forceAppUpdate();
                       },
                       style: ElevatedButton.styleFrom(
@@ -471,15 +413,14 @@ class RiderHomeScreen extends StatelessWidget {
             );
           }
 
-          // --- State 2c: Stream has Data, but list is empty ---
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return Center(
+            return const Center(
               child: Padding(
-                padding: const EdgeInsets.all(20.0),
+                padding: EdgeInsets.all(20.0),
                 child: Text(
-                  '✅ ตำแหน่งยืนยันแล้ว:\nไม่มีงานที่อยู่ในรัศมี ${RiderHomeController.MAX_DISTANCE_METERS} เมตรในขณะนี้',
+                  'ตำแหน่งยืนยันแล้ว:\nไม่มีงานที่อยู่ในรัศมี ${RiderHomeController.MAX_DISTANCE_METERS} เมตรในขณะนี้',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     color: Colors.grey,
                     fontWeight: FontWeight.bold,
@@ -489,7 +430,6 @@ class RiderHomeScreen extends StatelessWidget {
             );
           }
 
-          // --- State 2d: Stream has Data, show list ---
           final orders = snapshot.data!;
           return ListView.builder(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -503,9 +443,7 @@ class RiderHomeScreen extends StatelessWidget {
       );
     });
   }
-  // ------------------------------------------
 
-  // (PackageCard ไม่เปลี่ยนแปลง)
   Widget _buildPackageCard(
       BuildContext context, OrderModel order, RiderHomeController controller) {
     return InkWell(
@@ -564,7 +502,6 @@ class RiderHomeScreen extends StatelessWidget {
     );
   }
 
-  // (PackageDetailRow ไม่เปลี่ยนแปลง)
   Widget _buildPackageDetailRow(IconData icon, String text) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2.0),
@@ -582,7 +519,6 @@ class RiderHomeScreen extends StatelessWidget {
     );
   }
 
-  // (BottomNavBar ไม่เปลี่ยนแปลง)
   Widget _buildBottomNavigationBar(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
