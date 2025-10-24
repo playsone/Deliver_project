@@ -13,9 +13,6 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
 
-// ------------------------------------------------------------------
-// Page (เราจะเอา Controller ออก และจัดการ Data ในนี้เลย)
-// ------------------------------------------------------------------
 class PackageDetailScreen extends StatelessWidget {
   final OrderModel order;
   final RiderHomeController riderController;
@@ -29,7 +26,6 @@ class PackageDetailScreen extends StatelessWidget {
   static final MapController _mapController = MapController();
   static const primaryColor = Color(0xFFC70808);
 
-  // (ฟังก์ชันคำนวณระยะทางยังคงอยู่ แต่เราจะไม่ใช้มันสำหรับปุ่มกดรับงาน)
   double _calculateDistanceMeters(GeoPoint loc1, GeoPoint loc2) {
     const double R = 6371000;
     final double lat1 = loc1.latitude;
@@ -53,14 +49,6 @@ class PackageDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      // [ลบออก] เราไม่จำเป็นต้องคำนวณ distance หรือ isNearEnough ที่นี่แล้ว
-      // final GeoPoint? riderLoc = riderController.riderCurrentLocation.value;
-      // final double distance = ...
-      // final bool isNearEnough = ...
-
-      // Obx ยังคงจำเป็น เพื่อให้ _buildMapSection และ _buildAcceptButton
-      // ที่อ่านค่า .value ทำงานเมื่อ GPS อัปเดต
-
       return Scaffold(
         backgroundColor: Colors.grey[100],
         appBar: AppBar(
@@ -77,9 +65,9 @@ class PackageDetailScreen extends StatelessWidget {
               const SizedBox(height: 15),
               _buildPackageDetailsCard(),
               const SizedBox(height: 15),
-              _buildDeliveryInfoSection(), // เอา Controller ออก
+              _buildDeliveryInfoSection(),
               const SizedBox(height: 15),
-              _buildAcceptButton(context), // [แก้ไข] เอา parameter ออก
+              _buildAcceptButton(context),
               const SizedBox(height: 20),
             ],
           ),
@@ -360,23 +348,20 @@ class PackageDetailScreen extends StatelessWidget {
     );
   }
 
-  // [แก้ไข] Widget นี้ไม่ต้องการ parameter `isNearEnough` และ `distance` แล้ว
   Widget _buildAcceptButton(BuildContext context) {
     String buttonText;
     Color buttonColor;
     bool isEnabled;
     IconData buttonIcon;
 
-    // [แก้ไข] เราจะเช็คแค่ว่า GPS พร้อมหรือไม่
     if (riderController.riderCurrentLocation.value == null) {
       buttonText = 'กำลังค้นหาตำแหน่ง GPS...';
       buttonColor = Colors.grey;
       isEnabled = false;
       buttonIcon = Icons.gps_not_fixed;
     } else {
-      // [แก้ไข] ถ้า GPS พร้อม ก็กดรับงานได้เลย
       buttonText = 'รับงานนี้';
-      buttonColor = const Color(0xFF38B000); // สีเขียว = กดได้
+      buttonColor = const Color(0xFF38B000);
       isEnabled = true;
       buttonIcon = Icons.check_circle_outline;
     }
@@ -392,19 +377,16 @@ class PackageDetailScreen extends StatelessWidget {
         ),
         onPressed: isEnabled
             ? () {
-                // [คงเดิม] Logic นี้ถูกต้องแล้ว
-                // `acceptOrder` ใน Controller มีการเช็คงานซ้อน (Transaction) อยู่แล้ว
-                Get.back(); // กลับไปหน้า Home
-                riderController.acceptOrder(
-                    order); // สั่งให้ Controller ทำงาน (ซึ่งมี Transaction)
+                Get.back();
+                riderController.acceptOrder(order);
               }
             : null,
         style: ElevatedButton.styleFrom(
-          backgroundColor: buttonColor, // สีเขียว หรือ สีเทา
+          backgroundColor: buttonColor,
           padding: const EdgeInsets.symmetric(vertical: 15),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          disabledBackgroundColor: Colors.grey, // ถ้า disable ให้เป็นสีเทาเสมอ
+          disabledBackgroundColor: Colors.grey,
         ),
       ),
     );

@@ -1118,7 +1118,7 @@ class CustomClipperWidget extends CustomClipper<ui.Path> {
   @override
   ui.Path getClip(Size size) {
     double h = size.height;
-    double w = size.width; // <-- แก้ไขจาก WIdtch เป็น width
+    double w = size.width;
     ui.Path path = ui.Path();
     path.lineTo(0, h * 0.85);
     path.quadraticBezierTo(w * 0.15, h * 0.95, w * 0.45, h * 0.85);

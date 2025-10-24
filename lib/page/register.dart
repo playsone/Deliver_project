@@ -22,8 +22,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:io';
 import 'package:cloudinary_public/cloudinary_public.dart';
 
-// [⭐️ การแก้ไขจุดที่ 1] สร้าง Class สำหรับเก็บผลลัพธ์จากแผนที่โดยเฉพาะ
-// เพื่อให้ส่งค่ากลับมาได้ทั้งพิกัด (location) และชื่อที่อยู่ (address)
 class MapPickerResult {
   final LatLng location;
   final String address;
@@ -1089,7 +1087,6 @@ class _MapPickerModalState extends State<MapPickerModal> {
 
       if (placemarks.isNotEmpty) {
         final placemark = placemarks.first;
-        // จัดรูปแบบที่อยู่ให้สวยงามขึ้น
         String street = placemark.street ?? '';
         String subLocality = placemark.subLocality ?? '';
         String locality = placemark.locality ?? '';
@@ -1097,7 +1094,6 @@ class _MapPickerModalState extends State<MapPickerModal> {
         String adminArea = placemark.administrativeArea ?? '';
         String postalCode = placemark.postalCode ?? '';
 
-        // รวมเฉพาะส่วนที่มีข้อมูล
         final addressParts = [
           street,
           subLocality,
@@ -1183,10 +1179,8 @@ class _MapPickerModalState extends State<MapPickerModal> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              // [⭐️ การแก้ไขจุดที่ 2] ตอนกดปุ่มนี้ ให้ส่งค่ากลับเป็น Class ใหม่
               onPressed: () {
                 if (_selectedPos != null) {
-                  // สร้าง Object จาก Class ใหม่เพื่อส่งค่ากลับ
                   final result = MapPickerResult(
                     location: _selectedPos!,
                     address: _searchController.text,

@@ -1,6 +1,4 @@
-// file: lib/page/home_rider.dart
-
-import 'dart:async'; // [สำคัญ] สำหรับ .timeout()
+import 'dart:async';
 import 'dart:developer';
 import 'dart:math' show cos, sqrt, asin, pi, atan2, sin;
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -24,7 +22,6 @@ class RiderHomeController extends GetxController {
   final db = FirebaseFirestore.instance;
 
   final Rx<GeoPoint?> riderCurrentLocation = Rx(null);
-  // [คงไว้] เรายังเก็บค่านี้ไว้ใช้ในหน้าอื่น (ตอนรับ/ส่งของ)
   static const double MAX_DISTANCE_METERS = 20.0;
   StreamSubscription<Position>? _positionStreamSubscription;
   @override
@@ -83,7 +80,6 @@ class RiderHomeController extends GetxController {
     });
   }
 
-  // (ฟังก์ชัน _calculateDistanceMeters ไม่เปลี่ยนแปลง)
   double _calculateDistanceMeters(GeoPoint loc1, GeoPoint loc2) {
     const double R = 6371000;
     final double lat1 = loc1.latitude;
@@ -134,7 +130,6 @@ class RiderHomeController extends GetxController {
     }
   }
 
-  // [แก้ไข] ลบการกรองระยะทางออก
   Stream<List<OrderModel>> getPendingOrdersStream(GeoPoint riderLoc) {
     return db
         .collection('orders')
@@ -144,21 +139,13 @@ class RiderHomeController extends GetxController {
       final allPendingOrders =
           snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
 
-      // [แก้ไข] กรองเฉพาะ GPS ที่ไม่ถูกต้อง (0,0) ออก แต่ไม่กรองระยะทาง
       final filteredOrders = allPendingOrders.where((order) {
         final GeoPoint pickupGps = order.pickupAddress.gps;
         if (pickupGps.latitude == 0 && pickupGps.longitude == 0) {
           log('Order ${order.id} skipped: GPS (0,0).');
           return false;
         }
-        // ลบการตรวจสอบระยะทางออก
-        // final distance = _calculateDistanceMeters(riderLoc, pickupGps);
-        // if (distance <= MAX_DISTANCE_METERS) {
-        //   return true;
-        // } else {
-        //   return false;
-        // }
-        return true; // คืนค่า true เพื่อแสดงทุกรายการที่ GPS ถูกต้อง
+        return true;
       }).toList();
 
       return filteredOrders;
@@ -171,7 +158,6 @@ class RiderHomeController extends GetxController {
     );
   }
 
-  // (ฟังก์ชัน navigateToOrderDetails ไม่เปลี่ยนแปลง)
   void navigateToOrderDetails(OrderModel order) {
     if (riderCurrentLocation.value == null) {
       Get.snackbar('ข้อผิดพลาด', 'ยังไม่สามารถระบุตำแหน่งของคุณได้');
@@ -183,9 +169,6 @@ class RiderHomeController extends GetxController {
         ));
   }
 
-  // (ฟังก์ชัน acceptOrder ไม่เปลี่ยนแปลง)
-  // Logic การเช็คระยะทาง "ก่อนกดรับงาน" ไม่ได้ถูก yêu cầu
-  // ถ้าต้องการ ให้เพิ่ม Logic เช็คระยะทางในนี้ได้เลย
   Future<void> acceptOrder(OrderModel order) async {
     Get.dialog(const Center(child: CircularProgressIndicator()),
         barrierDismissible: false);
@@ -233,10 +216,6 @@ class RiderHomeController extends GetxController {
   }
 }
 
-// -----------------------------------------------------------------
-// UI (แก้ไขข้อความเล็กน้อย)
-// -----------------------------------------------------------------
-
 class RiderHomeScreen extends StatelessWidget {
   final String uid;
   final int role;
@@ -244,9 +223,6 @@ class RiderHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // [แก้ไข] เพิ่ม permanent: true เพื่อให้ Controller ไม่ตาย
-    // เวลาเรา Get.offAll กลับมาจากหน้าอื่น Controller จะได้ยังอยู่
-    // และ GPS ยังคงทำงานต่อเนื่อง
     final controller =
         Get.put(RiderHomeController(uid: uid, role: role), permanent: true);
 
@@ -374,7 +350,6 @@ class RiderHomeScreen extends StatelessWidget {
                       valueColor: AlwaysStoppedAnimation<Color>(Colors.purple),
                     ),
                     const SizedBox(height: 15),
-                    // [แก้ไข] เปลี่ยนข้อความ
                     Text(
                       'กำลังค้นหางานทั้งหมด...',
                       textAlign: TextAlign.center,
@@ -429,7 +404,6 @@ class RiderHomeScreen extends StatelessWidget {
             );
           }
 
-          // [แก้ไข] เปลี่ยนข้อความ
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return const Center(
               child: Padding(
@@ -602,7 +576,6 @@ class RiderHomeScreen extends StatelessWidget {
     );
   }
 
-  // (OptionButton ไม่เปลี่ยนแปลง)
   Widget _buildOptionButton(
       BuildContext context, String title, IconData icon, VoidCallback onTap) {
     return InkWell(
