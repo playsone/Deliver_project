@@ -41,8 +41,8 @@ class AddressModel {
     return AddressModel(
       detail: map['detail'] ?? 'ไม่มีข้อมูลที่อยู่',
       gps: gps,
-      recipientName: map['receiverName'],
-      recipientPhone: map['receiverPhone'],
+      recipientName: map['recipientName'],
+      recipientPhone: map['recipientPhone'],
     );
   }
 

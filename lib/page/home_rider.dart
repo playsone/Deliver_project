@@ -2,7 +2,14 @@
 
 import 'dart:async';
 import 'dart:developer';
-import 'dart:math' show cos, sqrt, asin, pi, atan2, sin; // 'math' ไม่ได้ถูกใช้แล้ว แต่เก็บไว้เผื่ออนาคต
+import 'dart:math'
+    show
+        cos,
+        sqrt,
+        asin,
+        pi,
+        atan2,
+        sin; // 'math' ไม่ได้ถูกใช้แล้ว แต่เก็บไว้เผื่ออนาคต
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_project/models/order_model.dart';
 import 'package:delivery_project/models/package_model.dart';
@@ -14,6 +21,7 @@ import 'package:get/get.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:delivery_project/page/edit_profile.dart';
 import 'package:delivery_project/page/package_delivery_page.dart';
+import 'package:delivery_project/page/order_detail_page.dart';
 
 class RiderHomeController extends GetxController {
   final String uid;
@@ -143,7 +151,7 @@ class RiderHomeController extends GetxController {
 
     Get.to(() => PackageDetailScreen(
           order: order,
-          riderController: this,
+          riderLocation: riderCurrentLocation.value!,
         ));
   }
 
@@ -202,7 +210,8 @@ class RiderHomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // ใช้ Get.put แบบ permanent: true เพื่อให้ Controller คงอยู่และไม่หาตำแหน่งใหม่ทุกครั้งที่กลับมาหน้านี้
-    final controller = Get.put(RiderHomeController(uid: uid, role: role), permanent: true);
+    final controller =
+        Get.put(RiderHomeController(uid: uid, role: role), permanent: true);
 
     return Scaffold(
       backgroundColor: const Color(0xFFFDE9E9),

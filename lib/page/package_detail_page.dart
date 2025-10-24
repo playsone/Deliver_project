@@ -110,8 +110,7 @@ class PackageDetailScreen extends StatelessWidget {
         ),
       ));
     }
-
-    if (deliveryGps != null && deliveryGps.latitude != 0) {
+    if (deliveryGps != null) {
       markers.add(Marker(
         point: deliveryLatLng,
         width: 80,
@@ -122,22 +121,6 @@ class PackageDetailScreen extends StatelessWidget {
             Text('จุดส่ง',
                 style: TextStyle(
                     color: primaryColor, fontWeight: FontWeight.bold)),
-          ],
-        ),
-      ));
-    }
-
-    if (riderLoc != null) {
-      markers.add(Marker(
-        point: LatLng(riderLoc.latitude, riderLoc.longitude),
-        width: 80,
-        height: 80,
-        child: const Column(
-          children: [
-            Icon(Icons.motorcycle_rounded, color: Colors.green, size: 40),
-            Text('คุณ',
-                style: TextStyle(
-                    color: Colors.green, fontWeight: FontWeight.bold)),
           ],
         ),
       ));
@@ -167,7 +150,7 @@ class PackageDetailScreen extends StatelessWidget {
                     markers.map((m) => m.point).toList());
                 _mapController.fitBounds(bounds,
                     options:
-                        const FitBoundsOptions(padding: EdgeInsets.all(80.0)));
+                        const FitBoundsOptions(padding: EdgeInsets.all(50.0)));
               } else if (markers.isNotEmpty) {
                 _mapController.move(markers.first.point, 14.0);
               }
@@ -237,11 +220,17 @@ class PackageDetailScreen extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                   color: primaryColor)),
           const Divider(height: 20),
+          _infoRow(
+            icon: Icons.inventory_2_outlined,
+            label: 'รายละเอียดสินค้า',
+            value: order.orderDetails,
+          ),
         ],
       ),
     );
   }
 
+  // ✨✨✨ ส่วนที่แก้ไขใหม่ทั้งหมด ตามตัวอย่างของคุณ ✨✨✨
   Widget _buildDeliveryInfoSection() {
     final pickup = order.pickupAddress;
     final delivery = order.deliveryAddress;
@@ -267,6 +256,8 @@ class PackageDetailScreen extends StatelessWidget {
             value: pickup.detail,
           ),
           const SizedBox(height: 8),
+
+          // --- ใช้ StreamBuilder ดึงข้อมูลผู้ส่ง เหมือนตัวอย่าง ---
           if (customerId.isNotEmpty)
             StreamBuilder<DocumentSnapshot>(
               stream: FirebaseFirestore.instance
@@ -302,7 +293,9 @@ class PackageDetailScreen extends StatelessWidget {
             )
           else
             _infoRow(icon: Icons.person, label: 'ผู้ส่ง', value: 'ไม่มีข้อมูล'),
+
           const Divider(height: 20),
+
           _infoRow(
             icon: Icons.location_on,
             label: 'ส่งที่',
@@ -312,13 +305,13 @@ class PackageDetailScreen extends StatelessWidget {
           _infoRow(
             icon: Icons.person_pin,
             label: 'ผู้รับ',
-            value: delivery.recipientName ?? 'N/A',
+            value: delivery.receiverName ?? 'N/A',
           ),
           const SizedBox(height: 8),
           _infoRow(
             icon: Icons.phone_android,
             label: 'เบอร์ติดต่อ (ผู้รับ)',
-            value: delivery.recipientPhone ?? 'N/A',
+            value: delivery.receiverPhone ?? 'N/A',
           ),
         ],
       ),
