@@ -24,7 +24,7 @@ class RiderHomeController extends GetxController {
   final db = FirebaseFirestore.instance;
 
   final Rx<GeoPoint?> riderCurrentLocation = Rx(null);
-  static const double MAX_DISTANCE_METERS = 20.0;
+  // static const double MAX_DISTANCE_METERS = 20.0; // ไม่ได้ใช้แล้ว
   StreamSubscription<Position>? _positionStreamSubscription;
   @override
   void onInit() {
@@ -82,7 +82,7 @@ class RiderHomeController extends GetxController {
     });
   }
 
-  // (ฟังก์ชัน _calculateDistanceMeters ไม่เปลี่ยนแปลง)
+  // (ฟังก์ชัน _calculateDistanceMeters ไม่จำเป็นต้องใช้ในหน้านี้อีกต่อไป แต่เก็บไว้ได้)
   double _calculateDistanceMeters(GeoPoint loc1, GeoPoint loc2) {
     const double R = 6371000;
     final double lat1 = loc1.latitude;
@@ -133,30 +133,15 @@ class RiderHomeController extends GetxController {
     }
   }
 
-  Stream<List<OrderModel>> getPendingOrdersStream(GeoPoint riderLoc) {
+  // ---------- [⭐️ โค้ดที่แก้ไข ⭐️] ----------
+  // ฟังก์ชันนี้จะดึงงาน pending ทั้งหมดโดยไม่กรองระยะทาง
+  Stream<List<OrderModel>> getPendingOrdersStream() {
     return db
         .collection('orders')
         .where('currentStatus', isEqualTo: 'pending')
         .snapshots()
         .map((snapshot) {
-      final allPendingOrders =
-          snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
-
-      final filteredOrders = allPendingOrders.where((order) {
-        final GeoPoint pickupGps = order.pickupAddress.gps;
-        if (pickupGps.latitude == 0 && pickupGps.longitude == 0) {
-          return false;
-        }
-        final distance = _calculateDistanceMeters(riderLoc, pickupGps);
-        if (distance <= MAX_DISTANCE_METERS) {
-          log('Order ${order.id} is ${distance.toStringAsFixed(2)}m away - ACCEPTED');
-          return true;
-        } else {
-          return false;
-        }
-      }).toList();
-
-      return filteredOrders;
+      return snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
     }).timeout(
       const Duration(seconds: 30),
       onTimeout: (sink) {
@@ -165,6 +150,7 @@ class RiderHomeController extends GetxController {
       },
     );
   }
+  // ------------------------------------------
 
   // ✅ FIX 2: แก้ไขฟังก์ชันนี้ให้ไปที่ PackageDetailScreen
   void navigateToOrderDetails(OrderModel order) {
@@ -352,7 +338,9 @@ class RiderHomeScreen extends StatelessWidget {
       }
 
       return StreamBuilder<List<OrderModel>>(
-        stream: controller.getPendingOrdersStream(riderLoc),
+        // ---------- [⭐️ โค้ดที่แก้ไข ⭐️] ----------
+        stream: controller.getPendingOrdersStream(), // เรียกใช้โดยไม่มีพารามิเตอร์
+        // ------------------------------------------
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(
@@ -365,14 +353,16 @@ class RiderHomeScreen extends StatelessWidget {
                       valueColor: AlwaysStoppedAnimation<Color>(Colors.purple),
                     ),
                     const SizedBox(height: 15),
-                    Text(
-                      'กำลังค้นหางานในระยะ ${RiderHomeController.MAX_DISTANCE_METERS} เมตร...',
+                    // ---------- [⭐️ โค้ดที่แก้ไข ⭐️] ----------
+                    const Text(
+                      'กำลังค้นหางาน...', // แก้ไขข้อความ
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 16,
-                        color: Colors.grey[800],
+                        color: Colors.grey,
                       ),
                     ),
+                    // ------------------------------------------
                   ],
                 ),
               ),
@@ -424,7 +414,7 @@ class RiderHomeScreen extends StatelessWidget {
               child: Padding(
                 padding: EdgeInsets.all(20.0),
                 child: Text(
-                  'ตำแหน่งยืนยันแล้ว:\nไม่มีงานที่อยู่ในรัศมี ${RiderHomeController.MAX_DISTANCE_METERS} เมตรในขณะนี้',
+                  'ยังไม่มีงานเข้ามาในขณะนี้',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 16,
