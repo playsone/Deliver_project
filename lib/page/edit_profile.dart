@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:convert';
 
 import 'package:delivery_project/page/home.dart';
+import 'package:delivery_project/page/home_rider.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -196,8 +197,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
         content: Text("บันทึกข้อมูลสำเร็จ!"),
         backgroundColor: Colors.green,
       ));
-
-      Get.to(() => HomeScreen(uid: widget.uid, role: widget.role));
+      if (widget.role == 0) {
+        Get.to(() => HomeScreen(uid: widget.uid, role: widget.role));
+      } else {
+        Get.to(() => RiderHomeScreen(uid: widget.uid, role: widget.role));
+      }
     } on FirebaseAuthException catch (e) {
       Navigator.of(context).pop();
 

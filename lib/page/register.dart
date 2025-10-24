@@ -451,7 +451,6 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
-  // [⭐️ การแก้ไขจุดที่ 3] แก้ไขฟังก์ชันเปิดแผนที่ให้รับและอัปเดต Controller ทั้งสองตัว
   Future<void> _openMapPicker(
     TextEditingController targetGpsController,
     TextEditingController sourceAddressController,
@@ -472,8 +471,7 @@ class _RegisterPageState extends State<RegisterPage> {
     }
 
     final String initialAddress = sourceAddressController.text;
-    
-    // เปลี่ยน Type ที่คาดว่าจะได้รับกลับมาเป็น MapPickerResult
+
     final MapPickerResult? result = await showModalBottomSheet<MapPickerResult>(
       context: context,
       isScrollControlled: true,
@@ -488,7 +486,6 @@ class _RegisterPageState extends State<RegisterPage> {
       },
     );
 
-    // เมื่อได้รับค่ากลับมา ให้อัปเดต Controller ทั้งสองตัว
     if (result != null) {
       setState(() {
         targetGpsController.text =
@@ -1109,7 +1106,7 @@ class _MapPickerModalState extends State<MapPickerModal> {
           adminArea,
           postalCode
         ].where((part) => part.isNotEmpty).toList();
-        
+
         _searchController.text = addressParts.join(', ');
       }
     } catch (e) {

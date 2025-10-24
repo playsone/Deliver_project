@@ -1,3 +1,5 @@
+// file: lib/page/package_detail_screen.dart
+
 import 'dart:async';
 import 'dart:developer';
 import 'dart:math' show cos, sqrt, asin, pi, atan2, sin;
@@ -11,6 +13,9 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
 
+// ------------------------------------------------------------------
+// Page (เราจะเอา Controller ออก และจัดการ Data ในนี้เลย)
+// ------------------------------------------------------------------
 class PackageDetailScreen extends StatelessWidget {
   final OrderModel order;
   final RiderHomeController riderController;
@@ -24,6 +29,7 @@ class PackageDetailScreen extends StatelessWidget {
   static final MapController _mapController = MapController();
   static const primaryColor = Color(0xFFC70808);
 
+  // (ฟังก์ชันคำนวณระยะทางยังคงอยู่ แต่เราจะไม่ใช้มันสำหรับปุ่มกดรับงาน)
   double _calculateDistanceMeters(GeoPoint loc1, GeoPoint loc2) {
     const double R = 6371000;
     final double lat1 = loc1.latitude;
@@ -47,11 +53,13 @@ class PackageDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final GeoPoint? riderLoc = riderController.riderCurrentLocation.value;
-      final double distance =
-          (riderLoc != null && order.pickupAddress.gps != null)
-              ? _calculateDistanceMeters(riderLoc, order.pickupAddress.gps!)
-              : 9999.0;
+      // [ลบออก] เราไม่จำเป็นต้องคำนวณ distance หรือ isNearEnough ที่นี่แล้ว
+      // final GeoPoint? riderLoc = riderController.riderCurrentLocation.value;
+      // final double distance = ...
+      // final bool isNearEnough = ...
+
+      // Obx ยังคงจำเป็น เพื่อให้ _buildMapSection และ _buildAcceptButton
+      // ที่อ่านค่า .value ทำงานเมื่อ GPS อัปเดต
 
       return Scaffold(
         backgroundColor: Colors.grey[100],
@@ -71,7 +79,7 @@ class PackageDetailScreen extends StatelessWidget {
               const SizedBox(height: 15),
               _buildDeliveryInfoSection(), // เอา Controller ออก
               const SizedBox(height: 15),
-              _buildAcceptButton(context, true, distance),
+              _buildAcceptButton(context), // [แก้ไข] เอา parameter ออก
               const SizedBox(height: 20),
             ],
           ),
@@ -83,6 +91,7 @@ class PackageDetailScreen extends StatelessWidget {
   Widget _buildMapSection() {
     final GeoPoint? pickupGps = order.pickupAddress.gps;
     final GeoPoint? deliveryGps = order.deliveryAddress.gps;
+
     final GeoPoint? riderLoc = riderController.riderCurrentLocation.value;
 
     final LatLng pickupLatLng = pickupGps != null
@@ -110,7 +119,8 @@ class PackageDetailScreen extends StatelessWidget {
         ),
       ));
     }
-    if (deliveryGps != null) {
+
+    if (deliveryGps != null && deliveryGps.latitude != 0) {
       markers.add(Marker(
         point: deliveryLatLng,
         width: 80,
@@ -121,6 +131,22 @@ class PackageDetailScreen extends StatelessWidget {
             Text('จุดส่ง',
                 style: TextStyle(
                     color: primaryColor, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ));
+    }
+
+    if (riderLoc != null) {
+      markers.add(Marker(
+        point: LatLng(riderLoc.latitude, riderLoc.longitude),
+        width: 80,
+        height: 80,
+        child: const Column(
+          children: [
+            Icon(Icons.motorcycle_rounded, color: Colors.green, size: 40),
+            Text('คุณ',
+                style: TextStyle(
+                    color: Colors.green, fontWeight: FontWeight.bold)),
           ],
         ),
       ));
@@ -150,7 +176,7 @@ class PackageDetailScreen extends StatelessWidget {
                     markers.map((m) => m.point).toList());
                 _mapController.fitBounds(bounds,
                     options:
-                        const FitBoundsOptions(padding: EdgeInsets.all(50.0)));
+                        const FitBoundsOptions(padding: EdgeInsets.all(80.0)));
               } else if (markers.isNotEmpty) {
                 _mapController.move(markers.first.point, 14.0);
               }
@@ -220,17 +246,11 @@ class PackageDetailScreen extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                   color: primaryColor)),
           const Divider(height: 20),
-          _infoRow(
-            icon: Icons.inventory_2_outlined,
-            label: 'รายละเอียดสินค้า',
-            value: order.orderDetails,
-          ),
         ],
       ),
     );
   }
 
-  // ✨✨✨ ส่วนที่แก้ไขใหม่ทั้งหมด ตามตัวอย่างของคุณ ✨✨✨
   Widget _buildDeliveryInfoSection() {
     final pickup = order.pickupAddress;
     final delivery = order.deliveryAddress;
@@ -256,8 +276,6 @@ class PackageDetailScreen extends StatelessWidget {
             value: pickup.detail,
           ),
           const SizedBox(height: 8),
-
-          // --- ใช้ StreamBuilder ดึงข้อมูลผู้ส่ง เหมือนตัวอย่าง ---
           if (customerId.isNotEmpty)
             StreamBuilder<DocumentSnapshot>(
               stream: FirebaseFirestore.instance
@@ -293,9 +311,7 @@ class PackageDetailScreen extends StatelessWidget {
             )
           else
             _infoRow(icon: Icons.person, label: 'ผู้ส่ง', value: 'ไม่มีข้อมูล'),
-
           const Divider(height: 20),
-
           _infoRow(
             icon: Icons.location_on,
             label: 'ส่งที่',
@@ -305,13 +321,13 @@ class PackageDetailScreen extends StatelessWidget {
           _infoRow(
             icon: Icons.person_pin,
             label: 'ผู้รับ',
-            value: delivery.receiverName ?? 'N/A',
+            value: delivery.recipientName ?? 'N/A',
           ),
           const SizedBox(height: 8),
           _infoRow(
             icon: Icons.phone_android,
             label: 'เบอร์ติดต่อ (ผู้รับ)',
-            value: delivery.receiverPhone ?? 'N/A',
+            value: delivery.recipientPhone ?? 'N/A',
           ),
         ],
       ),
@@ -344,50 +360,51 @@ class PackageDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildAcceptButton(
-      BuildContext context, bool isNearEnough, double distance) {
+  // [แก้ไข] Widget นี้ไม่ต้องการ parameter `isNearEnough` และ `distance` แล้ว
+  Widget _buildAcceptButton(BuildContext context) {
     String buttonText;
     Color buttonColor;
     bool isEnabled;
+    IconData buttonIcon;
 
+    // [แก้ไข] เราจะเช็คแค่ว่า GPS พร้อมหรือไม่
     if (riderController.riderCurrentLocation.value == null) {
-      buttonText = 'กำลังค้นหาตำแหน่ง Rider...';
+      buttonText = 'กำลังค้นหาตำแหน่ง GPS...';
       buttonColor = Colors.grey;
       isEnabled = false;
-    } else if (isNearEnough) {
-      buttonText = 'รับงานนี้';
-      buttonColor = const Color(0xFF38B000);
-      isEnabled = true;
+      buttonIcon = Icons.gps_not_fixed;
     } else {
-      buttonText =
-          'ต้องอยู่ใกล้จุดรับงาน (ห่าง ${distance.toStringAsFixed(0)} ม.)';
-      buttonColor = Colors.orange;
-      isEnabled = false;
+      // [แก้ไข] ถ้า GPS พร้อม ก็กดรับงานได้เลย
+      buttonText = 'รับงานนี้';
+      buttonColor = const Color(0xFF38B000); // สีเขียว = กดได้
+      isEnabled = true;
+      buttonIcon = Icons.check_circle_outline;
     }
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: ElevatedButton.icon(
-        icon: isNearEnough
-            ? const Icon(Icons.check_circle_outline, color: Colors.white)
-            : const Icon(Icons.warning_amber, color: Colors.white),
+        icon: Icon(buttonIcon, color: Colors.white),
         label: Text(
           buttonText,
           style: const TextStyle(fontSize: 18, color: Colors.white),
         ),
         onPressed: isEnabled
             ? () {
-                Get.back();
-                riderController.acceptOrder(order);
+                // [คงเดิม] Logic นี้ถูกต้องแล้ว
+                // `acceptOrder` ใน Controller มีการเช็คงานซ้อน (Transaction) อยู่แล้ว
+                Get.back(); // กลับไปหน้า Home
+                riderController.acceptOrder(
+                    order); // สั่งให้ Controller ทำงาน (ซึ่งมี Transaction)
               }
             : null,
         style: ElevatedButton.styleFrom(
-          backgroundColor: buttonColor,
+          backgroundColor: buttonColor, // สีเขียว หรือ สีเทา
           padding: const EdgeInsets.symmetric(vertical: 15),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          disabledBackgroundColor: Colors.grey,
+          disabledBackgroundColor: Colors.grey, // ถ้า disable ให้เป็นสีเทาเสมอ
         ),
       ),
     );
