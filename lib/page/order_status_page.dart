@@ -598,9 +598,7 @@ class _OrderListItemState extends State<OrderListItem> {
           _riderData = doc.data();
         });
       }
-    } catch (e) {
-      // Handle error
-    }
+    } catch (e) {}
   }
 
   @override

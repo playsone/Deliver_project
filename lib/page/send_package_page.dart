@@ -8,9 +8,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloudinary_public/cloudinary_public.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
-// vvvv เพิ่ม Import นี้สำหรับ MapController vvvv
 import 'package:flutter_map/flutter_map.dart';
-// ^^^^ เพิ่ม Import นี้สำหรับ MapController ^^^^
 import 'package:delivery_project/page/order_status_page.dart';
 import 'dart:developer';
 import 'package:delivery_project/models/user_model.dart';
@@ -23,10 +21,7 @@ class SendPackageController extends GetxController {
   final int role;
   SendPackageController({required this.uid, required this.role});
 
-  // vvvv เพิ่ม MapController สำหรับควบคุมแผนที่ vvvv
   final MapController mapDisplayController = MapController();
-  // ^^^^ เพิ่ม MapController สำหรับควบคุมแผนที่ ^^^^
-
   final detailController = TextEditingController();
   final deliveryAddressController = TextEditingController();
   final receiverNameController = TextEditingController();
@@ -50,15 +45,11 @@ class SendPackageController extends GetxController {
     super.onInit();
     _initialize();
 
-    // vvvv เพิ่ม: listener สำหรับการเลื่อนแผนที่ vvvv
-    // เมื่อตำแหน่งปลายทางเปลี่ยน (เลือกผู้รับ)
     ever(selectedDestinationLocation, (LatLng? location) {
       if (location != null) {
-        // ให้แผนที่เลื่อนไปยังตำแหน่งใหม่
         mapDisplayController.move(location, 17.0);
       }
     });
-    // ^^^^ สิ้นสุดการเพิ่ม ^^^^
   }
 
   @override
@@ -68,7 +59,7 @@ class SendPackageController extends GetxController {
     receiverNameController.dispose();
     receiverPhoneController.dispose();
     _positionStreamSubscription?.cancel();
-    mapDisplayController.dispose(); // <-- เพิ่มการ dispose controller
+    mapDisplayController.dispose();
     super.onClose();
   }
 
@@ -234,14 +225,12 @@ class SendPackageController extends GetxController {
     selectedDestinationLocation.value = null;
     destinationAddressText.value = 'แตะเพื่อเลือกบนแผนที่';
 
-    // vvvv เพิ่ม: ย้ายแผนที่กลับไปที่ผู้ส่ง vvvv
     if (currentUserLocation.value != null) {
       mapDisplayController.move(
           LatLng(currentUserLocation.value!.latitude,
               currentUserLocation.value!.longitude),
           17.0);
     }
-    // ^^^^ สิ้นสุดการเพิ่ม ^^^^
   }
 
   Future<void> selectDestinationOnMap() async {
@@ -421,12 +410,10 @@ class SendPackagePage extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-// <-- แก้ไขแล้ว (ใช้ Controller)
         const Text("ข้อมูลผู้รับ",
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
-        _buildReceiverSelectionField(
-            context, controller), // <-- แก้ไขแล้ว (เอารูปออก)
+        _buildReceiverSelectionField(context, controller),
         const SizedBox(height: 15),
         const Row(
           children: [
@@ -443,11 +430,7 @@ class SendPackagePage extends StatelessWidget {
           child: Text("กรอกข้อมูลผู้รับด้วยตนเอง",
               style: TextStyle(fontSize: 16, color: Colors.black54)),
         ),
-
-        // vvvv เพิ่ม Widget แสดงรูปโปรไฟล์ vvvv
         _buildReceiverProfileDisplay(controller),
-        // ^^^^ สิ้นสุดการเพิ่ม ^^^^
-
         Obx(() => _buildTextField(controller.receiverNameController,
             'ชื่อผู้รับ', Icons.person_outline,
             isReadOnly: controller.selectedReceiver.value != null)),
@@ -508,7 +491,6 @@ class SendPackagePage extends StatelessWidget {
     );
   }
 
-  // vvvv Widget นี้ถูกแก้ไข เอารูปโปรไฟล์ออก vvvv
   Widget _buildReceiverSelectionField(
       BuildContext context, SendPackageController controller) {
     return Obx(() {
@@ -520,13 +502,11 @@ class SendPackagePage extends StatelessWidget {
       Color titleColor;
 
       if (selectedUser != null) {
-        // --- กรณีเลือกผู้ใช้แล้ว ---
         borderColor = Colors.green;
         titleText = 'ผู้รับ: ${selectedUser.fullname}';
         titleWeight = FontWeight.bold;
         titleColor = Colors.black;
       } else {
-        // --- กรณียังไม่ได้เลือกผู้ใช้ ---
         borderColor = Colors.grey.shade300;
         titleText = 'แตะเพื่อเลือก/ค้นหาผู้รับจากรายชื่อ';
         titleWeight = FontWeight.normal;
@@ -547,7 +527,6 @@ class SendPackagePage extends StatelessWidget {
           child: Row(
             children: [
               Icon(
-                // <-- เปลี่ยนกลับเป็น Icon เสมอ
                 Icons.contact_phone,
                 color: selectedUser != null ? Colors.green : _primaryColor,
               ),
@@ -574,14 +553,12 @@ class SendPackagePage extends StatelessWidget {
       );
     });
   }
-  // ^^^^ สิ้นสุด Widget ที่แก้ไข ^^^^
 
-  // vvvv Widget ใหม่สำหรับแสดงรูปโปรไฟล์ vvvv
   Widget _buildReceiverProfileDisplay(SendPackageController controller) {
     return Obx(() {
       final selectedUser = controller.selectedReceiver.value;
       if (selectedUser == null) {
-        return const SizedBox(height: 15); // ถ้ายังไม่เลือก ก็เว้นที่ว่างปกติ
+        return const SizedBox(height: 15);
       }
 
       final String imageUrl = selectedUser.profile;
@@ -589,10 +566,9 @@ class SendPackagePage extends StatelessWidget {
 
       if (imageUrl.isNotEmpty) {
         profileAvatar = CircleAvatar(
-          radius: 70, // ขนาดรูป
+          radius: 70,
           backgroundImage: NetworkImage(imageUrl),
           onBackgroundImageError: (e, s) {
-            // กรณีโหลดรูปไม่ได้
             profileAvatar = const CircleAvatar(
               radius: 70,
               backgroundColor: Colors.grey,
@@ -601,7 +577,6 @@ class SendPackagePage extends StatelessWidget {
           },
         );
       } else {
-        // กรณีไม่มี URL รูปภาพ
         profileAvatar = const CircleAvatar(
           radius: 30,
           backgroundColor: _primaryColor,
@@ -617,7 +592,6 @@ class SendPackagePage extends StatelessWidget {
       );
     });
   }
-  // ^^^^ สิ้นสุด Widget ใหม่ ^^^^
 
   void _showUserSelectionDialog(
       BuildContext context, SendPackageController controller) {
@@ -635,13 +609,11 @@ class SendPackagePage extends StatelessWidget {
     );
   }
 
-  // vvvv นี่คือแผนที่ที่แก้ไขให้ควบคุมด้วย Controller vvvv
   Widget _buildUserInfoMap(SendPackageController controller) {
-    // ตำแหน่งเริ่มต้น (ต้องมี)
     final initialCenter = controller.currentUserLocation.value != null
         ? LatLng(controller.currentUserLocation.value!.latitude,
             controller.currentUserLocation.value!.longitude)
-        : const LatLng(16.2426, 103.2579); // A fallback location
+        : const LatLng(16.2426, 103.2579);
 
     return Container(
       height: 200,
@@ -655,21 +627,16 @@ class SendPackagePage extends StatelessWidget {
         borderRadius: BorderRadius.circular(15),
         child: Stack(
           children: [
-            // 1. สร้าง FlutterMap แค่ครั้งเดียว
             FlutterMap(
-              mapController:
-                  controller.mapDisplayController, // <-- 1. ผูก Controller
+              mapController: controller.mapDisplayController,
               options: MapOptions(
-                initialCenter: initialCenter, // <-- 2. ตั้งค่าเริ่มต้น
+                initialCenter: initialCenter,
                 initialZoom: 17.0,
-                // (เอา interactionOptions ออกเพื่อให้เลื่อนได้)
               ),
               children: [
                 TileLayer(
                     urlTemplate:
                         'https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=cb153d15cb4e41f59e25cfda6468f1a0'),
-
-                // 3. ใช้ Obx หุ้มเฉพาะ MarkerLayer
                 Obx(() {
                   final receiverLocation =
                       controller.selectedDestinationLocation.value;
@@ -688,7 +655,7 @@ class SendPackagePage extends StatelessWidget {
                     markerChild = const Icon(Icons.my_location,
                         color: Colors.blue, size: 30);
                   } else {
-                    return const MarkerLayer(markers: []); // ยังไม่มีตำแหน่ง
+                    return const MarkerLayer(markers: []);
                   }
 
                   return MarkerLayer(markers: [
@@ -700,7 +667,6 @@ class SendPackagePage extends StatelessWidget {
                 }),
               ],
             ),
-            // 4. ใช้ Obx หุ้มเฉพาะป้ายข้อความ
             Obx(() {
               final textLabel =
                   controller.selectedDestinationLocation.value != null
@@ -735,7 +701,6 @@ class SendPackagePage extends StatelessWidget {
       ),
     );
   }
-  // ^^^^ สิ้นสุดแผนที่ที่แก้ไข ^^^^
 
   Widget _buildMapPickerField(SendPackageController controller) {
     return GestureDetector(

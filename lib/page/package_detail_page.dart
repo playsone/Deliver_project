@@ -1,5 +1,3 @@
-// file: lib/page/package_detail_screen.dart
-
 import 'dart:async';
 import 'dart:developer';
 import 'dart:math' show cos, sqrt, asin, pi, atan2, sin;
@@ -13,9 +11,6 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
 
-// ------------------------------------------------------------------
-// Page (เราจะเอา Controller ออก และจัดการ Data ในนี้เลย)
-// ------------------------------------------------------------------
 class PackageDetailScreen extends StatelessWidget {
   final OrderModel order;
   final RiderHomeController riderController;
@@ -57,8 +52,6 @@ class PackageDetailScreen extends StatelessWidget {
           (riderLoc != null && order.pickupAddress.gps != null)
               ? _calculateDistanceMeters(riderLoc, order.pickupAddress.gps!)
               : 9999.0;
-      final bool isNearEnough =
-          distance <= RiderHomeController.MAX_DISTANCE_METERS;
 
       return Scaffold(
         backgroundColor: Colors.grey[100],
@@ -78,7 +71,7 @@ class PackageDetailScreen extends StatelessWidget {
               const SizedBox(height: 15),
               _buildDeliveryInfoSection(), // เอา Controller ออก
               const SizedBox(height: 15),
-              _buildAcceptButton(context, isNearEnough, distance),
+              _buildAcceptButton(context, true, distance),
               const SizedBox(height: 20),
             ],
           ),
@@ -90,8 +83,6 @@ class PackageDetailScreen extends StatelessWidget {
   Widget _buildMapSection() {
     final GeoPoint? pickupGps = order.pickupAddress.gps;
     final GeoPoint? deliveryGps = order.deliveryAddress.gps;
-
-    // ✅ 1. ดึงตำแหน่ง Rider ปัจจุบันจาก Controller
     final GeoPoint? riderLoc = riderController.riderCurrentLocation.value;
 
     final LatLng pickupLatLng = pickupGps != null
@@ -104,7 +95,6 @@ class PackageDetailScreen extends StatelessWidget {
 
     List<Marker> markers = [];
 
-    // --- Marker จุดรับ (เหมือนเดิม) ---
     if (pickupGps != null && pickupGps.latitude != 0) {
       markers.add(Marker(
         point: pickupLatLng,
@@ -172,7 +162,6 @@ class PackageDetailScreen extends StatelessWidget {
               flags: InteractiveFlag.all,
             ),
             onMapReady: () {
-              // ✅ 3. ลอจิก fitBounds จะทำงานครอบคลุม 3 จุด (หรือ 2 จุด) อัตโนมัติ
               if (markers.length > 1) {
                 var bounds = LatLngBounds.fromPoints(
                     markers.map((m) => m.point).toList());

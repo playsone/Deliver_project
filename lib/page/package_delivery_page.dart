@@ -7,8 +7,6 @@ import 'package:cloudinary_public/cloudinary_public.dart';
 import 'package:delivery_project/models/package_model.dart';
 import 'package:delivery_project/page/home_rider.dart';
 import 'package:delivery_project/page/index.dart';
-// Note: These files are typically separate in a real project
-// We define placeholders for missing classes/pages/models for compilation context.
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
@@ -71,7 +69,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
       if (permissionGranted != PermissionStatus.granted) return;
     }
 
-    // ตั้งค่าการอัปเดตตำแหน่ง: ทุก 3 วินาที หรือเมื่อเคลื่อนที่เกิน 10 เมตร
     _location.changeSettings(interval: 3000, distanceFilter: 10);
 
     _locationSubscription =
@@ -84,7 +81,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
         currentLocation.latitude!,
         currentLocation.longitude!,
       );
-      // อัปเดตตำแหน่งปัจจุบันของไรเดอร์ใน Order
       FirebaseFirestore.instance
           .collection('orders')
           .doc(widget.package.id)
@@ -124,7 +120,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
           FilledButton(
             onPressed: () {
               _locationSubscription?.cancel();
-              // กลับไปหน้า Index หลัก (SpeedDerApp)
               Get.offAll(() => const SpeedDerApp());
             },
             child: const Text('ออกจากระบบ'),
@@ -139,7 +134,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
     const primaryColor = Color(0xFFC70808);
 
     return WillPopScope(
-      // ป้องกันการกดปุ่ม Back ขณะอยู่ระหว่างการจัดส่ง
       onWillPop: () async => false,
       child: Scaffold(
         backgroundColor: Colors.grey[100],
@@ -150,7 +144,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
           automaticallyImplyLeading: false,
         ),
         body: StreamBuilder<DocumentSnapshot>(
-          // ติดตามสถานะของ Order ปัจจุบันแบบ Real-time
           stream: FirebaseFirestore.instance
               .collection('orders')
               .doc(widget.package.id)
@@ -218,7 +211,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
     );
 
     try {
-      // 1. Upload Image to Cloudinary
       const cloudinaryName = 'dnutmbomv';
       const cloudinaryPreset = 'delivery888';
       final cloudinary =
@@ -227,7 +219,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
           await cloudinary.uploadFile(CloudinaryFile.fromFile(pickedFile.path));
       final imageUrl = response.secureUrl;
 
-      // 2. Update Firestore using Transaction
       final orderRef = FirebaseFirestore.instance
           .collection('orders')
           .doc(widget.package.id);
@@ -236,7 +227,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
         final snapshot = await txn.get(orderRef);
         if (!snapshot.exists) throw Exception('Document not found');
 
-        // ตรวจสอบสถานะก่อนอัปเดต (เพื่อความมั่นใจ)
         final currentOrderData = snapshot.data() as Map<String, dynamic>;
         if (currentOrderData['currentStatus'] == 'delivered') {
           throw Exception('Order is already delivered.');
@@ -250,19 +240,16 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
         txn.update(orderRef, {
           'currentStatus': statusToUpdate,
           'statusHistory': FieldValue.arrayUnion([newHistory]),
-          // อัปเดตเวลารับของ/ส่งของ
           if (statusToUpdate == 'picked_up') 'pickupDatetime': Timestamp.now(),
           if (statusToUpdate == 'delivered')
             'deliveryDatetime': Timestamp.now(),
         });
       });
 
-      // 3. Complete
       Get.back();
       Get.snackbar('สำเร็จ', 'อัปเดตสถานะเรียบร้อยแล้ว');
 
       if (isFinal) {
-        // เมื่อจัดส่งสำเร็จ ให้หยุดการส่งตำแหน่งและกลับหน้า Home
         _locationSubscription?.cancel();
         await Future.delayed(const Duration(seconds: 1));
         Get.offAll(() => RiderHomeScreen(uid: widget.uid, role: widget.role));
@@ -320,7 +307,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
 
   Widget _buildMapSection(
       Map<String, dynamic> orderData, DeliveryStatus status) {
-    // ดึง GeoPoint จาก Pickup และ Delivery Address
     final GeoPoint pickupGps =
         orderData['pickupAddress']?['gps'] as GeoPoint? ?? const GeoPoint(0, 0);
     final GeoPoint deliveryGps =
@@ -335,7 +321,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
     Color targetColor;
     String mapLabel;
 
-    // กำหนดเป้าหมายของแผนที่
     if (status.index < DeliveryStatus.inTransit.index) {
       targetLatLng = pickupLatLng;
       targetIcon = Icons.store;
@@ -348,25 +333,19 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
       mapLabel = 'จุดส่งสินค้า';
     }
 
-    // ตำแหน่งปัจจุบันของไรเดอร์ (หรือใช้ targetLatLng ถ้าไม่มี)
     LatLng riderLatLng = targetLatLng;
     if (orderData['currentLocation'] is GeoPoint) {
       final GeoPoint rp = orderData['currentLocation'] as GeoPoint;
       riderLatLng = LatLng(rp.latitude, rp.longitude);
     }
 
-    // ตั้งค่า center ของแผนที่ให้อยู่ตรงกลางระหว่างไรเดอร์และเป้าหมาย หรือใช้ตำแหน่งไรเดอร์
     LatLng mapCenter = riderLatLng;
-
-    // ลองคำนวณ center point ถ้าทั้งสองจุดมีค่าไม่เป็น 0
     if (riderLatLng.latitude != 0 && targetLatLng.latitude != 0) {
-      // คำนวณ center point (แบบง่าย)
       mapCenter = LatLng(
         (riderLatLng.latitude + targetLatLng.latitude) / 2,
         (riderLatLng.longitude + targetLatLng.longitude) / 2,
       );
 
-      // ถ้าไรเดอร์อยู่ใกล้เป้าหมายมาก ให้ใช้ตำแหน่งไรเดอร์เป็นศูนย์กลาง
       final double dist = _calculateDistanceMeters(
           GeoPoint(riderLatLng.latitude, riderLatLng.longitude),
           GeoPoint(targetLatLng.latitude, targetLatLng.longitude));
@@ -398,7 +377,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
             ),
             MarkerLayer(
               markers: [
-                // Marker เป้าหมาย (รับของ/ส่งของ)
                 Marker(
                   point: targetLatLng,
                   width: 80,
@@ -408,7 +386,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
                     child: Icon(targetIcon, color: targetColor, size: 40),
                   ),
                 ),
-                // Marker ตำแหน่งไรเดอร์
                 Marker(
                   point: riderLatLng,
                   width: 80,
@@ -453,16 +430,13 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
     String buttonText;
     bool isFinal = false;
 
-    // กำหนดสถานะและข้อความสำหรับปุ่มถัดไป
     if (status == DeliveryStatus.accepted) {
       targetStatus = 'picked_up';
       buttonText = 'ถ่ายรูปยืนยันการรับของ';
-      // เป้าหมายคือจุดรับของ
       targetGps = orderData['pickupAddress']?['gps'] as GeoPoint?;
     } else if (status == DeliveryStatus.pickedUp) {
       targetStatus = 'in_transit';
       buttonText = 'ถ่ายรูปเพื่อเริ่มนำส่ง';
-      // ไม่ต้องใช้ GPS check สำหรับการเปลี่ยนสถานะเป็น in_transit
       targetGps = null;
     } else if (status == DeliveryStatus.inTransit) {
       targetStatus = 'delivered';
@@ -475,7 +449,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
 
     final GeoPoint? riderLoc = orderData['currentLocation'] as GeoPoint?;
 
-    // --- LOGIC: ตรวจสอบระยะทาง (ถ้ามี targetGps และ riderLoc) ---
     if (targetGps != null && riderLoc != null) {
       final double distance = _calculateDistanceMeters(riderLoc, targetGps);
 
@@ -495,7 +468,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
                   fontWeight: FontWeight.bold),
             ),
             onPressed: () {
-              // แจ้งเตือนและซูมแผนที่ไปที่ตำแหน่งไรเดอร์
               Get.snackbar(
                 'แจ้งเตือน',
                 'คุณต้องอยู่ภายใน ${maxDistanceToTarget.toInt()} เมตรจากจุด${targetName} (ปัจจุบันห่าง ${distance.toStringAsFixed(2)} เมตร)',
@@ -516,7 +488,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
         );
       }
     } else if (targetGps != null && riderLoc == null) {
-      // กรณีที่ต้องเช็ค GPS แต่ยังไม่มีข้อมูลตำแหน่งไรเดอร์
       return SizedBox(
         width: double.infinity,
         child: ElevatedButton.icon(
@@ -537,7 +508,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
       );
     }
 
-    // --- ปุ่ม Action ปกติ (พร้อมสำหรับการเปลี่ยนสถานะ) ---
     final Color buttonColor =
         isFinal ? const Color(0xFF38B000) : const Color(0xFFC70808);
 
@@ -566,7 +536,7 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
   }
 
   double _calculateDistanceMeters(GeoPoint loc1, GeoPoint loc2) {
-    const double R = 6371000; // meters
+    const double R = 6371000;
     final double lat1 = loc1.latitude;
     final double lon1 = loc1.longitude;
     final double lat2 = loc2.latitude;
@@ -703,7 +673,6 @@ class _PackageDeliveryScreenState extends State<PackageDeliveryPage> {
           ),
           const SizedBox(height: 8),
           if (customerId != null)
-            // ดึงข้อมูลผู้ส่งจาก Firestore
             StreamBuilder<DocumentSnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('users')

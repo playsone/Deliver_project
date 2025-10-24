@@ -1,6 +1,4 @@
-// file: lib/page/home_rider.dart
-
-import 'dart:async'; // [สำคัญ] สำหรับ .timeout()
+import 'dart:async';
 import 'dart:developer';
 import 'dart:math' show cos, sqrt, asin, pi, atan2, sin;
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -24,7 +22,6 @@ class RiderHomeController extends GetxController {
   final db = FirebaseFirestore.instance;
 
   final Rx<GeoPoint?> riderCurrentLocation = Rx(null);
-  // static const double MAX_DISTANCE_METERS = 20.0; // ไม่ได้ใช้แล้ว
   StreamSubscription<Position>? _positionStreamSubscription;
   @override
   void onInit() {
@@ -82,7 +79,6 @@ class RiderHomeController extends GetxController {
     });
   }
 
-  // (ฟังก์ชัน _calculateDistanceMeters ไม่จำเป็นต้องใช้ในหน้านี้อีกต่อไป แต่เก็บไว้ได้)
   double _calculateDistanceMeters(GeoPoint loc1, GeoPoint loc2) {
     const double R = 6371000;
     final double lat1 = loc1.latitude;
@@ -133,8 +129,6 @@ class RiderHomeController extends GetxController {
     }
   }
 
-  // ---------- [⭐️ โค้ดที่แก้ไข ⭐️] ----------
-  // ฟังก์ชันนี้จะดึงงาน pending ทั้งหมดโดยไม่กรองระยะทาง
   Stream<List<OrderModel>> getPendingOrdersStream() {
     return db
         .collection('orders')
@@ -150,23 +144,19 @@ class RiderHomeController extends GetxController {
       },
     );
   }
-  // ------------------------------------------
 
-  // ✅ FIX 2: แก้ไขฟังก์ชันนี้ให้ไปที่ PackageDetailScreen
   void navigateToOrderDetails(OrderModel order) {
     if (riderCurrentLocation.value == null) {
       Get.snackbar('ข้อผิดพลาด', 'ยังไม่สามารถระบุตำแหน่งของคุณได้');
       return;
     }
-    // เปลี่ยนจาก OrderDetailPage เป็น PackageDetailScreen
-    // และส่ง 'this' (ตัว Controller) เข้าไปแทน 'riderLocation'
+
     Get.to(() => PackageDetailScreen(
           order: order,
           riderController: this,
         ));
   }
 
-  // (ฟังก์ชัน acceptOrder ไม่เปลี่ยนแปลง)
   Future<void> acceptOrder(OrderModel order) async {
     Get.dialog(const Center(child: CircularProgressIndicator()),
         barrierDismissible: false);
@@ -186,7 +176,7 @@ class RiderHomeController extends GetxController {
           ]),
         });
       });
-      Get.back(); // ปิด Loading
+      Get.back();
       final package = Package(
         id: order.id,
         title: order.orderDetails,
@@ -213,10 +203,6 @@ class RiderHomeController extends GetxController {
     }
   }
 }
-
-// -----------------------------------------------------------------
-// (ส่วน UI ของ RiderHomeScreen ไม่ต้องแก้ไข เพราะเรียกใช้ฟังก์ชันที่แก้แล้ว)
-// -----------------------------------------------------------------
 
 class RiderHomeScreen extends StatelessWidget {
   final String uid;
@@ -338,31 +324,27 @@ class RiderHomeScreen extends StatelessWidget {
       }
 
       return StreamBuilder<List<OrderModel>>(
-        // ---------- [⭐️ โค้ดที่แก้ไข ⭐️] ----------
-        stream: controller.getPendingOrdersStream(), // เรียกใช้โดยไม่มีพารามิเตอร์
-        // ------------------------------------------
+        stream: controller.getPendingOrdersStream(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(
+            return const Center(
               child: Padding(
-                padding: const EdgeInsets.all(20.0),
+                padding: EdgeInsets.all(20.0),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const CircularProgressIndicator(
+                    CircularProgressIndicator(
                       valueColor: AlwaysStoppedAnimation<Color>(Colors.purple),
                     ),
-                    const SizedBox(height: 15),
-                    // ---------- [⭐️ โค้ดที่แก้ไข ⭐️] ----------
-                    const Text(
-                      'กำลังค้นหางาน...', // แก้ไขข้อความ
+                    SizedBox(height: 15),
+                    Text(
+                      'กำลังค้นหางาน...',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 16,
                         color: Colors.grey,
                       ),
                     ),
-                    // ------------------------------------------
                   ],
                 ),
               ),
@@ -532,8 +514,6 @@ class RiderHomeScreen extends StatelessWidget {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'หน้าแรก'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.history), label: 'ประวัติการส่ง'),
-          BottomNavigationBarItem(
               icon: Icon(Icons.logout), label: 'ออกจากระบบ'),
         ],
         currentIndex: 0,
@@ -546,7 +526,6 @@ class RiderHomeScreen extends StatelessWidget {
     );
   }
 
-  // (ProfileOptions ไม่เปลี่ยนแปลง)
   void _showProfileOptions(BuildContext context, String uid, int role) {
     showModalBottomSheet(
       context: context,
@@ -573,10 +552,6 @@ class RiderHomeScreen extends StatelessWidget {
                   context, 'แก้ไขข้อมูลส่วนตัว', Icons.person_outline, () {
                 Get.to(() => EditProfilePage(uid: uid, role: role));
               }),
-              _buildOptionButton(context, 'เปลี่ยนรหัสผ่าน', Icons.lock_outline,
-                  () {
-                Navigator.pop(context);
-              }),
               _buildOptionButton(context, 'ออกจากระบบ', Icons.logout, () {
                 Get.offAll(() => const SpeedDerApp());
               }),
@@ -588,7 +563,6 @@ class RiderHomeScreen extends StatelessWidget {
     );
   }
 
-  // (OptionButton ไม่เปลี่ยนแปลง)
   Widget _buildOptionButton(
       BuildContext context, String title, IconData icon, VoidCallback onTap) {
     return InkWell(

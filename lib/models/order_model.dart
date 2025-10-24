@@ -49,7 +49,6 @@ class OrderModel {
       customerId: data['customerId'] ?? '',
       riderId: data['riderId'],
       orderDetails: data['orderDetails'] ?? 'ไม่มีรายละเอียด',
-      // ✅ รองรับทั้งชื่อเก่าและชื่อใหม่
       orderPicture: data['orderPicture'] ?? data['orderImageUrl'],
       currentStatus: data['currentStatus'] ?? 'unknown',
       createdAt: data['createdAt'] ?? Timestamp.now(),
@@ -75,7 +74,7 @@ class OrderModel {
       'pickupAddress': pickupAddress.toMap(),
       'deliveryAddress': deliveryAddress.toMap(),
       'statusHistory': statusHistory.map((item) => item.toMap()).toList(),
-      'currentLocation': currentLocation, // << เพิ่มตอนแปลงกลับเป็น Map
+      'currentLocation': currentLocation,
     };
   }
 }
