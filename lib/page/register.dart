@@ -1,3 +1,5 @@
+// file: lib/page/register_page.dart
+
 import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
@@ -20,15 +22,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:io';
 import 'package:cloudinary_public/cloudinary_public.dart';
 
-// ---------- [⭐️ โค้ดที่แก้ไข 1/3: สร้าง Class สำหรับเก็บผลลัพธ์ ⭐️] ----------
-// Class นี้จะใช้เก็บทั้งพิกัดและชื่อที่อยู่ เพื่อส่งค่ากลับจากหน้าแผนที่
+// [⭐️ การแก้ไขจุดที่ 1] สร้าง Class สำหรับเก็บผลลัพธ์จากแผนที่โดยเฉพาะ
+// เพื่อให้ส่งค่ากลับมาได้ทั้งพิกัด (location) และชื่อที่อยู่ (address)
 class MapPickerResult {
   final LatLng location;
   final String address;
 
   MapPickerResult({required this.location, required this.address});
 }
-// --------------------------------------------------------------------------
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -450,7 +451,7 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
-  // ---------- [⭐️ โค้ดที่แก้ไข 3/3: แก้ไขฟังก์ชันเปิดแผนที่ ⭐️] ----------
+  // [⭐️ การแก้ไขจุดที่ 3] แก้ไขฟังก์ชันเปิดแผนที่ให้รับและอัปเดต Controller ทั้งสองตัว
   Future<void> _openMapPicker(
     TextEditingController targetGpsController,
     TextEditingController sourceAddressController,
@@ -496,7 +497,6 @@ class _RegisterPageState extends State<RegisterPage> {
       });
     }
   }
-  // --------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -704,7 +704,7 @@ class _RegisterPageState extends State<RegisterPage> {
           _buildTextField('ชื่อ-สกุล', controller: _fullNameController,
               validator: (val) {
             if (val!.isEmpty && _isRider == false) {
-              return "กรุณากรอกชื่อ-สกุล";
+              return "กรุณากรอกชื่อขสกุล";
             }
             return null;
           }),
@@ -800,7 +800,7 @@ class _RegisterPageState extends State<RegisterPage> {
           _buildTextField('ชื่อ-สกุล', controller: _fullNameController,
               validator: (val) {
             if (val!.isEmpty && _isRider == true) {
-              return "กรุณากรอกชื่อ-สกุล";
+              return "กรุณากรอกชื่อขสกุล";
             }
             return null;
           }),
@@ -1092,13 +1092,29 @@ class _MapPickerModalState extends State<MapPickerModal> {
 
       if (placemarks.isNotEmpty) {
         final placemark = placemarks.first;
-        final addressLine = "${placemark.thoroughfare}, "
-            "${placemark.subLocality}, ${placemark.locality}, "
-            "${placemark.administrativeArea}, ${placemark.country}";
+        // จัดรูปแบบที่อยู่ให้สวยงามขึ้น
+        String street = placemark.street ?? '';
+        String subLocality = placemark.subLocality ?? '';
+        String locality = placemark.locality ?? '';
+        String subAdminArea = placemark.subAdministrativeArea ?? '';
+        String adminArea = placemark.administrativeArea ?? '';
+        String postalCode = placemark.postalCode ?? '';
 
-        _searchController.text = addressLine.replaceAll(', ,', ',').trim();
+        // รวมเฉพาะส่วนที่มีข้อมูล
+        final addressParts = [
+          street,
+          subLocality,
+          locality,
+          subAdminArea,
+          adminArea,
+          postalCode
+        ].where((part) => part.isNotEmpty).toList();
+        
+        _searchController.text = addressParts.join(', ');
       }
-    } catch (e) {}
+    } catch (e) {
+      log("Error reverse geocoding: $e");
+    }
   }
 
   @override
@@ -1129,7 +1145,7 @@ class _MapPickerModalState extends State<MapPickerModal> {
                 onPressed: _geocodeAddress,
               ),
             ),
-            onSubmitted: (_) => _geocodeAddress,
+            onSubmitted: (_) => _geocodeAddress(),
           ),
           const SizedBox(height: 15),
           Expanded(
@@ -1170,7 +1186,7 @@ class _MapPickerModalState extends State<MapPickerModal> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              // ---------- [⭐️ โค้ดที่แก้ไข 2/3: ส่งค่ากลับเป็น Class ใหม่ ⭐️] ----------
+              // [⭐️ การแก้ไขจุดที่ 2] ตอนกดปุ่มนี้ ให้ส่งค่ากลับเป็น Class ใหม่
               onPressed: () {
                 if (_selectedPos != null) {
                   // สร้าง Object จาก Class ใหม่เพื่อส่งค่ากลับ
@@ -1183,7 +1199,6 @@ class _MapPickerModalState extends State<MapPickerModal> {
                   Navigator.pop(context);
                 }
               },
-              // -------------------------------------------------------------
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 padding: const EdgeInsets.symmetric(vertical: 15),
